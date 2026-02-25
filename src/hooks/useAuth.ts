@@ -32,17 +32,37 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<RecruiterProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Handle the result after Google redirect returns to the app
+    // Pick up the result when Google redirects back to the app
     getRedirectResult(auth)
       .then(async (result) => {
         if (result?.user) {
-          const p = await upsertProfile(result.user);
-          setProfile(p);
+          try {
+            const p = await upsertProfile(result.user);
+            setProfile(p);
+          } catch (err) {
+            // Firestore rules not deployed yet — auth still works, profile save will retry
+            console.warn('Profile save failed (deploy rules to fix):', err);
+          }
         }
       })
-      .catch(console.error);
+      .catch((err: { code?: string; message?: string }) => {
+        const code = err?.code ?? '';
+        const messages: Record<string, string> = {
+          'auth/unauthorized-domain':
+            'Este dominio no está autorizado en Firebase. Agrega "localhost" en Authentication → Settings → Authorized domains.',
+          'auth/operation-not-allowed':
+            'El proveedor de Google no está habilitado. Actívalo en Firebase Console → Authentication → Sign-in method → Google.',
+          'auth/invalid-api-key':
+            'La API key de Firebase es inválida. Revisa tu archivo .env.',
+          'auth/configuration-not-found':
+            'Configuración de Firebase no encontrada. Verifica que el .env tiene los valores correctos.',
+        };
+        setAuthError(messages[code] ?? `Error de autenticación: ${err?.message ?? code}`);
+        console.error('getRedirectResult error:', err);
+      });
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
@@ -53,7 +73,7 @@ export function useAuth() {
             setProfile(profileSnap.data() as RecruiterProfile);
           }
         } catch {
-          // Rules not yet deployed — profile fetch will succeed after deploy
+          // Firestore rules pending deploy — non-blocking
         }
       } else {
         setProfile(null);
@@ -64,11 +84,12 @@ export function useAuth() {
     return unsubscribe;
   }, []);
 
-  // Redirect to Google → after auth Google redirects back to the app
-  // getRedirectResult (above) picks up the result on the return
-  const signInWithGoogle = () => signInWithRedirect(auth, googleProvider);
+  const signInWithGoogle = () => {
+    setAuthError(null);
+    signInWithRedirect(auth, googleProvider);
+  };
 
   const signOut = () => firebaseSignOut(auth);
 
-  return { user, profile, loading, signInWithGoogle, signOut };
+  return { user, profile, loading, authError, signInWithGoogle, signOut };
 }
