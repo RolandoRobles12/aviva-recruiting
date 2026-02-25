@@ -18,7 +18,7 @@ export function invitationTemplate(c: CandidateInfo): { subject: string; html: s
     <tr><td align="center">
       <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
-        <tr><td style="background:#2d46eb;padding:32px 40px;text-align:center;">
+        <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
           <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
             <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
           </div>
@@ -48,7 +48,7 @@ export function invitationTemplate(c: CandidateInfo): { subject: string; html: s
 
           <!-- CTA Button -->
           <div style="text-align:center;margin:28px 0;">
-            <a href="${c.formUrl}" style="background:#2d46eb;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;display:inline-block;">
+            <a href="${c.formUrl}" style="background:#16b877;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;display:inline-block;">
               Subir mi documentación →
             </a>
           </div>
@@ -103,7 +103,7 @@ export function reminderTemplate(
             <ul style="margin:0;padding-left:20px;color:#b45309;font-size:13px;line-height:2;">${missingList}</ul>
           </div>
           <div style="text-align:center;margin:24px 0;">
-            <a href="${c.formUrl}" style="background:#2d46eb;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;display:inline-block;">
+            <a href="${c.formUrl}" style="background:#16b877;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;display:inline-block;">
               Completar documentación →
             </a>
           </div>

@@ -55,20 +55,20 @@ export function DashboardPage() {
             <StatsCard
               label="En progreso"
               value={stats.inProgress}
-              icon={<Clock size={20} className="text-blue-600" />}
-              color="bg-blue-100"
+              icon={<Clock size={20} className="text-primary-600" />}
+              color="bg-primary-100"
             />
             <StatsCard
               label="En revisión"
               value={stats.underReview}
-              icon={<Clock size={20} className="text-purple-600" />}
-              color="bg-purple-100"
+              icon={<Clock size={20} className="text-primary-700" />}
+              color="bg-primary-100"
             />
             <StatsCard
               label="Aprobados"
               value={stats.approved}
-              icon={<CheckCircle size={20} className="text-green-600" />}
-              color="bg-green-100"
+              icon={<CheckCircle size={20} className="text-primary-600" />}
+              color="bg-primary-100"
             />
           </div>
         </div>

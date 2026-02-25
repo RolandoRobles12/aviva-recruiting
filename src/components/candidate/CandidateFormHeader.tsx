@@ -15,13 +15,13 @@ export function CandidateFormHeader({ candidate: c }: Props) {
         {/* Logo / Brand */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#16b877' }}>
               <span className="text-white text-xs font-bold">A</span>
             </div>
             <span className="text-sm font-semibold text-gray-700">Aviva · Proceso de Ingreso</span>
           </div>
           {allDone && (
-            <div className="flex items-center gap-1 text-green-600 text-sm font-medium">
+            <div className="flex items-center gap-1 text-sm font-medium" style={{ color: '#16b877' }}>
               <CheckCircle size={16} />
               Completado
             </div>
