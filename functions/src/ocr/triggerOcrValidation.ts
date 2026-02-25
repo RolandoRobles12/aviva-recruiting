@@ -2,7 +2,65 @@ import * as functions from 'firebase-functions';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { updateCandidateDocument, updateCandidateCompletion } from '../utils/candidates';
+import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
+import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { ocrErrorTemplate } from '../email/templates';
+
+const DOCUMENT_LABELS: Record<string, string> = {
+  ine: 'INE / Identificación oficial',
+  curp: 'CURP',
+  rfc: 'RFC con homoclave',
+  comprobante_domicilio: 'Comprobante de domicilio',
+  comprobante_estudios: 'Comprobante de estudios',
+};
+
+const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
+
+async function notifyOcrError(
+  candidateId: string,
+  documentType: string,
+  errors: string[]
+): Promise<void> {
+  try {
+    const candidate = await getCandidateById(candidateId);
+    if (!candidate) return;
+
+    const documentLabel = DOCUMENT_LABELS[documentType] ?? documentType;
+    const formUrl = `${APP_URL}/form/${candidate.formToken as string}`;
+
+    const { subject, html } = ocrErrorTemplate(
+      {
+        firstName: candidate.firstName as string,
+        lastName: candidate.lastName as string,
+        position: candidate.position as string,
+        formUrl,
+      },
+      documentLabel,
+      errors
+    );
+
+    const transport = await createGmailTransport();
+    await transport.sendMail({
+      from: getFromAddress(),
+      to: candidate.email as string,
+      subject,
+      html,
+    });
+
+    await db.collection('email_logs').add({
+      candidateId,
+      templateType: 'ocr_error',
+      sentTo: candidate.email,
+      sentAt: FieldValue.serverTimestamp(),
+      sentBy: 'ocr_trigger',
+      success: true,
+      metadata: { documentType, errors },
+    });
+  } catch (err) {
+    // Non-fatal: log but don't throw — OCR result is already saved
+    console.error('Failed to send OCR error email:', err);
+  }
+}
 
 const vision = new ImageAnnotatorClient();
 
@@ -203,6 +261,11 @@ export const onDocumentUploaded = functions
       });
 
       await updateCandidateCompletion(candidateId);
+
+      // Notify candidate by email when a document fails OCR validation
+      if (!passed && errors.length > 0) {
+        await notifyOcrError(candidateId, documentType, errors);
+      }
     } catch (err) {
       console.error('OCR trigger error:', err);
     }

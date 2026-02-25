@@ -6,6 +6,70 @@ interface CandidateInfo {
   formExpiresAt: string;
 }
 
+export function ocrErrorTemplate(
+  c: Pick<CandidateInfo, 'firstName' | 'lastName' | 'position' | 'formUrl'>,
+  documentLabel: string,
+  errors: string[]
+): { subject: string; html: string } {
+  const errorList = errors.map((e) => `<li>${e}</li>`).join('');
+  return {
+    subject: `Aviva | Documento inválido, sube nuevamente — ${documentLabel}`,
+    html: `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+        <!-- Header rojo -->
+        <tr><td style="background:#ef4444;padding:28px 40px;text-align:center;">
+          <h1 style="color:#ffffff;margin:0;font-size:20px;font-weight:700;">Documento Inválido</h1>
+          <p style="color:rgba(255,255,255,0.9);margin:6px 0 0;font-size:13px;">Necesitamos que vuelvas a subirlo corregido</p>
+        </td></tr>
+
+        <!-- Body -->
+        <tr><td style="padding:32px 40px;">
+          <p style="color:#374151;font-size:15px;margin:0 0 12px;">Hola <strong>${c.firstName}</strong>,</p>
+          <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 20px;">
+            Revisamos el documento que subiste (<strong>${documentLabel}</strong>) y encontramos
+            los siguientes problemas que impiden su validación:
+          </p>
+
+          <!-- Errors list -->
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:24px;">
+            <p style="color:#991b1b;font-size:13px;font-weight:600;margin:0 0 8px;">Problemas encontrados:</p>
+            <ul style="margin:0;padding-left:20px;color:#b91c1c;font-size:13px;line-height:2;">${errorList}</ul>
+          </div>
+
+          <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 24px;">
+            Por favor asegúrate de subir el documento correcto y legible (sin recortes, buena iluminación, sin reflejos).
+            Puedes volver a subir el documento usando el mismo enlace de tu proceso de ingreso.
+          </p>
+
+          <!-- CTA -->
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${c.formUrl}" style="background:#16b877;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;display:inline-block;">
+              Volver a subir documento →
+            </a>
+          </div>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">
+            Si tienes dudas, responde a este correo o contacta a tu reclutador.<br>
+            © ${new Date().getFullYear()} Aviva · Equipo de Reclutamiento
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  };
+}
+
 export function invitationTemplate(c: CandidateInfo): { subject: string; html: string } {
   return {
     subject: `Aviva | Sube tu documentación de ingreso — ${c.position}`,
