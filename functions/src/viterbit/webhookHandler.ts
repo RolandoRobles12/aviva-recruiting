@@ -12,6 +12,9 @@ import { invitationTemplate } from '../email/templates';
 const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET');
 const HIRING_STAGE_NAME = defineString('HIRING_STAGE_NAME', { default: 'Contratación' });
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
+// Comma-separated list of job titles that should trigger the portal.
+// Leave empty to allow all positions. Example: "Analista de Operaciones,Ejecutivo de Ventas"
+const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 
@@ -152,6 +155,22 @@ export const viterbitWebhook = functions
       await logRef.update({ status: 'ignored', reason: `stage "${stageName}" is not the hiring stage` });
       res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${stageName}" skipped` });
       return;
+    }
+
+    // Filter by allowed job titles (if configured)
+    const allowedJobs = HIRING_JOB_NAMES.value()
+      .split(',')
+      .map((j) => j.trim().toLowerCase())
+      .filter(Boolean);
+    if (allowedJobs.length > 0) {
+      const jobMatches = allowedJobs.some((allowed) =>
+        jobTitle.toLowerCase().includes(allowed)
+      );
+      if (!jobMatches) {
+        await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" not in allowed list` });
+        res.status(200).json({ ok: true, action: 'ignored', reason: `job "${jobTitle}" not configured` });
+        return;
+      }
     }
 
     // Idempotency: skip if this Viterbit candidature already has a candidate record
