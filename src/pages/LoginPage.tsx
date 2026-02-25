@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export function LoginPage() {
-  const { signInWithGoogle, authError } = useAuth();
+  const { signInWithGoogle, authError, user, loading } = useAuth();
+
+  if (!loading && user) return <Navigate to="/" replace />;
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
