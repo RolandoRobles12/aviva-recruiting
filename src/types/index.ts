@@ -67,6 +67,8 @@ export interface Candidate {
   driveFolder?: DriveFolderRef;
   sheetsRowIndex?: number;
   notes?: string;
+  // Viterbit integration
+  viterbitCandidatureId?: string;
 }
 
 export interface DriveFolderRef {
@@ -88,7 +90,7 @@ export interface RecruiterProfile {
 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
-export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected';
+export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected' | 'ocr_error';
 
 export interface EmailLog {
   id: string;

@@ -1,6 +1,7 @@
 export { sendInvitationEmail } from './email/sendInvitationEmail';
 export { sendReminderEmail } from './email/sendReminderEmail';
-export { triggerOcrValidation } from './ocr/triggerOcrValidation';
-export { onDocumentUploaded } from './ocr/onDocumentUploaded';
+export { scheduleReminders } from './email/scheduleReminders';
+export { triggerOcrValidation, onDocumentUploaded } from './ocr/triggerOcrValidation';
 export { syncToGoogleDrive } from './drive/syncToGoogleDrive';
 export { syncToGoogleSheets } from './sheets/syncToGoogleSheets';
+export { viterbitWebhook } from './viterbit/webhookHandler';
