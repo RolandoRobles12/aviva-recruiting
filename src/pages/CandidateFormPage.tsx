@@ -11,7 +11,7 @@ export function CandidateFormPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-aviva-fondo">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-gray-500">Cargando tu formulario...</p>
@@ -22,7 +22,7 @@ export function CandidateFormPage() {
 
   if (error || !candidate) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-aviva-fondo px-4">
         <div className="card p-8 max-w-md w-full text-center">
           <AlertTriangle size={40} className="mx-auto text-yellow-400 mb-4" />
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Enlace no válido</h2>
@@ -42,9 +42,9 @@ export function CandidateFormPage() {
 
   if (isApproved) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-aviva-fondo px-4">
         <div className="card p-8 max-w-md w-full text-center">
-          <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
+          <CheckCircle size={48} className="mx-auto mb-4" style={{ color: '#16b877' }} />
           <h2 className="text-xl font-bold text-gray-900 mb-2">¡Proceso completado!</h2>
           <p className="text-sm text-gray-600">
             Todos tus documentos han sido validados y aprobados. El equipo de Recursos Humanos
@@ -57,7 +57,7 @@ export function CandidateFormPage() {
 
   if (isRejected) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-aviva-fondo px-4">
         <div className="card p-8 max-w-md w-full text-center">
           <AlertTriangle size={48} className="mx-auto text-red-400 mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">Proceso cancelado</h2>
@@ -73,7 +73,7 @@ export function CandidateFormPage() {
   const allDone = candidate.completionPercentage === 100;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-aviva-fondo">
       <CandidateFormHeader candidate={candidate} />
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">

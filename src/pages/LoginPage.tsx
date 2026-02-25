@@ -20,10 +20,10 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: '#F0F5FA' }}>
       <div className="card p-8 max-w-sm w-full text-center">
         {/* Logo */}
-        <div className="w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary-200">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg" style={{ backgroundColor: '#16b877', boxShadow: '0 10px 25px rgba(22,184,119,0.3)' }}>
           <span className="text-white text-2xl font-bold">A</span>
         </div>
 

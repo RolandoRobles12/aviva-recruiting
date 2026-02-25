@@ -10,7 +10,7 @@ export function DashboardLayout({ children }: Props) {
   const { profile, signOut } = useAuth();
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col" style={{ backgroundColor: '#F0F5FA' }}>
       {/* Top Bar */}
       <header className="bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm z-10">
         <div className="flex items-center gap-3">
