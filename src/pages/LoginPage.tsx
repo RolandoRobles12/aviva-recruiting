@@ -6,10 +6,10 @@ export function LoginPage() {
   const { signInWithGoogle, authError } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setLoading(true);
-    signInWithGoogle();
-    // Note: page will redirect to Google — loading state persists until redirect
+    await signInWithGoogle();
+    setLoading(false);
   };
 
   return (
