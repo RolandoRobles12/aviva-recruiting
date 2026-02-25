@@ -1,0 +1,32 @@
+{
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "Aviva Recruiting - Firebase Cloud Functions",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "deploy": "npm run build && firebase deploy --only functions",
+    "lint": "eslint --ext .ts src/"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
+    "date-fns": "^4.1.0",
+    "firebase-admin": "^13.6.1",
+    "firebase-functions": "^7.0.5",
+    "googleapis": "^171.4.0",
+    "nodemailer": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
