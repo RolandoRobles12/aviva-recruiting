@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isRecruiter() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/recruiters/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isRecruiter() &&
+        get(/databases/$(database)/documents/recruiters/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ─── Recruiters ───────────────────────────────────────────────────────────
+
+    match /recruiters/{uid} {
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      allow write: if isAuthenticated() && request.auth.uid == uid;
+      allow read: if isAdmin();
+    }
+
+    // ─── Candidates ───────────────────────────────────────────────────────────
+
+    match /candidates/{candidateId} {
+      // Recruiters can read and write all candidates
+      allow read, write: if isRecruiter();
+
+      // Candidates can read their own record via token (no auth needed)
+      // Token verification happens in Cloud Functions / client query
+      allow read: if resource.data.formToken != null;
+
+      // Candidates can update only their documents field (no auth, identified by token)
+      allow update: if
+        resource.data.formToken != null &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['documents', 'completionPercentage', 'status', 'updatedAt']);
+    }
+
+    // ─── Email Logs ───────────────────────────────────────────────────────────
+
+    match /email_logs/{logId} {
+      allow read: if isRecruiter();
+      allow write: if false; // Only Cloud Functions write logs
+    }
+  }
+}

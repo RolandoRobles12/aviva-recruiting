@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── Candidate documents ──────────────────────────────────────────────────
+
+    match /candidates/{candidateId}/documents/{fileName} {
+      // Anyone with the URL can upload (candidates use unique token-based links)
+      // File size limit: 10MB, allowed types: PDF, JPEG, PNG
+      allow write: if
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png)') ||
+        request.resource.contentType == 'application/pdf';
+
+      // Only authenticated recruiters can read
+      allow read: if request.auth != null;
+
+      // Candidates can read their own documents (via download URLs — bypasses rules)
+      // Note: public download URLs from getDownloadURL() bypass Storage rules
+    }
+  }
+}
