@@ -5,14 +5,14 @@ import { useAuth } from '../hooks/useAuth';
 
 export function LoginPage() {
   const { signInWithGoogle, authError, user, loading } = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
 
   if (!loading && user) return <Navigate to="/" replace />;
-  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    setLoading(true);
+    setSigningIn(true);
     await signInWithGoogle();
-    setLoading(false);
+    setSigningIn(false);
   };
 
   return (
@@ -31,7 +31,7 @@ export function LoginPage() {
           Portal exclusivo para el equipo de reclutamiento
         </p>
 
-        {/* Error from Firebase (shown after redirect returns with an error) */}
+        {/* Error from Firebase */}
         {authError && (
           <div className="mb-5 flex items-start gap-2 text-left bg-red-50 border border-red-200 rounded-xl p-3">
             <AlertTriangle size={16} className="text-red-500 mt-0.5 shrink-0" />
@@ -41,7 +41,7 @@ export function LoginPage() {
 
         <button
           onClick={handleLogin}
-          disabled={loading}
+          disabled={signingIn}
           className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -50,7 +50,7 @@ export function LoginPage() {
             <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332Z" fill="#FBBC05"/>
             <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58Z" fill="#EA4335"/>
           </svg>
-          {loading ? 'Redirigiendo a Google...' : 'Continuar con Google'}
+          {signingIn ? 'Abriendo Google...' : 'Continuar con Google'}
         </button>
 
         <p className="mt-6 text-xs text-gray-400">
