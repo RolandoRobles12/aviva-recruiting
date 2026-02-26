@@ -129,7 +129,18 @@ export const viterbitWebhook = onRequest(
         '';
       console.log('[webhookHandler] received secret length:', received.length, '| match:', received === secret);
       if (received !== secret) {
-        res.status(401).json({ ok: false, error: 'Unauthorized' });
+        // TEMP DEBUG: expose header names (not values) to diagnose which header Viterbit sends
+        const receivedHeaderNames = Object.keys(req.headers).filter((h) =>
+          h.toLowerCase().startsWith('x-') || h.toLowerCase() === 'authorization'
+        );
+        res.status(401).json({
+          ok: false,
+          error: 'Unauthorized',
+          debug_checked_headers: ['x-viterbit-secret', 'x-webhook-secret'],
+          debug_received_custom_headers: receivedHeaderNames,
+          debug_secret_configured: secret.length > 0,
+          debug_received_length: received.length,
+        });
         return;
       }
     }
