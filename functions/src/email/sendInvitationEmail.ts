@@ -23,13 +23,32 @@ export const sendInvitationEmail = onCall(
       ? format(expiresAt, "d 'de' MMMM 'de' yyyy", { locale: es })
       : '7 días';
 
-    const { subject, html } = invitationTemplate({
-      firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
-      position: candidate.position as string,
-      formUrl,
-      formExpiresAt,
-    });
+    // Read custom email body from Firestore settings if configured
+    let customBodyText: string | undefined;
+    try {
+      const settingsSnap = await db.doc('settings/emailTemplates').get();
+      if (settingsSnap.exists) {
+        const data = settingsSnap.data() as Record<string, { bodyText?: string }>;
+        if (data?.invitation?.bodyText) {
+          customBodyText = data.invitation.bodyText
+            .replace('{firstName}', candidate.firstName as string)
+            .replace('{position}', candidate.position as string);
+        }
+      }
+    } catch {
+      // Fall back to default template text
+    }
+
+    const { subject, html } = invitationTemplate(
+      {
+        firstName: candidate.firstName as string,
+        lastName: candidate.lastName as string,
+        position: candidate.position as string,
+        formUrl,
+        formExpiresAt,
+      },
+      customBodyText
+    );
 
     const transport = await createGmailTransport();
     await transport.sendMail({

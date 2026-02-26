@@ -133,6 +133,32 @@ export interface DashboardStats {
   rejected: number;
 }
 
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export interface EmailTemplateSettings {
+  subject: string;
+  bodyText: string;
+}
+
+export interface EmailTemplatesSettings {
+  invitation: EmailTemplateSettings;
+  reminder: EmailTemplateSettings;
+}
+
+export interface ReminderSettings {
+  enabled: boolean;
+  intervalHours: number;
+  maxReminders: number;
+}
+
+export interface DocumentSetting {
+  label: string;
+  description: string;
+  required: boolean;
+}
+
+export type DocumentSettings = Record<DocumentType, DocumentSetting>;
+
 // ─── Document Config ──────────────────────────────────────────────────────────
 
 export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description: string; required: boolean }> = {

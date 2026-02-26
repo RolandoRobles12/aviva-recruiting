@@ -70,7 +70,13 @@ export function ocrErrorTemplate(
   };
 }
 
-export function invitationTemplate(c: CandidateInfo): { subject: string; html: string } {
+export function invitationTemplate(
+  c: CandidateInfo,
+  customBodyText?: string
+): { subject: string; html: string } {
+  const bodyText =
+    customBodyText ??
+    'Nos da gusto que vayas a formar parte del equipo. Para continuar con tu proceso de ingreso, necesitamos que subas los siguientes documentos a través del enlace a continuación.';
   return {
     subject: `Aviva | Sube tu documentación de ingreso — ${c.position}`,
     html: `
@@ -94,8 +100,7 @@ export function invitationTemplate(c: CandidateInfo): { subject: string; html: s
         <tr><td style="padding:36px 40px;">
           <p style="color:#374151;font-size:15px;margin:0 0 16px;">Hola <strong>${c.firstName}</strong>,</p>
           <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px;">
-            Nos da gusto que vayas a formar parte del equipo. Para continuar con tu proceso de ingreso,
-            necesitamos que subas los siguientes documentos a través del enlace a continuación.
+            ${bodyText}
           </p>
 
           <!-- Documents list -->
@@ -139,9 +144,13 @@ export function invitationTemplate(c: CandidateInfo): { subject: string; html: s
 
 export function reminderTemplate(
   c: CandidateInfo,
-  missingDocs: string[]
+  missingDocs: string[],
+  customBodyText?: string
 ): { subject: string; html: string } {
   const missingList = missingDocs.map((d) => `<li>${d}</li>`).join('');
+  const bodyText =
+    customBodyText ??
+    'Notamos que aún tienes documentos pendientes por subir. Para no retrasar tu proceso de ingreso, te pedimos que los completes lo antes posible.';
   return {
     subject: `Aviva | Recordatorio: Documentos pendientes — ${c.position}`,
     html: `
@@ -159,8 +168,7 @@ export function reminderTemplate(
         <tr><td style="padding:32px 40px;">
           <p style="color:#374151;font-size:15px;margin:0 0 12px;">Hola <strong>${c.firstName}</strong>,</p>
           <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 20px;">
-            Notamos que aún tienes documentos pendientes por subir. Para no retrasar tu proceso de ingreso,
-            te pedimos que los completes lo antes posible.
+            ${bodyText}
           </p>
           <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px;margin-bottom:24px;">
             <p style="color:#92400e;font-size:13px;font-weight:600;margin:0 0 8px;">Documentos faltantes:</p>
