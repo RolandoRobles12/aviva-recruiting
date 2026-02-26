@@ -1,50 +1,79 @@
 import { type ReactNode } from 'react';
-import { LogOut, User } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { LogOut, User, LayoutDashboard, Settings } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 interface Props {
   children: ReactNode;
 }
 
+const navClass = ({ isActive }: { isActive: boolean }) =>
+  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-primary-50 text-primary-700'
+      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+  }`;
+
 export function DashboardLayout({ children }: Props) {
   const { profile, signOut } = useAuth();
 
   return (
-    <div className="h-screen flex flex-col" style={{ backgroundColor: '#F0F5FA' }}>
-      {/* Top Bar */}
-      <header className="bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-            <span className="text-white text-xs font-bold">A</span>
-          </div>
-          <div>
-            <h1 className="text-sm font-bold text-gray-900">Aviva Recruiting</h1>
-            <p className="text-xs text-gray-400 leading-none">Portal de Reclutamiento</p>
+    <div className="h-screen flex" style={{ backgroundColor: '#F0F5FA' }}>
+      {/* Sidebar */}
+      <aside className="w-16 lg:w-56 bg-white border-r border-gray-100 flex flex-col shrink-0 z-10">
+        {/* Logo */}
+        <div className="px-3 lg:px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+              <span className="text-white text-xs font-bold">A</span>
+            </div>
+            <div className="hidden lg:block overflow-hidden">
+              <h1 className="text-sm font-bold text-gray-900 truncate">Aviva Recruiting</h1>
+              <p className="text-xs text-gray-400 leading-none">Portal de Contratación</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+        {/* Nav */}
+        <nav className="flex-1 py-4 px-2 lg:px-3 space-y-1">
+          <NavLink to="/" end className={navClass}>
+            <LayoutDashboard size={18} className="shrink-0" />
+            <span className="hidden lg:block">Candidatos</span>
+          </NavLink>
+          <NavLink to="/settings" className={navClass}>
+            <Settings size={18} className="shrink-0" />
+            <span className="hidden lg:block">Configuración</span>
+          </NavLink>
+        </nav>
+
+        {/* User */}
+        <div className="px-2 lg:px-3 py-4 border-t border-gray-100">
+          <div className="flex items-center gap-2 px-1">
             {profile?.photoUrl ? (
-              <img src={profile.photoUrl} alt="" className="w-7 h-7 rounded-full" />
+              <img src={profile.photoUrl} alt="" className="w-7 h-7 rounded-full shrink-0" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
                 <User size={14} className="text-gray-500" />
               </div>
             )}
-            <span className="text-sm text-gray-700 hidden sm:block">{profile?.displayName}</span>
+            <span className="hidden lg:block text-xs text-gray-700 flex-1 truncate">
+              {profile?.displayName}
+            </span>
+            <button
+              onClick={signOut}
+              title="Cerrar sesión"
+              className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+            >
+              <LogOut size={15} />
+            </button>
           </div>
-          <button
-            onClick={signOut}
-            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <LogOut size={16} />
-          </button>
         </div>
-      </header>
+      </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-hidden">{children}</main>
+      {/* Main content */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {children}
+      </div>
     </div>
   );
 }

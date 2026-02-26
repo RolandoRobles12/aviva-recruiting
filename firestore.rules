@@ -49,5 +49,11 @@ service cloud.firestore {
       allow read: if isRecruiter();
       allow write: if false; // Only Cloud Functions write logs
     }
+
+    // ─── Settings ─────────────────────────────────────────────────────────────
+
+    match /settings/{docId} {
+      allow read, write: if isRecruiter();
+    }
   }
 }

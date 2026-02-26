@@ -36,6 +36,22 @@ export const sendReminderEmail = onCall(
     const appUrl = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
     const formUrl = `${appUrl}/form/${candidate.formToken}`;
 
+    // Read custom email body from Firestore settings if configured
+    let customBodyText: string | undefined;
+    try {
+      const settingsSnap = await db.doc('settings/emailTemplates').get();
+      if (settingsSnap.exists) {
+        const data = settingsSnap.data() as Record<string, { bodyText?: string }>;
+        if (data?.reminder?.bodyText) {
+          customBodyText = data.reminder.bodyText
+            .replace('{firstName}', candidate.firstName as string)
+            .replace('{position}', candidate.position as string);
+        }
+      }
+    } catch {
+      // Fall back to default template text
+    }
+
     const { subject, html } = reminderTemplate(
       {
         firstName: candidate.firstName as string,
@@ -44,7 +60,8 @@ export const sendReminderEmail = onCall(
         formUrl,
         formExpiresAt: '',
       },
-      missingDocs
+      missingDocs,
+      customBodyText
     );
 
     const transport = await createGmailTransport();

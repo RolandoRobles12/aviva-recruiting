@@ -14,17 +14,37 @@ const DOCUMENT_LABELS: Record<string, string> = {
   comprobante_estudios: 'Comprobante de estudios',
 };
 
-// Maximum number of automated reminders per candidate
-const MAX_REMINDERS = 3;
-// Minimum hours between reminders
-const REMINDER_INTERVAL_HOURS = 48;
-
 // Runs every day at 9:00 AM Mexico City time
 export const scheduleReminders = functions
   .region('us-central1')
   .pubsub.schedule('0 9 * * *')
   .timeZone('America/Mexico_City')
   .onRun(async () => {
+    // Read reminder settings from Firestore (configured via Settings UI)
+    let MAX_REMINDERS = 3;
+    let REMINDER_INTERVAL_HOURS = 48;
+    let remindersEnabled = true;
+    try {
+      const settingsSnap = await db.doc('settings/reminders').get();
+      if (settingsSnap.exists) {
+        const s = settingsSnap.data() as {
+          enabled?: boolean;
+          maxReminders?: number;
+          intervalHours?: number;
+        };
+        if (typeof s.enabled === 'boolean') remindersEnabled = s.enabled;
+        if (typeof s.maxReminders === 'number' && s.maxReminders > 0) MAX_REMINDERS = s.maxReminders;
+        if (typeof s.intervalHours === 'number' && s.intervalHours > 0) REMINDER_INTERVAL_HOURS = s.intervalHours;
+      }
+    } catch {
+      // Use defaults if settings read fails
+    }
+
+    if (!remindersEnabled) {
+      console.log('Automatic reminders are disabled via Settings.');
+      return null;
+    }
+
     const cutoff = new Date(Date.now() - REMINDER_INTERVAL_HOURS * 60 * 60 * 1000);
 
     // Fetch all candidates still waiting for documents
@@ -74,6 +94,22 @@ export const scheduleReminders = functions
 
       const formUrl = `${appUrl}/form/${candidate.formToken as string}`;
 
+      // Read custom reminder body from Firestore settings
+      let customBodyText: string | undefined;
+      try {
+        const emailSettingsSnap = await db.doc('settings/emailTemplates').get();
+        if (emailSettingsSnap.exists) {
+          const emailData = emailSettingsSnap.data() as Record<string, { bodyText?: string }>;
+          if (emailData?.reminder?.bodyText) {
+            customBodyText = emailData.reminder.bodyText
+              .replace('{firstName}', candidate.firstName as string)
+              .replace('{position}', candidate.position as string);
+          }
+        }
+      } catch {
+        // Fall back to default
+      }
+
       const { subject, html } = reminderTemplate(
         {
           firstName: candidate.firstName as string,
@@ -82,7 +118,8 @@ export const scheduleReminders = functions
           formUrl,
           formExpiresAt: '',
         },
-        missingDocs
+        missingDocs,
+        customBodyText
       );
 
       try {
