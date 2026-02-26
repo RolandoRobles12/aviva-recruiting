@@ -10,10 +10,11 @@ import { invitationTemplate } from '../email/templates';
 
 // ─── Config params — set with: firebase functions:config:set ──────────────────
 const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET');
-const HIRING_STAGE_NAME = defineString('HIRING_STAGE_NAME', { default: 'Contratación' });
+// Stage name OR stage ID that triggers the portal. Example: "Documentos" or "685707602157bde2d500d92d"
+const HIRING_STAGE_NAME = defineString('HIRING_STAGE_NAME', { default: 'Documentos' });
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
-// Comma-separated list of job titles that should trigger the portal.
-// Leave empty to allow all positions. Example: "Analista de Operaciones,Ejecutivo de Ventas"
+// Comma-separated list of job names OR job IDs that should trigger the portal.
+// Leave empty to allow all positions. Example: "Test automatización,698ce38d6fa4cad101021313"
 const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
@@ -34,11 +35,13 @@ function buildInitialDocuments() {
 interface ParsedViterbitEvent {
   event: string;
   stageName: string;
+  stageId: string;
   candidatureId: string;
   candidateName: string;
   candidateEmail: string;
   candidatePhone?: string;
   jobTitle: string;
+  jobId: string;
 }
 
 function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEvent | null {
@@ -52,13 +55,14 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
   const data = (body.data as Record<string, unknown>) ?? body;
   const candidature = (data.candidature as Record<string, unknown>) ?? data;
 
-  // Stage
+  // Stage — extract both name and id to support matching by either
   const stage = (candidature.stage as Record<string, unknown>) ?? {};
   const stageName =
     (stage.name as string) ??
     (stage.title as string) ??
     (candidature.stage_name as string) ??
     '';
+  const stageId = (stage.id as string) ?? (candidature.stage_id as string) ?? '';
 
   // Candidature ID (used for idempotency)
   const candidatureId =
@@ -83,7 +87,7 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
     (candidateObj.phone_number as string) ??
     undefined;
 
-  // Job / position
+  // Job / position — extract both name/title and id to support matching by either
   const job =
     (candidature.job as Record<string, unknown>) ??
     (candidature.position as Record<string, unknown>) ??
@@ -94,10 +98,11 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
     (job.title as string) ??
     (candidature.job_title as string) ??
     '';
+  const jobId = (job.id as string) ?? (candidature.job_id as string) ?? '';
 
   if (!candidateEmail) return null;
 
-  return { event, stageName, candidatureId, candidateName, candidateEmail, candidatePhone, jobTitle };
+  return { event, stageName, stageId, candidatureId, candidateName, candidateEmail, candidatePhone, jobTitle, jobId };
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -141,33 +146,38 @@ export const viterbitWebhook = functions
 
     const {
       stageName,
+      stageId,
       candidatureId,
       candidateName,
       candidateEmail,
       candidatePhone,
       jobTitle,
+      jobId,
     } = parsed;
 
-    // Only trigger when candidate reaches the configured hiring stage
-    const hiringStage = HIRING_STAGE_NAME.value();
-    const isHiringStage = stageName.toLowerCase().includes(hiringStage.toLowerCase());
+    // Only trigger when candidate reaches the configured hiring stage.
+    // Matches against stage name OR stage id — use whichever you prefer in HIRING_STAGE_NAME.
+    const hiringStage = HIRING_STAGE_NAME.value().toLowerCase();
+    const isHiringStage =
+      stageName.toLowerCase().includes(hiringStage) ||
+      stageId.toLowerCase() === hiringStage;
     if (!isHiringStage) {
-      await logRef.update({ status: 'ignored', reason: `stage "${stageName}" is not the hiring stage` });
+      await logRef.update({ status: 'ignored', reason: `stage "${stageName}" (${stageId}) is not the hiring stage` });
       res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${stageName}" skipped` });
       return;
     }
 
-    // Filter by allowed job titles (if configured)
+    // Filter by allowed jobs (if configured). Accepts job name or job id, comma-separated.
     const allowedJobs = HIRING_JOB_NAMES.value()
       .split(',')
       .map((j) => j.trim().toLowerCase())
       .filter(Boolean);
     if (allowedJobs.length > 0) {
       const jobMatches = allowedJobs.some((allowed) =>
-        jobTitle.toLowerCase().includes(allowed)
+        jobTitle.toLowerCase().includes(allowed) || jobId.toLowerCase() === allowed
       );
       if (!jobMatches) {
-        await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" not in allowed list` });
+        await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" (${jobId}) not in allowed list` });
         res.status(200).json({ ok: true, action: 'ignored', reason: `job "${jobTitle}" not configured` });
         return;
       }
