@@ -114,15 +114,20 @@ export const viterbitWebhook = functions
       return;
     }
 
+    // TEMP DEBUG — remove after confirming header name & secret value
+    console.log('[webhookHandler] incoming headers:', JSON.stringify(req.headers));
+
     // Verify webhook secret sent by Viterbit
     // Configure the secret in: Viterbit → Webhooks → Secret
     // Set it here with: firebase functions:config:set VITERBIT_WEBHOOK_SECRET="your_secret"
     const secret = VITERBIT_WEBHOOK_SECRET.value();
+    console.log('[webhookHandler] secret configured length:', secret?.length ?? 0);
     if (secret) {
       const received =
         (req.headers['x-viterbit-secret'] as string) ??
         (req.headers['x-webhook-secret'] as string) ??
         '';
+      console.log('[webhookHandler] received secret length:', received.length, '| match:', received === secret);
       if (received !== secret) {
         res.status(401).json({ ok: false, error: 'Unauthorized' });
         return;
