@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v1';
+import { onRequest } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import * as crypto from 'crypto';
@@ -106,9 +106,9 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
-export const viterbitWebhook = functions
-  .region('us-central1')
-  .https.onRequest(async (req, res) => {
+export const viterbitWebhook = onRequest(
+  { region: 'us-central1' },
+  async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).send('Method Not Allowed');
       return;
@@ -264,4 +264,5 @@ export const viterbitWebhook = functions
     await logRef.update({ status: 'processed', candidateId: candidateRef.id });
 
     res.status(200).json({ ok: true, action: 'created', candidateId: candidateRef.id });
-  });
+  }
+);
