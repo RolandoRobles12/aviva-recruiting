@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getCandidateById } from '../utils/candidates';
@@ -15,14 +15,14 @@ const DOCUMENT_LABELS: Record<string, string> = {
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 
-export const sendReminderEmail = functions
-  .region('us-central1')
-  .https.onCall(async (data: { candidateId: string; customMessage?: string }, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'No autenticado');
+export const sendReminderEmail = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'No autenticado');
 
-    const { candidateId } = data;
+    const { candidateId } = request.data as { candidateId: string; customMessage?: string };
     const candidate = await getCandidateById(candidateId);
-    if (!candidate) throw new functions.https.HttpsError('not-found', 'Candidato no encontrado');
+    if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
 
     const docs = candidate.documents as Record<string, { status: string }>;
     const missingDocs = DOCUMENT_TYPES
@@ -68,9 +68,10 @@ export const sendReminderEmail = functions
       templateType: 'reminder',
       sentTo: candidate.email,
       sentAt: FieldValue.serverTimestamp(),
-      sentBy: context.auth.uid,
+      sentBy: request.auth.uid,
       success: true,
     });
 
     return { success: true };
-  });
+  }
+);

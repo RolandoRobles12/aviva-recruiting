@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getCandidateById } from '../utils/candidates';
@@ -7,14 +7,14 @@ import { invitationTemplate } from './templates';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-export const sendInvitationEmail = functions
-  .region('us-central1')
-  .https.onCall(async (data: { candidateId: string }, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'No autenticado');
+export const sendInvitationEmail = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'No autenticado');
 
-    const { candidateId } = data;
+    const { candidateId } = request.data as { candidateId: string };
     const candidate = await getCandidateById(candidateId);
-    if (!candidate) throw new functions.https.HttpsError('not-found', 'Candidato no encontrado');
+    if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
 
     const appUrl = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
     const formUrl = `${appUrl}/form/${candidate.formToken}`;
@@ -45,9 +45,10 @@ export const sendInvitationEmail = functions
       templateType: 'invitation',
       sentTo: candidate.email,
       sentAt: FieldValue.serverTimestamp(),
-      sentBy: context.auth.uid,
+      sentBy: request.auth.uid,
       success: true,
     });
 
     return { success: true };
-  });
+  }
+);

@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { google } from 'googleapis';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
@@ -59,14 +59,14 @@ const DOC_STATUS_LABELS: Record<string, string> = {
   review: 'En revisión',
 };
 
-export const syncToGoogleSheets = functions
-  .region('us-central1')
-  .https.onCall(async (data: { candidateId: string }, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'No autenticado');
+export const syncToGoogleSheets = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'No autenticado');
 
-    const { candidateId } = data;
+    const { candidateId } = request.data as { candidateId: string };
     const candidate = await getCandidateById(candidateId);
-    if (!candidate) throw new functions.https.HttpsError('not-found', 'Candidato no encontrado');
+    if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
 
     const sheets = await getSheetsClient();
     const sheetName = SHEETS_SHEET_NAME.value();
@@ -149,4 +149,5 @@ export const syncToGoogleSheets = functions
     }
 
     return { success: true, rowIndex };
-  });
+  }
+);

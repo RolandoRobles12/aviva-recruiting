@@ -1,4 +1,5 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
@@ -160,13 +161,14 @@ const VALIDATION_RULES: Record<string, (text: string) => { passed: boolean; erro
   },
 };
 
-export const triggerOcrValidation = functions
-  .region('us-central1')
-  .https.onCall(async (
-    data: { candidateId: string; documentType: string; storagePath: string },
-    context
-  ) => {
-    const { candidateId, documentType, storagePath } = data;
+export const triggerOcrValidation = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    const { candidateId, documentType, storagePath } = request.data as {
+      candidateId: string;
+      documentType: string;
+      storagePath: string;
+    };
 
     try {
       // Run OCR with Google Cloud Vision
@@ -216,15 +218,16 @@ export const triggerOcrValidation = functions
         },
       });
 
-      throw new functions.https.HttpsError('internal', `OCR error: ${(err as Error).message}`);
+      throw new HttpsError('internal', `OCR error: ${(err as Error).message}`);
     }
-  });
+  }
+);
 
 // Storage trigger: auto-run OCR when a document is uploaded
-export const onDocumentUploaded = functions
-  .region('us-central1')
-  .storage.object()
-  .onFinalize(async (object) => {
+export const onDocumentUploaded = onObjectFinalized(
+  { region: 'us-central1' },
+  async (event) => {
+    const object = event.data;
     const filePath = object.name ?? '';
     // Pattern: candidates/{candidateId}/documents/{documentType}.{ext}
     const match = filePath.match(/^candidates\/([^/]+)\/documents\/([^.]+)\./);
@@ -269,4 +272,5 @@ export const onDocumentUploaded = functions
     } catch (err) {
       console.error('OCR trigger error:', err);
     }
-  });
+  }
+);
