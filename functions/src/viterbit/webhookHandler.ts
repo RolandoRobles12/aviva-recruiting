@@ -9,8 +9,6 @@ import { createGmailTransport, getFromAddress } from '../email/gmailClient';
 import { invitationTemplate } from '../email/templates';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
-// VITERBIT_WEBHOOK_SECRET: leave empty if Viterbit does not send a secret header.
-const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET');
 // VITERBIT_API_KEY: API key for calling Viterbit REST API (Settings → API Keys).
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 // Stage name OR stage ID that triggers the portal. Example: "Documentos"
@@ -134,19 +132,8 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    // Verify webhook secret if configured.
-    // Leave VITERBIT_WEBHOOK_SECRET empty to skip this check (Viterbit may not send one).
-    const secret = VITERBIT_WEBHOOK_SECRET.value();
-    if (secret) {
-      const received =
-        (req.headers['x-viterbit-secret'] as string) ??
-        (req.headers['x-webhook-secret'] as string) ??
-        '';
-      if (received !== secret) {
-        res.status(401).json({ ok: false, error: 'Unauthorized' });
-        return;
-      }
-    }
+    // Note: Viterbit does not send authentication headers in webhooks,
+    // so the endpoint is unauthenticated by design.
 
     const body = req.body as Record<string, unknown>;
 
