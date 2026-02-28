@@ -11,6 +11,8 @@ import { invitationTemplate } from '../email/templates';
 // ─── Config params ─────────────────────────────────────────────────────────────
 // VITERBIT_API_KEY: API key for calling Viterbit REST API (Settings → API Keys).
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
+// VITERBIT_WEBHOOK_SECRET: Signing secret from Viterbit webhook settings.
+const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET', { default: '' });
 // Stage name OR stage ID that triggers the portal. Example: "Documentos"
 const HIRING_STAGE_NAME = defineString('HIRING_STAGE_NAME', { default: 'Documentos' });
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
@@ -23,6 +25,15 @@ const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
+}
+
+function verifyViterbitSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'));
+  } catch {
+    return false;
+  }
 }
 
 function buildInitialDocuments() {
@@ -132,8 +143,19 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    // Note: Viterbit does not send authentication headers in webhooks,
-    // so the endpoint is unauthenticated by design.
+    // Validate Viterbit signature from x-viterbit-signature header.
+    const secret = VITERBIT_WEBHOOK_SECRET.value();
+    const signature = (req.headers['x-viterbit-signature'] as string) ?? '';
+    console.log('[webhookHandler] secret configured length:', secret.length);
+    console.log('[webhookHandler] received secret length:', signature.length);
+    if (secret) {
+      const valid = signature ? verifyViterbitSignature(req.rawBody, signature, secret) : false;
+      console.log('[webhookHandler] signature match:', valid);
+      if (!valid) {
+        res.status(401).json({ ok: false, error: 'Invalid signature' });
+        return;
+      }
+    }
 
     const body = req.body as Record<string, unknown>;
 
