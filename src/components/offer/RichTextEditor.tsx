@@ -1,27 +1,31 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
 import { Node, mergeAttributes } from '@tiptap/core';
-import { useEffect } from 'react';
-import { Bold, Italic, List, ListOrdered, Undo, Redo } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import {
+  Bold, Italic, UnderlineIcon, List, ListOrdered, Undo, Redo,
+  Heading1, Heading2, Heading3, AlignLeft, AlignCenter, AlignRight,
+  ImageIcon,
+} from 'lucide-react';
 
-// ─── Variable definitions (color-coded) ──────────────────────────────────────
+// ─── Variable definitions ─────────────────────────────────────────────────────
+// hidden = true → still rendered as chip in existing templates, but NOT shown
+// in the insertion palette (inserted automatically or not user-facing).
 
 export const VARIABLES = [
-  // Candidato
-  { id: 'firstName',          label: 'Nombre',            colorClass: 'var-blue'   },
-  { id: 'lastName',           label: 'Apellido',          colorClass: 'var-blue'   },
-  // Puesto (datos del job en Viterbit)
-  { id: 'position',           label: 'Puesto',            colorClass: 'var-purple' },
-  { id: 'departmentProfile',  label: 'Perfil del puesto', colorClass: 'var-purple' },
-  { id: 'hiringManager',      label: 'Líder',             colorClass: 'var-purple' },
-  { id: 'company',            label: 'Empresa',           colorClass: 'var-purple' },
-  // Compensación
-  { id: 'salary',             label: 'Salario',           colorClass: 'var-green'  },
-  { id: 'benefits',           label: 'Beneficios',        colorClass: 'var-amber'  },
-  // Fechas
-  { id: 'startDate',          label: 'Fecha de inicio',   colorClass: 'var-rose'   },
-  { id: 'date',               label: 'Fecha de hoy',      colorClass: 'var-rose'   },
-];
+  { id: 'firstName',         label: 'Nombre',          colorClass: 'var-blue'   },
+  { id: 'lastName',          label: 'Apellido',         colorClass: 'var-blue'   },
+  { id: 'position',          label: 'Puesto',           colorClass: 'var-purple' },
+  { id: 'departmentProfile', label: 'Perfil del puesto',colorClass: 'var-purple' },
+  { id: 'hiringManager',     label: 'Líder',            colorClass: 'var-purple' },
+  { id: 'salary',            label: 'Salario',          colorClass: 'var-green'  },
+  { id: 'benefits',          label: 'Beneficios',       colorClass: 'var-amber', hidden: true },
+  { id: 'startDate',         label: 'Fecha de inicio',  colorClass: 'var-rose'   },
+  { id: 'date',              label: 'Fecha de hoy',     colorClass: 'var-rose'   },
+] as const satisfies Array<{ id: string; label: string; colorClass: string; hidden?: boolean }>;
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -42,7 +46,7 @@ export function htmlToTemplate(html: string): string {
   return div.innerHTML;
 }
 
-// ─── Custom TipTap node ───────────────────────────────────────────────────────
+// ─── Custom TipTap node for variable chips ────────────────────────────────────
 
 const VariableNode = Node.create({
   name: 'variable',
@@ -83,7 +87,7 @@ const VariableNode = Node.create({
   },
 });
 
-// ─── Toolbar button ───────────────────────────────────────────────────────────
+// ─── Toolbar helpers ──────────────────────────────────────────────────────────
 
 function ToolbarBtn({ onClick, active, title, children }: {
   onClick: () => void;
@@ -105,6 +109,10 @@ function ToolbarBtn({ onClick, active, title, children }: {
   );
 }
 
+function Divider() {
+  return <div className="w-px h-4 bg-gray-200 mx-0.5" />;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface RichTextEditorProps {
@@ -113,15 +121,47 @@ interface RichTextEditorProps {
 }
 
 export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const editor = useEditor({
-    extensions: [StarterKit, VariableNode],
+    extensions: [
+      StarterKit,
+      VariableNode,
+      Underline,
+      Image.configure({ allowBase64: true, inline: false }),
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    ],
     content: templateToHtml(value),
     onUpdate: ({ editor }) => onChange(htmlToTemplate(editor.getHTML())),
     editorProps: {
       attributes: { class: 'rich-editor-content' },
+      // Allow paste of images from clipboard
+      handlePaste(view, event) {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (!file) continue;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const src = e.target?.result as string;
+              view.dispatch(
+                view.state.tr.replaceSelectionWith(
+                  view.state.schema.nodes.image.create({ src })
+                )
+              );
+            };
+            reader.readAsDataURL(file);
+            return true;
+          }
+        }
+        return false;
+      },
     },
   });
 
+  // Sync external value changes
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     if (htmlToTemplate(editor.getHTML()) !== value) {
@@ -129,40 +169,154 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
   }, [value, editor]);
 
+  const handleInsertImage = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const src = ev.target?.result as string;
+      editor.chain().focus().setImage({ src }).run();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   if (!editor) return null;
+
+  const visibleVariables = VARIABLES.filter((v) => !v.hidden);
 
   return (
     <div className="flex flex-col border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent h-full">
 
-      {/* Formatting toolbar */}
-      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 bg-gray-50 shrink-0">
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Negrita">
-          <Bold size={14} />
-        </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Cursiva">
-          <Italic size={14} />
-        </ToolbarBtn>
-        <div className="w-px h-4 bg-gray-200 mx-1" />
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Lista">
-          <List size={14} />
-        </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Lista numerada">
-          <ListOrdered size={14} />
-        </ToolbarBtn>
-        <div className="w-px h-4 bg-gray-200 mx-1" />
+      {/* Hidden file input for image insertion */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 bg-gray-50 shrink-0 flex-wrap">
+        {/* Undo / Redo */}
         <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Deshacer">
           <Undo size={14} />
         </ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Rehacer">
           <Redo size={14} />
         </ToolbarBtn>
+
+        <Divider />
+
+        {/* Headings */}
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          active={editor.isActive('heading', { level: 1 })}
+          title="Título 1"
+        >
+          <Heading1 size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          active={editor.isActive('heading', { level: 2 })}
+          title="Título 2"
+        >
+          <Heading2 size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          active={editor.isActive('heading', { level: 3 })}
+          title="Título 3"
+        >
+          <Heading3 size={14} />
+        </ToolbarBtn>
+
+        <Divider />
+
+        {/* Text style */}
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          active={editor.isActive('bold')}
+          title="Negrita"
+        >
+          <Bold size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          active={editor.isActive('italic')}
+          title="Cursiva"
+        >
+          <Italic size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          active={editor.isActive('underline')}
+          title="Subrayado"
+        >
+          <UnderlineIcon size={14} />
+        </ToolbarBtn>
+
+        <Divider />
+
+        {/* Alignment */}
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().setTextAlign('left').run()}
+          active={editor.isActive({ textAlign: 'left' })}
+          title="Alinear izquierda"
+        >
+          <AlignLeft size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().setTextAlign('center').run()}
+          active={editor.isActive({ textAlign: 'center' })}
+          title="Centrar"
+        >
+          <AlignCenter size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().setTextAlign('right').run()}
+          active={editor.isActive({ textAlign: 'right' })}
+          title="Alinear derecha"
+        >
+          <AlignRight size={14} />
+        </ToolbarBtn>
+
+        <Divider />
+
+        {/* Lists */}
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          active={editor.isActive('bulletList')}
+          title="Lista"
+        >
+          <List size={14} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          active={editor.isActive('orderedList')}
+          title="Lista numerada"
+        >
+          <ListOrdered size={14} />
+        </ToolbarBtn>
+
+        <Divider />
+
+        {/* Image */}
+        <ToolbarBtn onClick={handleInsertImage} title="Insertar imagen">
+          <ImageIcon size={14} />
+        </ToolbarBtn>
       </div>
 
-      {/* Variable palette */}
+      {/* ── Variable palette ─────────────────────────────────────────────────── */}
       <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/60 shrink-0">
         <p className="text-xs text-gray-400 mb-2 font-medium">Insertar dato automático:</p>
         <div className="flex flex-wrap gap-1.5">
-          {VARIABLES.map((v) => (
+          {visibleVariables.map((v) => (
             <button
               key={v.id}
               type="button"
@@ -182,7 +336,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         </div>
       </div>
 
-      {/* Editor area — fills remaining height */}
+      {/* ── Editor area ──────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         <EditorContent editor={editor} className="h-full" />
       </div>

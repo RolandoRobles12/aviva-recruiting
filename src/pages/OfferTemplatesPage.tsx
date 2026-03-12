@@ -23,7 +23,7 @@ const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong
 
 <h2>I. Posición y organización</h2>
 <p><strong>Puesto:</strong> {{departmentProfile}}<br>
-<strong>Empresa:</strong> {{company}}<br>
+<strong>Empresa:</strong> Aviva Financial S.A. de C.V. SOFOM ENR<br>
 <strong>Líder:</strong> {{hiringManager}}<br>
 <strong>Fecha de inicio:</strong> {{startDate}}</p>
 
@@ -33,7 +33,7 @@ const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong
 
 <p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
 
-<p>Atentamente,<br><strong>Equipo de Reclutamiento · {{company}}</strong></p>`;
+<p>Atentamente,<br><strong>Equipo de Reclutamiento · Aviva</strong></p>`;
 
 export function OfferTemplatesPage() {
   const [templates, setTemplates] = useState<OfferTemplate[]>([]);

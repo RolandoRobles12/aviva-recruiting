@@ -75,10 +75,22 @@
   margin-bottom: 0;
 }
 
+.rich-editor-content h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+
 .rich-editor-content h2 {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   font-weight: 600;
   margin: 0.75em 0 0.4em;
+}
+
+.rich-editor-content h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
 }
 
 .rich-editor-content ul,
@@ -97,6 +109,18 @@
 
 .rich-editor-content em {
   font-style: italic;
+}
+
+.rich-editor-content u {
+  text-decoration: underline;
+}
+
+.rich-editor-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.5em 0;
+  border-radius: 4px;
 }
 
 /* Variable chip — base */
