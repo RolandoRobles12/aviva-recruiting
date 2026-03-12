@@ -7,12 +7,20 @@ import { Bold, Italic, List, ListOrdered, Undo, Redo } from 'lucide-react';
 // ─── Variable definitions (color-coded) ──────────────────────────────────────
 
 export const VARIABLES = [
-  { id: 'firstName',  label: 'Nombre',         colorClass: 'var-blue'   },
-  { id: 'lastName',   label: 'Apellido',        colorClass: 'var-blue'   },
-  { id: 'position',   label: 'Posición',        colorClass: 'var-purple' },
-  { id: 'salary',     label: 'Salario',         colorClass: 'var-green'  },
-  { id: 'benefits',   label: 'Beneficios',      colorClass: 'var-amber'  },
-  { id: 'startDate',  label: 'Fecha de inicio', colorClass: 'var-rose'   },
+  // Candidato
+  { id: 'firstName',          label: 'Nombre',            colorClass: 'var-blue'   },
+  { id: 'lastName',           label: 'Apellido',          colorClass: 'var-blue'   },
+  // Puesto (datos del job en Viterbit)
+  { id: 'position',           label: 'Puesto',            colorClass: 'var-purple' },
+  { id: 'departmentProfile',  label: 'Perfil del puesto', colorClass: 'var-purple' },
+  { id: 'hiringManager',      label: 'Líder',             colorClass: 'var-purple' },
+  { id: 'company',            label: 'Empresa',           colorClass: 'var-purple' },
+  // Compensación
+  { id: 'salary',             label: 'Salario',           colorClass: 'var-green'  },
+  { id: 'benefits',           label: 'Beneficios',        colorClass: 'var-amber'  },
+  // Fechas
+  { id: 'startDate',          label: 'Fecha de inicio',   colorClass: 'var-rose'   },
+  { id: 'date',               label: 'Fecha de hoy',      colorClass: 'var-rose'   },
 ];
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────

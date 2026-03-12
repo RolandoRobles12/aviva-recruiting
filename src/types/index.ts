@@ -85,18 +85,25 @@ export interface Candidate {
     documentos: string;
     onboarding: string;
   };
+  // Viterbit job custom fields (populated from job API on webhook)
+  viterbitSalary?: string;
+  viterbitStartDate?: string;
+  viterbitHiringManager?: string;
+  viterbitCompany?: string;
+  viterbitDepartmentProfile?: string;
 }
 
 // ─── Offer Templates ──────────────────────────────────────────────────────────
 
 export interface OfferTemplate {
   id: string;
-  name: string;              // e.g. "Promotor de crédito"
+  name: string;               // e.g. "Promotor de crédito"
   positionKeywords: string[]; // job title substrings to auto-match (lowercase)
-  salary: string;            // e.g. "$12,000 MXN mensuales brutos"
-  benefits: string;          // e.g. "Seguro de gastos médicos, vales de despensa..."
-  startDate: string;         // e.g. "a convenir" or "15 días hábiles después de tu firma"
-  bodyHtml: string;          // HTML with {{firstName}}, {{salary}}, etc.
+  // Fallback values used only when Viterbit job data is unavailable
+  salary?: string;
+  benefits?: string;          // Benefits package — defined per template (same for all positions)
+  startDate?: string;
+  bodyHtml: string;           // HTML with {{variable}} placeholders
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

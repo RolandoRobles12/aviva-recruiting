@@ -14,28 +14,26 @@ import type { OfferTemplate } from '../types';
 type FormValues = {
   name: string;
   positionKeywordsRaw: string;
-  salary: string;
   benefits: string;
-  startDate: string;
 };
 
-const DEFAULT_BODY = `<p>Estimado/a <strong>{{firstName}} {{lastName}}</strong>,</p>
+const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong>,</p>
 
-<p>Nos complace hacerte una oferta formal de empleo para el puesto de <strong>{{position}}</strong> en Aviva.</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra misión. Hoy queremos darte un paso más y compartirte nuestra carta oferta.</p>
 
-<p><strong>Condiciones de la oferta:</strong></p>
-<ul>
-  <li>Puesto: {{position}}</li>
-  <li>Salario mensual bruto: {{salary}}</li>
-  <li>Beneficios: {{benefits}}</li>
-  <li>Fecha estimada de inicio: {{startDate}}</li>
-</ul>
+<h2>I. Posición y organización</h2>
+<p><strong>Puesto:</strong> {{departmentProfile}}<br>
+<strong>Empresa:</strong> {{company}}<br>
+<strong>Líder:</strong> {{hiringManager}}<br>
+<strong>Fecha de inicio:</strong> {{startDate}}</p>
+
+<h2>II. Compensación y beneficios</h2>
+<p><strong>Sueldo Bruto:</strong> {{salary}}</p>
+<p>{{benefits}}</p>
 
 <p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
 
-<p>Si tienes alguna pregunta, no dudes en contactar a tu reclutador.</p>
-
-<p>Atentamente,<br><strong>Equipo de Reclutamiento · Aviva</strong></p>`;
+<p>Atentamente,<br><strong>Equipo de Reclutamiento · {{company}}</strong></p>`;
 
 export function OfferTemplatesPage() {
   const [templates, setTemplates] = useState<OfferTemplate[]>([]);
@@ -61,13 +59,7 @@ export function OfferTemplatesPage() {
   const openCreate = () => {
     setEditingId(null);
     setBodyHtml(DEFAULT_BODY);
-    reset({
-      name: '',
-      positionKeywordsRaw: '',
-      salary: '',
-      benefits: '',
-      startDate: 'a convenir',
-    });
+    reset({ name: '', positionKeywordsRaw: '', benefits: '' });
     setShowForm(true);
   };
 
@@ -77,9 +69,7 @@ export function OfferTemplatesPage() {
     reset({
       name: t.name,
       positionKeywordsRaw: (t.positionKeywords ?? []).join(', '),
-      salary: t.salary,
-      benefits: t.benefits,
-      startDate: t.startDate,
+      benefits: t.benefits ?? '',
     });
     setShowForm(true);
   };
@@ -93,9 +83,7 @@ export function OfferTemplatesPage() {
     const payload = {
       name: values.name.trim(),
       positionKeywords: keywords,
-      salary: values.salary.trim(),
       benefits: values.benefits.trim(),
-      startDate: values.startDate.trim(),
       bodyHtml,
     };
     if (editingId) {
@@ -260,35 +248,24 @@ export function OfferTemplatesPage() {
                   </div>
 
                   <div className="border-t border-gray-200 pt-5">
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                      Valores de la oferta
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Beneficios del template
                     </label>
                     <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-                      Estos son los valores que se insertarán en la carta cuando uses las variables correspondientes.
+                      El paquete de beneficios es fijo por template. Salario, puesto, líder y fecha de inicio se obtienen automáticamente del job en Viterbit.
                     </p>
-                    <div className="space-y-4">
-                      <Field label="Salario" error={errors.salary?.message}>
-                        <input
-                          {...register('salary', { required: 'Requerido' })}
-                          placeholder="$12,000 MXN mensuales brutos"
-                          className="input-field"
-                        />
-                      </Field>
-                      <Field label="Fecha de inicio">
-                        <input
-                          {...register('startDate')}
-                          placeholder="a convenir"
-                          className="input-field"
-                        />
-                      </Field>
-                      <Field label="Beneficios" error={errors.benefits?.message}>
-                        <textarea
-                          {...register('benefits', { required: 'Requerido' })}
-                          rows={4}
-                          placeholder="Seguro de gastos médicos, vales de despensa, fondo de ahorro..."
-                          className="input-field resize-none"
-                        />
-                      </Field>
+                    <Field label="Beneficios" error={errors.benefits?.message}>
+                      <textarea
+                        {...register('benefits')}
+                        rows={6}
+                        placeholder={`Sueldo Bruto: {{salary}} (antes de impuestos)\nBono Garantía Bruto: 1750 MXN\nSeguridad social: IMSS\nPrima vacacional: 25%\nAguinaldo: 15 días`}
+                        className="input-field resize-none text-xs"
+                      />
+                    </Field>
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        <strong>Datos de Viterbit:</strong> Salario, fecha de inicio, líder y empresa se toman del job de Viterbit cuando llega el webhook.
+                      </p>
                     </div>
                   </div>
                 </div>

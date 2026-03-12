@@ -91,18 +91,26 @@ export const signOffer = onRequest(
       if (!allTemplates.empty) offerTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
     }
 
-    const salary = (offerTemplate?.salary as string) ?? '';
-    const benefits = (offerTemplate?.benefits as string) ?? '';
-    const startDate = (offerTemplate?.startDate as string) ?? 'a convenir';
-    const bodyHtml = (offerTemplate?.bodyHtml as string) ?? '';
+    // Viterbit job fields take priority; template fields are fallbacks
+    const salary      = (candidate.viterbitSalary      as string) || (offerTemplate?.salary      as string) || '';
+    const startDate   = (candidate.viterbitStartDate   as string) || (offerTemplate?.startDate   as string) || 'a convenir';
+    const hiringManager     = (candidate.viterbitHiringManager     as string) || '';
+    const company           = (candidate.viterbitCompany           as string) || 'Aviva';
+    const departmentProfile = (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '';
+    const benefits    = (offerTemplate?.benefits as string) ?? '';
+    const bodyHtml    = (offerTemplate?.bodyHtml as string) ?? '';
 
     const vars: Record<string, string> = {
       firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
-      position: candidate.position as string,
+      lastName:  candidate.lastName  as string,
+      position:  candidate.position  as string,
+      departmentProfile,
+      hiringManager,
+      company,
       salary,
       benefits,
       startDate,
+      date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
     const bodyText = stripHtml(interpolate(bodyHtml, vars));
 
@@ -267,13 +275,21 @@ export const getOffer = onRequest(
       if (!allTemplates.empty) offerTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
     }
 
+    const offerSalary    = (candidate.viterbitSalary      as string) || (offerTemplate?.salary    as string) || '';
+    const offerStartDate = (candidate.viterbitStartDate   as string) || (offerTemplate?.startDate as string) || 'a convenir';
+    const offerBenefits  = (offerTemplate?.benefits as string) ?? '';
+
     const vars: Record<string, string> = {
       firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
-      position: candidate.position as string,
-      salary: (offerTemplate?.salary as string) ?? '',
-      benefits: (offerTemplate?.benefits as string) ?? '',
-      startDate: (offerTemplate?.startDate as string) ?? 'a convenir',
+      lastName:  candidate.lastName  as string,
+      position:  candidate.position  as string,
+      departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
+      hiringManager:     (candidate.viterbitHiringManager     as string) || '',
+      company:           (candidate.viterbitCompany           as string) || 'Aviva',
+      salary:    offerSalary,
+      benefits:  offerBenefits,
+      startDate: offerStartDate,
+      date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
     const rawHtml = (offerTemplate?.bodyHtml as string) ?? '<p>Carta oferta en preparación.</p>';
@@ -284,9 +300,9 @@ export const getOffer = onRequest(
       offer: {
         candidateName: `${candidate.firstName} ${candidate.lastName}`,
         position: candidate.position,
-        salary: vars.salary,
-        benefits: vars.benefits,
-        startDate: vars.startDate,
+        salary: offerSalary,
+        benefits: offerBenefits,
+        startDate: offerStartDate,
         bodyHtml: renderedHtml,
         expiresAt: expiresAt?.toISOString(),
       },
