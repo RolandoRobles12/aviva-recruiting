@@ -4,11 +4,12 @@ import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import { Node, mergeAttributes } from '@tiptap/core';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import mammoth from 'mammoth';
 import {
   Bold, Italic, UnderlineIcon, List, ListOrdered, Undo, Redo,
   Heading1, Heading2, Heading3, AlignLeft, AlignCenter, AlignRight,
-  ImageIcon,
+  ImageIcon, FileUp, X,
 } from 'lucide-react';
 
 // ─── Variable definitions ─────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ export const VARIABLES = [
 export function templateToHtml(template: string): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, id) => {
     const v = VARIABLES.find((v) => v.id === id);
-    return `<span data-variable="${id}" class="variable-chip ${v?.colorClass ?? ''}">${v?.label ?? id}</span>`;
+    return `<span data-variable="${id}" class="variable-chip ${v?.colorClass ?? 'var-gray'}">${v?.label ?? id}</span>`;
   });
 }
 
@@ -69,7 +70,7 @@ const VariableNode = Node.create({
         const element = el as HTMLElement;
         const id = element.getAttribute('data-variable');
         const v = VARIABLES.find((v) => v.id === id);
-        return { id, label: v?.label ?? id ?? '', colorClass: v?.colorClass ?? '' };
+        return { id, label: v?.label ?? id ?? '', colorClass: v?.colorClass ?? 'var-gray' };
       },
     }];
   },
@@ -113,6 +114,15 @@ function Divider() {
   return <div className="w-px h-4 bg-gray-200 mx-0.5" />;
 }
 
+// ─── DOCX import helpers ──────────────────────────────────────────────────────
+
+// Scan HTML for {{variable}} patterns not in our VARIABLES list
+function findUnknownVars(html: string): string[] {
+  const matches = [...html.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+  const known = new Set(VARIABLES.map((v) => v.id));
+  return [...new Set(matches.filter((id) => !known.has(id as typeof VARIABLES[number]['id'])))];
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface RichTextEditorProps {
@@ -121,7 +131,10 @@ interface RichTextEditorProps {
 }
 
 export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const docxInputRef = useRef<HTMLInputElement>(null);
+  const [docxWarning, setDocxWarning] = useState<string[] | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -170,10 +183,10 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   }, [value, editor]);
 
   const handleInsertImage = () => {
-    fileInputRef.current?.click();
+    imageInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !editor) return;
     const reader = new FileReader();
@@ -185,6 +198,27 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     e.target.value = '';
   };
 
+  const handleDocxImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    e.target.value = '';
+    setImporting(true);
+    setDocxWarning(null);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      // Detect unknown variables in the imported content
+      const unknown = findUnknownVars(result.value);
+      if (unknown.length > 0) setDocxWarning(unknown);
+      // Convert {{variable}} patterns to colored chips
+      const htmlWithChips = templateToHtml(result.value);
+      editor.commands.setContent(htmlWithChips, true);
+      onChange(htmlToTemplate(editor.getHTML()));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (!editor) return null;
 
   const visibleVariables = VARIABLES.filter((v) => !v.hidden);
@@ -192,14 +226,9 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   return (
     <div className="flex flex-col border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent h-full">
 
-      {/* Hidden file input for image insertion */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      {/* Hidden file inputs */}
+      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
+      <input ref={docxInputRef} type="file" accept=".docx" className="hidden" onChange={handleDocxImport} />
 
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 bg-gray-50 shrink-0 flex-wrap">
@@ -310,7 +339,42 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         <ToolbarBtn onClick={handleInsertImage} title="Insertar imagen">
           <ImageIcon size={14} />
         </ToolbarBtn>
+
+        {/* DOCX import — pushed to the right */}
+        <div className="ml-auto">
+          <button
+            type="button"
+            title="Importar desde Word (.docx)"
+            disabled={importing}
+            onMouseDown={(e) => { e.preventDefault(); docxInputRef.current?.click(); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors disabled:opacity-50"
+          >
+            <FileUp size={13} />
+            {importing ? 'Importando…' : 'Importar Word'}
+          </button>
+        </div>
       </div>
+
+      {/* ── DOCX unknown-variable warning ────────────────────────────────────── */}
+      {docxWarning && docxWarning.length > 0 && (
+        <div className="flex items-start gap-2 px-4 py-2.5 bg-amber-50 border-b border-amber-100 shrink-0">
+          <span className="text-amber-500 shrink-0 mt-0.5 text-sm">⚠️</span>
+          <div className="flex-1 text-xs text-amber-800 leading-relaxed">
+            <strong>Variables no reconocidas:</strong>{' '}
+            {docxWarning.map((id) => (
+              <code key={id} className="bg-amber-100 px-1 rounded mr-1">{`{{${id}}}`}</code>
+            ))}
+            — se mantienen como texto. Puedes reemplazarlas manualmente con los botones de abajo.
+          </div>
+          <button
+            type="button"
+            onClick={() => setDocxWarning(null)}
+            className="text-amber-400 hover:text-amber-600 shrink-0"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* ── Variable palette ─────────────────────────────────────────────────── */}
       <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/60 shrink-0">
