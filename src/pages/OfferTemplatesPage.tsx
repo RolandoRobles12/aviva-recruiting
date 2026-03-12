@@ -23,7 +23,7 @@ const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong
 
 <h2>I. Posición y organización</h2>
 <p><strong>Puesto:</strong> {{departmentProfile}}<br>
-<strong>Empresa:</strong> {{company}}<br>
+<strong>Empresa:</strong> Aviva Financial S.A. de C.V. SOFOM ENR<br>
 <strong>Líder:</strong> {{hiringManager}}<br>
 <strong>Fecha de inicio:</strong> {{startDate}}</p>
 
@@ -33,7 +33,7 @@ const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong
 
 <p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
 
-<p>Atentamente,<br><strong>Equipo de Reclutamiento · {{company}}</strong></p>`;
+<p>Atentamente,<br><strong>Equipo de Reclutamiento · Aviva</strong></p>`;
 
 export function OfferTemplatesPage() {
   const [templates, setTemplates] = useState<OfferTemplate[]>([]);
@@ -227,54 +227,100 @@ export function OfferTemplatesPage() {
                 </div>
               </div>
 
+              {/* How it works — compact banner */}
+              <div className="bg-primary-50 border-b border-primary-100 px-6 py-3 shrink-0 flex items-start gap-3">
+                <span className="text-primary-500 mt-0.5 shrink-0 text-base">💡</span>
+                <p className="text-xs text-primary-800 leading-relaxed">
+                  <strong>¿Cómo funciona?</strong> Cuando un candidato llega a "Aprobado" en Viterbit, el sistema busca el template
+                  correcto por las <strong>keywords</strong> del puesto y envía la carta automáticamente.
+                  Los datos del candidato y del puesto se insertan solos — tú solo defines la estructura de la carta.
+                </p>
+              </div>
+
               {/* Two-column body */}
               <div className="flex flex-1 overflow-hidden">
 
-                {/* Left sidebar — metadata */}
-                <div className="w-72 shrink-0 border-r border-gray-100 overflow-y-auto p-6 space-y-5 bg-gray-50/40">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                      Configuración
-                    </label>
-                    <div className="space-y-4">
-                      <Field label="Keywords de posición" hint="Para autodetectar el template según el puesto en Viterbit.">
-                        <input
-                          {...register('positionKeywordsRaw')}
-                          placeholder="promotor, crédito, asesor"
-                          className="input-field"
-                        />
-                      </Field>
+                {/* Left sidebar — steps */}
+                <div className="w-80 shrink-0 border-r border-gray-100 overflow-y-auto bg-gray-50/40">
+
+                  {/* Step 1 */}
+                  <div className="p-5 border-b border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
+                      <span className="text-sm font-semibold text-gray-800">¿Para qué tipo de puesto?</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3 leading-relaxed ml-8">
+                      Escribe palabras que aparezcan en el título del puesto en Viterbit. El sistema las usa para elegir este template automáticamente.
+                    </p>
+                    <div className="ml-8">
+                      <input
+                        {...register('positionKeywordsRaw')}
+                        placeholder="promotor, crédito, asesor"
+                        className="input-field"
+                      />
+                      <p className="text-xs text-gray-400 mt-1.5">
+                        Ej: si el puesto es <em>"Promotor Digital de Crédito"</em> → escribe <code className="bg-gray-100 px-1 rounded">promotor, crédito</code>
+                      </p>
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-200 pt-5">
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      Beneficios del template
-                    </label>
-                    <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-                      El paquete de beneficios es fijo por template. Salario, puesto, líder y fecha de inicio se obtienen automáticamente del job en Viterbit.
+                  {/* Step 2 */}
+                  <div className="p-5 border-b border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold flex items-center justify-center shrink-0">2</span>
+                      <span className="text-sm font-semibold text-gray-800">Beneficios del puesto</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3 leading-relaxed ml-8">
+                      El paquete de beneficios que aplica para este tipo de puesto. Este texto irá donde pongas la variable <span className="variable-chip var-amber inline text-xs">Beneficios</span> en la carta.
                     </p>
-                    <Field label="Beneficios" error={errors.benefits?.message}>
+                    <div className="ml-8">
                       <textarea
                         {...register('benefits')}
-                        rows={6}
-                        placeholder={`Sueldo Bruto: {{salary}} (antes de impuestos)\nBono Garantía Bruto: 1750 MXN\nSeguridad social: IMSS\nPrima vacacional: 25%\nAguinaldo: 15 días`}
-                        className="input-field resize-none text-xs"
+                        rows={7}
+                        placeholder={'Seguridad social: IMSS\nPrima vacacional: 25%\nPrima dominical: 25%\nAguinaldo: 15 días\nDías Aviva: 7 días personales al año'}
+                        className="input-field resize-none text-xs leading-relaxed"
                       />
-                    </Field>
-                    <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                      <p className="text-xs text-amber-700 leading-relaxed">
-                        <strong>Datos de Viterbit:</strong> Salario, fecha de inicio, líder y empresa se toman del job de Viterbit cuando llega el webhook.
+                    </div>
+                  </div>
+
+                  {/* Step 3 callout */}
+                  <div className="p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold flex items-center justify-center shrink-0">3</span>
+                      <span className="text-sm font-semibold text-gray-800">Escribe la carta →</span>
+                    </div>
+                    <div className="ml-8 space-y-2">
+                      <p className="text-xs text-gray-500 leading-relaxed">
+                        Usa los botones de colores del editor para insertar datos que se llenarán solos:
                       </p>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="variable-chip var-blue">Nombre</span>
+                          <span className="text-gray-500">del candidato</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="variable-chip var-purple">Puesto</span>
+                          <span className="text-gray-500">del job en Viterbit</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="variable-chip var-green">Salario</span>
+                          <span className="text-gray-500">del job en Viterbit</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="variable-chip var-amber">Beneficios</span>
+                          <span className="text-gray-500">que escribiste arriba</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="variable-chip var-rose">Fechas</span>
+                          <span className="text-gray-500">del job en Viterbit</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Right — editor */}
-                <div className="flex-1 flex flex-col overflow-hidden p-6">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                    Carta de oferta
-                  </p>
+                <div className="flex-1 flex flex-col overflow-hidden p-5">
                   <div className="flex-1 overflow-hidden">
                     <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
                   </div>
