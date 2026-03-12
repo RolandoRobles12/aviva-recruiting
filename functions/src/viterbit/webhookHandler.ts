@@ -116,18 +116,54 @@ interface ViterbitCandidate {
   phone?: string;
 }
 
-async function fetchJobStages(jobId: string, apiKey: string): Promise<ViterbitStage[]> {
+interface ViterbitJobInfo {
+  title: string;
+  stages: ViterbitStage[];
+  // Custom fields from the job posting
+  salary: string;
+  startDate: string;
+  hiringManager: string;
+  company: string;
+  departmentProfile: string;
+}
+
+/**
+ * Fetch job info in a single API call: title, stages, and all
+ * custom fields used in offer letter templates.
+ *
+ * Viterbit stores custom fields either at the root of `data` or under
+ * `data.custom_fields`. We try both locations with graceful fallback.
+ */
+async function fetchViterbitJob(jobId: string, apiKey: string): Promise<ViterbitJobInfo> {
+  const empty: ViterbitJobInfo = {
+    title: jobId, stages: [],
+    salary: '', startDate: '', hiringManager: '', company: '', departmentProfile: '',
+  };
   try {
     const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages`, {
       headers: { 'X-API-Key': apiKey },
     });
-    if (!resp.ok) return [];
+    if (!resp.ok) return empty;
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
-    return ((data.stages as ViterbitStage[]) ?? []);
+
+    // Custom fields may be nested or at root level
+    const custom = (data.custom_fields as Record<string, unknown>) ?? {};
+    const get = (key: string): string =>
+      (custom[key] as string) ?? (data[key] as string) ?? '';
+
+    return {
+      title: (data.name as string) ?? (data.title as string) ?? jobId,
+      stages: (data.stages as ViterbitStage[]) ?? [],
+      salary:            get('hired_salary_job'),
+      startDate:         get('hired_start_date_job'),
+      hiringManager:     get('custom_job_hiring_manager'),
+      company:           get('custom_job_empresa') || 'Aviva',
+      departmentProfile: get('job_department_profile'),
+    };
   } catch (err) {
-    console.error('[viterbit] fetchJobStages error:', err);
-    return [];
+    console.error('[viterbit] fetchViterbitJob error:', err);
+    return empty;
   }
 }
 
@@ -172,19 +208,6 @@ async function fetchViterbitCandidate(
   }
 }
 
-async function fetchViterbitJobTitle(jobId: string, apiKey: string): Promise<string> {
-  try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) return jobId;
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    return (data.name as string) ?? (data.title as string) ?? jobId;
-  } catch {
-    return jobId;
-  }
-}
 
 /** Find the best-matching offer template for a job position */
 async function findOfferTemplate(
@@ -236,8 +259,16 @@ async function handleAprobado(
     }
   }
 
-  // Fetch job stages
-  const stages = await fetchJobStages(jobId, apiKey);
+  // Fetch job info (stages + custom fields) and candidate in parallel
+  const [viterbitCandidate, jobInfo] = await Promise.all([
+    fetchViterbitCandidate(candidateViterbitId, apiKey),
+    fetchViterbitJob(jobId, apiKey),
+  ]);
+
+  const { title: jobTitle, stages, salary: viterbitSalary, startDate: viterbitStartDate,
+    hiringManager: viterbitHiringManager, company: viterbitCompany,
+    departmentProfile: viterbitDepartmentProfile } = jobInfo;
+
   const findStage = (name: string) =>
     stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
 
@@ -253,12 +284,6 @@ async function handleAprobado(
       console.error('[webhook] moveToStage ofertaEnviada error:', err);
     }
   }
-
-  // Fetch candidate & job info
-  const [viterbitCandidate, jobTitle] = await Promise.all([
-    fetchViterbitCandidate(candidateViterbitId, apiKey),
-    fetchViterbitJobTitle(jobId, apiKey),
-  ]);
 
   if (!viterbitCandidate) {
     await logRef.update({ status: 'error', reason: `could not fetch candidate ${candidateViterbitId}` });
@@ -299,7 +324,13 @@ async function handleAprobado(
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy: 'viterbit_webhook',
-    // Viterbit
+    // Viterbit job custom fields (used to interpolate offer letter variables)
+    viterbitSalary: viterbitSalary || null,
+    viterbitStartDate: viterbitStartDate || null,
+    viterbitHiringManager: viterbitHiringManager || null,
+    viterbitCompany: viterbitCompany || null,
+    viterbitDepartmentProfile: viterbitDepartmentProfile || null,
+    // Viterbit IDs
     viterbitCandidatureId: candidatureId || null,
     viterbitJobId: jobId,
     viterbitStageIds: {
@@ -367,10 +398,11 @@ async function handleDocumentos(
   }
 
   // No existing candidate — create one (manual / legacy path)
-  const [viterbitCandidate, jobTitle] = await Promise.all([
+  const [viterbitCandidate, jobInfo] = await Promise.all([
     fetchViterbitCandidate(candidateViterbitId, apiKey),
-    fetchViterbitJobTitle(jobId, apiKey),
+    fetchViterbitJob(jobId, apiKey),
   ]);
+  const jobTitle = jobInfo.title;
 
   if (!viterbitCandidate) {
     await logRef.update({ status: 'error', reason: `could not fetch candidate ${candidateViterbitId}` });
@@ -563,7 +595,7 @@ export const viterbitWebhook = onRequest(
     if (allowedJobs.length > 0) {
       const matchesById = allowedJobs.some((allowed) => jobId.toLowerCase() === allowed);
       if (!matchesById) {
-        const jobTitle = await fetchViterbitJobTitle(jobId, apiKey);
+        const jobTitle = (await fetchViterbitJob(jobId, apiKey)).title;
         const matchesByName = allowedJobs.some((allowed) => jobTitle.toLowerCase().includes(allowed));
         if (!matchesByName) {
           await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" (${jobId}) not in allowed list` });

@@ -14,28 +14,26 @@ import type { OfferTemplate } from '../types';
 type FormValues = {
   name: string;
   positionKeywordsRaw: string;
-  salary: string;
   benefits: string;
-  startDate: string;
 };
 
-const DEFAULT_BODY = `<p>Estimado/a <strong>{{firstName}} {{lastName}}</strong>,</p>
+const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong>,</p>
 
-<p>Nos complace hacerte una oferta formal de empleo para el puesto de <strong>{{position}}</strong> en Aviva.</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra misión. Hoy queremos darte un paso más y compartirte nuestra carta oferta.</p>
 
-<p><strong>Condiciones de la oferta:</strong></p>
-<ul>
-  <li>Puesto: {{position}}</li>
-  <li>Salario mensual bruto: {{salary}}</li>
-  <li>Beneficios: {{benefits}}</li>
-  <li>Fecha estimada de inicio: {{startDate}}</li>
-</ul>
+<h2>I. Posición y organización</h2>
+<p><strong>Puesto:</strong> {{departmentProfile}}<br>
+<strong>Empresa:</strong> {{company}}<br>
+<strong>Líder:</strong> {{hiringManager}}<br>
+<strong>Fecha de inicio:</strong> {{startDate}}</p>
+
+<h2>II. Compensación y beneficios</h2>
+<p><strong>Sueldo Bruto:</strong> {{salary}}</p>
+<p>{{benefits}}</p>
 
 <p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
 
-<p>Si tienes alguna pregunta, no dudes en contactar a tu reclutador.</p>
-
-<p>Atentamente,<br><strong>Equipo de Reclutamiento · Aviva</strong></p>`;
+<p>Atentamente,<br><strong>Equipo de Reclutamiento · {{company}}</strong></p>`;
 
 export function OfferTemplatesPage() {
   const [templates, setTemplates] = useState<OfferTemplate[]>([]);
@@ -61,13 +59,7 @@ export function OfferTemplatesPage() {
   const openCreate = () => {
     setEditingId(null);
     setBodyHtml(DEFAULT_BODY);
-    reset({
-      name: '',
-      positionKeywordsRaw: '',
-      salary: '',
-      benefits: '',
-      startDate: 'a convenir',
-    });
+    reset({ name: '', positionKeywordsRaw: '', benefits: '' });
     setShowForm(true);
   };
 
@@ -77,9 +69,7 @@ export function OfferTemplatesPage() {
     reset({
       name: t.name,
       positionKeywordsRaw: (t.positionKeywords ?? []).join(', '),
-      salary: t.salary,
-      benefits: t.benefits,
-      startDate: t.startDate,
+      benefits: t.benefits ?? '',
     });
     setShowForm(true);
   };
@@ -93,9 +83,7 @@ export function OfferTemplatesPage() {
     const payload = {
       name: values.name.trim(),
       positionKeywords: keywords,
-      salary: values.salary.trim(),
       benefits: values.benefits.trim(),
-      startDate: values.startDate.trim(),
       bodyHtml,
     };
     if (editingId) {
@@ -208,78 +196,90 @@ export function OfferTemplatesPage() {
           )}
         </div>
 
-        {/* Slide-over form */}
+        {/* Full-screen centered modal */}
         {showForm && (
-          <div className="fixed inset-0 z-50 flex">
-            <div className="flex-1 bg-black/30" onClick={() => setShowForm(false)} />
-            <div className="w-full max-w-2xl bg-white shadow-xl flex flex-col h-full overflow-hidden">
-              {/* Form header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <h3 className="font-semibold text-gray-900">
-                  {editingId ? 'Editar template' : 'Nuevo template'}
-                </h3>
-                <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                  <X size={16} className="text-gray-500" />
-                </button>
-              </div>
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl flex flex-col" style={{ height: '92vh' }}>
 
-              {/* Form body */}
-              <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-y-auto p-6 space-y-5">
-                <Field label="Nombre del template" error={errors.name?.message}>
-                  <input
-                    {...register('name', { required: 'Requerido' })}
-                    placeholder="Ej: Promotor de Crédito"
-                    className="input-field"
-                  />
-                </Field>
-
-                <Field label="Keywords de posición (separados por coma)" hint="Se usarán para encontrar automáticamente el template correcto según el título del puesto en Viterbit.">
-                  <input
-                    {...register('positionKeywordsRaw')}
-                    placeholder="promotor, crédito, asesor"
-                    className="input-field"
-                  />
-                </Field>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Salario" error={errors.salary?.message}>
-                    <input
-                      {...register('salary', { required: 'Requerido' })}
-                      placeholder="$12,000 MXN mensuales brutos"
-                      className="input-field"
-                    />
-                  </Field>
-                  <Field label="Fecha de inicio">
-                    <input
-                      {...register('startDate')}
-                      placeholder="a convenir"
-                      className="input-field"
-                    />
-                  </Field>
-                </div>
-
-                <Field label="Beneficios" error={errors.benefits?.message}>
-                  <textarea
-                    {...register('benefits', { required: 'Requerido' })}
-                    rows={3}
-                    placeholder="Seguro de gastos médicos, vales de despensa, fondo de ahorro..."
-                    className="input-field resize-none"
-                  />
-                </Field>
-
-                <Field label="Contenido de la carta">
-                  <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
-                </Field>
-
-                <div className="flex gap-3 pt-2">
-                  <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+                <input
+                  {...register('name', { required: true })}
+                  placeholder="Nombre del template, ej: Promotor de Crédito"
+                  className="text-lg font-semibold text-gray-900 bg-transparent border-0 outline-none placeholder-gray-300 flex-1 mr-4"
+                  autoFocus
+                />
+                <div className="flex items-center gap-2 shrink-0">
+                  <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
                     Cancelar
                   </button>
-                  <button type="submit" disabled={saving} className="flex-1 bg-primary-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50">
+                  <button
+                    type="button"
+                    onClick={handleSubmit(onSubmit)}
+                    disabled={saving}
+                    className="px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                  >
                     {saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear template'}
                   </button>
+                  <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 rounded-lg ml-1">
+                    <X size={16} className="text-gray-400" />
+                  </button>
                 </div>
-              </form>
+              </div>
+
+              {/* Two-column body */}
+              <div className="flex flex-1 overflow-hidden">
+
+                {/* Left sidebar — metadata */}
+                <div className="w-72 shrink-0 border-r border-gray-100 overflow-y-auto p-6 space-y-5 bg-gray-50/40">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                      Configuración
+                    </label>
+                    <div className="space-y-4">
+                      <Field label="Keywords de posición" hint="Para autodetectar el template según el puesto en Viterbit.">
+                        <input
+                          {...register('positionKeywordsRaw')}
+                          placeholder="promotor, crédito, asesor"
+                          className="input-field"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-5">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Beneficios del template
+                    </label>
+                    <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                      El paquete de beneficios es fijo por template. Salario, puesto, líder y fecha de inicio se obtienen automáticamente del job en Viterbit.
+                    </p>
+                    <Field label="Beneficios" error={errors.benefits?.message}>
+                      <textarea
+                        {...register('benefits')}
+                        rows={6}
+                        placeholder={`Sueldo Bruto: {{salary}} (antes de impuestos)\nBono Garantía Bruto: 1750 MXN\nSeguridad social: IMSS\nPrima vacacional: 25%\nAguinaldo: 15 días`}
+                        className="input-field resize-none text-xs"
+                      />
+                    </Field>
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        <strong>Datos de Viterbit:</strong> Salario, fecha de inicio, líder y empresa se toman del job de Viterbit cuando llega el webhook.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right — editor */}
+                <div className="flex-1 flex flex-col overflow-hidden p-6">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Carta de oferta
+                  </p>
+                  <div className="flex-1 overflow-hidden">
+                    <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
