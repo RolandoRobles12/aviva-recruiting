@@ -43,7 +43,22 @@ function buildInitialDocuments() {
 }
 
 // ─── Viterbit webhook payload parser ──────────────────────────────────────────
-// Viterbit webhook format (candidature stage changed):
+// Supports two known Viterbit payload formats:
+//
+// Format A (spec / newer):
+// {
+//   "event": "candidature.stage_changed",
+//   "data": {
+//     "candidature_id": "<candidature_id>",
+//     "stage_id": "<stage_id>",
+//     "candidate_id": "<candidate_id>",
+//     "job_id": "<job_id>",
+//     "previous_stage_id": "<prev_stage_id>",
+//     "timestamp": "..."
+//   }
+// }
+//
+// Format B (legacy / observed):
 // {
 //   "event": "recruitment_candidature_stage_was_changed",
 //   "payload": {
@@ -53,7 +68,8 @@ function buildInitialDocuments() {
 //     "job_id": "<job_id>"
 //   }
 // }
-// The webhook does NOT include candidate name/email — those must be fetched via API.
+//
+// Candidate name/email are NOT included — must be fetched via API.
 interface ParsedViterbitEvent {
   event: string;
   stageName: string;
@@ -66,18 +82,18 @@ interface ParsedViterbitEvent {
 function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEvent | null {
   const event = (body.event as string) ?? (body.type as string) ?? '';
 
-  // Candidature data lives in body.payload
-  const payload = (body.payload as Record<string, unknown>) ?? body;
+  // Support Format A ("data") and Format B ("payload"), falling back to root body.
+  const data = (body.data as Record<string, unknown>) ?? (body.payload as Record<string, unknown>) ?? body;
 
-  // Stage info
-  const currentStage = (payload.current_stage as Record<string, unknown>) ?? {};
+  // Stage info — Format A uses a flat stage_id; Format B uses current_stage object.
+  const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
   const stageName = (currentStage.name as string) ?? (currentStage.title as string) ?? '';
-  const stageId = (currentStage.id as string) ?? '';
+  const stageId = (data.stage_id as string) ?? (currentStage.id as string) ?? '';
 
-  // IDs
-  const candidatureId = (payload.id as string) ?? '';
-  const candidateViterbitId = (payload.candidate_id as string) ?? '';
-  const jobId = (payload.job_id as string) ?? '';
+  // IDs — Format A uses "candidature_id"; Format B uses "id".
+  const candidatureId = (data.candidature_id as string) ?? (data.id as string) ?? '';
+  const candidateViterbitId = (data.candidate_id as string) ?? '';
+  const jobId = (data.job_id as string) ?? '';
 
   if (!candidateViterbitId) return null;
 
