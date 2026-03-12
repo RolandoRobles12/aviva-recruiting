@@ -159,15 +159,14 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       </div>
 
       {/* Variable palette */}
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/60 shrink-0">
-        <p className="text-xs text-gray-400 mb-2">
-          Haz clic en una variable para insertarla donde está el cursor:
-        </p>
-        <div className="flex flex-wrap gap-2">
+      <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/60 shrink-0">
+        <p className="text-xs text-gray-400 mb-2 font-medium">Insertar dato automático:</p>
+        <div className="flex flex-wrap gap-1.5">
           {VARIABLES.map((v) => (
             <button
               key={v.id}
               type="button"
+              title={`Insertar ${v.label}`}
               onMouseDown={(e) => {
                 e.preventDefault();
                 editor.chain().focus().insertContent({
@@ -175,9 +174,9 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
                   attrs: { id: v.id, label: v.label, colorClass: v.colorClass },
                 }).run();
               }}
-              className={`variable-chip ${v.colorClass} cursor-pointer hover:opacity-75 transition-opacity text-xs px-3 py-1`}
+              className={`variable-chip ${v.colorClass} cursor-pointer hover:opacity-75 transition-opacity`}
             >
-              {v.label}
+              + {v.label}
             </button>
           ))}
         </div>
