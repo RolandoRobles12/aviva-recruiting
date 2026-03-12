@@ -666,9 +666,9 @@ export const viterbitWebhook = onRequest(
     } else {
       await logRef.update({
         status: 'ignored',
-        reason: `stage "${stageName}" (${stageId}) not handled`,
+        reason: `stage "${resolvedStageName}" (${stageId}) not handled`,
       });
-      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${stageName}" skipped` });
+      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${resolvedStageName}" skipped` });
     }
   }
 );
