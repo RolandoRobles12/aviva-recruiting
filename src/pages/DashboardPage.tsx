@@ -6,6 +6,8 @@ import {
   CheckCircle,
   Search,
   LayoutDashboard,
+  FileSignature,
+  FolderOpen,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { StatsCard } from '../components/dashboard/StatsCard';
@@ -47,16 +49,16 @@ export function DashboardPage() {
               color="bg-gray-100"
             />
             <StatsCard
-              label="Invitados"
-              value={stats.invited}
-              icon={<Search size={20} className="text-yellow-600" />}
-              color="bg-yellow-100"
+              label="Carta oferta"
+              value={stats.offerSent}
+              icon={<FileSignature size={20} className="text-purple-600" />}
+              color="bg-purple-100"
             />
             <StatsCard
-              label="En progreso"
-              value={stats.inProgress}
-              icon={<Clock size={20} className="text-primary-600" />}
-              color="bg-primary-100"
+              label="Documentos"
+              value={stats.documents}
+              icon={<FolderOpen size={20} className="text-yellow-600" />}
+              color="bg-yellow-100"
             />
             <StatsCard
               label="En revisión"

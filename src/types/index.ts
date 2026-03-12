@@ -163,8 +163,8 @@ export interface SendReminderPayload {
 
 export interface DashboardStats {
   total: number;
-  invited: number;
-  inProgress: number;
+  offerSent: number;    // offer_sent — pending signature
+  documents: number;   // offer_signed + invited + in_progress
   underReview: number;
   approved: number;
   rejected: number;
