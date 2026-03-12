@@ -206,7 +206,16 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     setDocxWarning(null);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer });
+      const result = await mammoth.convertToHtml(
+        { arrayBuffer },
+        {
+          convertImage: mammoth.images.imgElement((image) =>
+            image.read('base64').then((data) => ({
+              src: `data:${image.contentType};base64,${data}`,
+            }))
+          ),
+        }
+      );
       // Detect unknown variables in the imported content
       const unknown = findUnknownVars(result.value);
       if (unknown.length > 0) setDocxWarning(unknown);
