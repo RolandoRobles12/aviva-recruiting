@@ -55,3 +55,62 @@
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700;
   }
 }
+
+/* ─── Rich text editor (TipTap) ──────────────────────────────────────────── */
+
+.rich-editor-content {
+  min-height: 240px;
+  padding: 1rem;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #111827;
+}
+
+.rich-editor-content p {
+  margin: 0 0 0.6em;
+}
+
+.rich-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-editor-content h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.75em 0 0.4em;
+}
+
+.rich-editor-content ul,
+.rich-editor-content ol {
+  padding-left: 1.5em;
+  margin: 0.4em 0 0.6em;
+}
+
+.rich-editor-content li {
+  margin-bottom: 0.2em;
+}
+
+.rich-editor-content strong {
+  font-weight: 600;
+}
+
+.rich-editor-content em {
+  font-style: italic;
+}
+
+/* Variable chip — shown inside the editor */
+.variable-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: #e0f2fe; /* sky-100 */
+  color: #0369a1; /* sky-700 */
+  border: 1px solid #bae6fd; /* sky-200 */
+  user-select: all;
+  cursor: default;
+  white-space: nowrap;
+}

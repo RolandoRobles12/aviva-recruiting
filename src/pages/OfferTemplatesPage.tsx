@@ -8,18 +8,16 @@ import {
   updateOfferTemplate,
   deleteOfferTemplate,
 } from '../services/offerTemplates';
+import { RichTextEditor } from '../components/offer/RichTextEditor';
 import type { OfferTemplate } from '../types';
 
 type FormValues = {
   name: string;
-  positionKeywordsRaw: string; // comma-separated, converted to array on save
+  positionKeywordsRaw: string;
   salary: string;
   benefits: string;
   startDate: string;
-  bodyHtml: string;
 };
-
-const VARIABLE_HINTS = ['{{firstName}}', '{{lastName}}', '{{position}}', '{{salary}}', '{{benefits}}', '{{startDate}}'];
 
 const DEFAULT_BODY = `<p>Estimado/a <strong>{{firstName}} {{lastName}}</strong>,</p>
 
@@ -47,6 +45,7 @@ export function OfferTemplatesPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [bodyHtml, setBodyHtml] = useState(DEFAULT_BODY);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>();
 
@@ -61,26 +60,26 @@ export function OfferTemplatesPage() {
 
   const openCreate = () => {
     setEditingId(null);
+    setBodyHtml(DEFAULT_BODY);
     reset({
       name: '',
       positionKeywordsRaw: '',
       salary: '',
       benefits: '',
       startDate: 'a convenir',
-      bodyHtml: DEFAULT_BODY,
     });
     setShowForm(true);
   };
 
   const openEdit = (t: OfferTemplate) => {
     setEditingId(t.id);
+    setBodyHtml(t.bodyHtml);
     reset({
       name: t.name,
       positionKeywordsRaw: (t.positionKeywords ?? []).join(', '),
       salary: t.salary,
       benefits: t.benefits,
       startDate: t.startDate,
-      bodyHtml: t.bodyHtml,
     });
     setShowForm(true);
   };
@@ -97,7 +96,7 @@ export function OfferTemplatesPage() {
       salary: values.salary.trim(),
       benefits: values.benefits.trim(),
       startDate: values.startDate.trim(),
-      bodyHtml: values.bodyHtml,
+      bodyHtml,
     };
     if (editingId) {
       await updateOfferTemplate(editingId, payload);
@@ -268,16 +267,8 @@ export function OfferTemplatesPage() {
                   />
                 </Field>
 
-                <Field
-                  label="Contenido de la carta (HTML)"
-                  hint={`Variables disponibles: ${VARIABLE_HINTS.join('  ')}`}
-                  error={errors.bodyHtml?.message}
-                >
-                  <textarea
-                    {...register('bodyHtml', { required: 'Requerido' })}
-                    rows={14}
-                    className="input-field resize-y font-mono text-xs"
-                  />
+                <Field label="Contenido de la carta">
+                  <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
                 </Field>
 
                 <div className="flex gap-3 pt-2">
