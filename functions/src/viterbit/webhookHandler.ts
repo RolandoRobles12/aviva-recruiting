@@ -6,22 +6,25 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { createGmailTransport, getFromAddress } from '../email/gmailClient';
-import { invitationTemplate } from '../email/templates';
+import { offerTemplate, onboardingTemplate } from '../email/templates';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
-// VITERBIT_API_KEY: API key for calling Viterbit REST API (Settings → API Keys).
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
-// VITERBIT_WEBHOOK_SECRET: Signing secret from Viterbit webhook settings.
 const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET', { default: '' });
-// Stage name OR stage ID that triggers the portal. Example: "Documentos"
-const HIRING_STAGE_NAME = defineString('HIRING_STAGE_NAME', { default: 'Documentos' });
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
-// Comma-separated job IDs (or names) to filter. Leave empty to allow all.
-// Example: "65f0b66ce4a5529b820ab3a6,otro_id"
+// Comma-separated job IDs to filter. Leave empty to allow all.
 const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
+
+// Stage names (configurable, matched case-insensitively against webhook payload)
+const STAGE_APROBADO     = defineString('STAGE_APROBADO',     { default: 'Aprobado' });
+const STAGE_DOCUMENTOS   = defineString('STAGE_DOCUMENTOS',   { default: 'Documentos' });
+const STAGE_ONBOARDING   = defineString('STAGE_ONBOARDING',   { default: 'Onboarding' });
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
+const OFFER_EXPIRY_DAYS = 7;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -43,7 +46,22 @@ function buildInitialDocuments() {
 }
 
 // ─── Viterbit webhook payload parser ──────────────────────────────────────────
-// Viterbit webhook format (candidature stage changed):
+// Supports two known Viterbit payload formats:
+//
+// Format A (spec / newer):
+// {
+//   "event": "candidature.stage_changed",
+//   "data": {
+//     "candidature_id": "<candidature_id>",
+//     "stage_id": "<stage_id>",
+//     "candidate_id": "<candidate_id>",
+//     "job_id": "<job_id>",
+//     "previous_stage_id": "<prev_stage_id>",
+//     "timestamp": "..."
+//   }
+// }
+//
+// Format B (legacy / observed):
 // {
 //   "event": "recruitment_candidature_stage_was_changed",
 //   "payload": {
@@ -53,7 +71,8 @@ function buildInitialDocuments() {
 //     "job_id": "<job_id>"
 //   }
 // }
-// The webhook does NOT include candidate name/email — those must be fetched via API.
+//
+// Candidate name/email are NOT included — must be fetched via API.
 interface ParsedViterbitEvent {
   event: string;
   stageName: string;
@@ -66,18 +85,18 @@ interface ParsedViterbitEvent {
 function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEvent | null {
   const event = (body.event as string) ?? (body.type as string) ?? '';
 
-  // Candidature data lives in body.payload
-  const payload = (body.payload as Record<string, unknown>) ?? body;
+  // Support Format A ("data") and Format B ("payload"), falling back to root body.
+  const data = (body.data as Record<string, unknown>) ?? (body.payload as Record<string, unknown>) ?? body;
 
-  // Stage info
-  const currentStage = (payload.current_stage as Record<string, unknown>) ?? {};
+  // Stage info — Format A uses a flat stage_id; Format B uses current_stage object.
+  const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
   const stageName = (currentStage.name as string) ?? (currentStage.title as string) ?? '';
-  const stageId = (currentStage.id as string) ?? '';
+  const stageId = (data.stage_id as string) ?? (currentStage.id as string) ?? '';
 
-  // IDs
-  const candidatureId = (payload.id as string) ?? '';
-  const candidateViterbitId = (payload.candidate_id as string) ?? '';
-  const jobId = (payload.job_id as string) ?? '';
+  // IDs — Format A uses "candidature_id"; Format B uses "id".
+  const candidatureId = (data.candidature_id as string) ?? (data.id as string) ?? '';
+  const candidateViterbitId = (data.candidate_id as string) ?? '';
+  const jobId = (data.job_id as string) ?? '';
 
   if (!candidateViterbitId) return null;
 
@@ -85,10 +104,43 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
 }
 
 // ─── Viterbit API helpers ──────────────────────────────────────────────────────
+
+interface ViterbitStage {
+  id: string;
+  name: string;
+}
+
 interface ViterbitCandidate {
   name: string;
   email: string;
   phone?: string;
+}
+
+async function fetchJobStages(jobId: string, apiKey: string): Promise<ViterbitStage[]> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) return [];
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    return ((data.stages as ViterbitStage[]) ?? []);
+  } catch (err) {
+    console.error('[viterbit] fetchJobStages error:', err);
+    return [];
+  }
+}
+
+async function moveToStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
+  const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
+    method: 'POST',
+    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage_id: stageId }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`moveToStage ${stageId} → HTTP ${resp.status}: ${text}`);
+  }
 }
 
 async function fetchViterbitCandidate(
@@ -134,7 +186,332 @@ async function fetchViterbitJobTitle(jobId: string, apiKey: string): Promise<str
   }
 }
 
+/** Find the best-matching offer template for a job position */
+async function findOfferTemplate(
+  position: string
+): Promise<{ id: string; data: Record<string, unknown> } | null> {
+  const snap = await db.collection('offer_templates').get();
+  if (snap.empty) return null;
+
+  const posLower = position.toLowerCase();
+  // Try keyword match first
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const keywords = (data.positionKeywords as string[]) ?? [];
+    if (keywords.some((kw) => posLower.includes(kw.toLowerCase()))) {
+      return { id: doc.id, data };
+    }
+  }
+  // Fallback to first template
+  return { id: snap.docs[0].id, data: snap.docs[0].data() };
+}
+
+// ─── Stage handlers ────────────────────────────────────────────────────────────
+
+/**
+ * Candidate reached "Aprobado":
+ * 1. Fetch job stages to get IDs for Oferta Enviada, Documentos, Onboarding
+ * 2. Move candidature to "Oferta Enviada" in Viterbit
+ * 3. Create candidate record in Firestore (status: offer_sent)
+ * 4. Send offer letter email
+ */
+async function handleAprobado(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId, jobId } = parsed;
+
+  // Idempotency check
+  if (candidatureId) {
+    const existing = await db
+      .collection('candidates')
+      .where('viterbitCandidatureId', '==', candidatureId)
+      .limit(1)
+      .get();
+    if (!existing.empty) {
+      const existingId = existing.docs[0].id;
+      await logRef.update({ status: 'ignored', reason: 'candidate already exists', candidateId: existingId });
+      return { action: 'ignored', candidateId: existingId };
+    }
+  }
+
+  // Fetch job stages
+  const stages = await fetchJobStages(jobId, apiKey);
+  const findStage = (name: string) =>
+    stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
+
+  const ofertaEnviadaId = findStage('Oferta Enviada') ?? findStage('oferta') ?? '';
+  const documentosId = findStage(STAGE_DOCUMENTOS.value()) ?? '';
+  const onboardingId = findStage(STAGE_ONBOARDING.value()) ?? '';
+
+  // Move to "Oferta Enviada" in Viterbit
+  if (ofertaEnviadaId && candidatureId) {
+    try {
+      await moveToStage(candidatureId, ofertaEnviadaId, apiKey);
+    } catch (err) {
+      console.error('[webhook] moveToStage ofertaEnviada error:', err);
+    }
+  }
+
+  // Fetch candidate & job info
+  const [viterbitCandidate, jobTitle] = await Promise.all([
+    fetchViterbitCandidate(candidateViterbitId, apiKey),
+    fetchViterbitJobTitle(jobId, apiKey),
+  ]);
+
+  if (!viterbitCandidate) {
+    await logRef.update({ status: 'error', reason: `could not fetch candidate ${candidateViterbitId}` });
+    return { action: 'error' };
+  }
+
+  const { name: candidateName, email: candidateEmail, phone: candidatePhone } = viterbitCandidate;
+  const nameParts = candidateName.trim().split(/\s+/);
+  const firstName = nameParts[0] ?? candidateName;
+  const lastName = nameParts.slice(1).join(' ') || '';
+
+  // Find best offer template for this position
+  const templateMatch = await findOfferTemplate(jobTitle);
+
+  // Create offer token (7-day expiry)
+  const offerToken = generateToken();
+  const offerExpiresAt = new Date(Date.now() + OFFER_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+  // Create candidate in Firestore
+  const candidateRef = db.collection('candidates').doc();
+  await candidateRef.set({
+    firstName,
+    lastName,
+    email: candidateEmail,
+    phone: candidatePhone ?? null,
+    position: jobTitle,
+    status: 'offer_sent',
+    // Offer fields
+    offerToken,
+    offerExpiresAt,
+    offerTemplateId: templateMatch?.id ?? null,
+    // Documents (pre-created so they're ready after signing)
+    formToken: null,
+    formExpiresAt: null,
+    documents: buildInitialDocuments(),
+    completionPercentage: 0,
+    reminderCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdBy: 'viterbit_webhook',
+    // Viterbit
+    viterbitCandidatureId: candidatureId || null,
+    viterbitJobId: jobId,
+    viterbitStageIds: {
+      ofertaEnviada: ofertaEnviadaId,
+      documentos: documentosId,
+      onboarding: onboardingId,
+    },
+  });
+
+  // Send offer email
+  const appUrl = APP_URL.value();
+  const offerUrl = `${appUrl}/offer/${offerToken}`;
+  const offerExpiresAtStr = format(offerExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+  const { subject, html } = offerTemplate({
+    firstName,
+    lastName,
+    position: jobTitle,
+    offerUrl,
+    offerExpiresAt: offerExpiresAtStr,
+  });
+
+  const transport = await createGmailTransport();
+  await transport.sendMail({ from: getFromAddress(), to: candidateEmail, subject, html });
+
+  await db.collection('email_logs').add({
+    candidateId: candidateRef.id,
+    templateType: 'offer',
+    sentTo: candidateEmail,
+    sentAt: FieldValue.serverTimestamp(),
+    sentBy: 'viterbit_webhook',
+    success: true,
+  });
+
+  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
+  return { action: 'offer_sent', candidateId: candidateRef.id };
+}
+
+/**
+ * Candidate reached "Documentos" (moved there by signOffer, or manually):
+ * - Find existing candidate and ensure status is correct (offer_signed / invited)
+ * - If coming from offer flow, status was already updated by signOffer; just log it.
+ * - If no candidate exists (legacy / manual), create one and send documents email.
+ */
+async function handleDocumentos(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId, jobId } = parsed;
+
+  // Check if candidate already exists (came through offer flow)
+  if (candidatureId) {
+    const existing = await db
+      .collection('candidates')
+      .where('viterbitCandidatureId', '==', candidatureId)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      const existingId = existing.docs[0].id;
+      await logRef.update({ status: 'ignored', reason: 'candidate handled by signOffer flow', candidateId: existingId });
+      return { action: 'ignored', candidateId: existingId };
+    }
+  }
+
+  // No existing candidate — create one (manual / legacy path)
+  const [viterbitCandidate, jobTitle] = await Promise.all([
+    fetchViterbitCandidate(candidateViterbitId, apiKey),
+    fetchViterbitJobTitle(jobId, apiKey),
+  ]);
+
+  if (!viterbitCandidate) {
+    await logRef.update({ status: 'error', reason: `could not fetch candidate ${candidateViterbitId}` });
+    return { action: 'error' };
+  }
+
+  const { name: candidateName, email: candidateEmail, phone: candidatePhone } = viterbitCandidate;
+  const nameParts = candidateName.trim().split(/\s+/);
+  const firstName = nameParts[0] ?? candidateName;
+  const lastName = nameParts.slice(1).join(' ') || '';
+
+  const formToken = generateToken();
+  const formExpiresAt = new Date(Date.now() + OFFER_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+  const candidateRef = db.collection('candidates').doc();
+  await candidateRef.set({
+    firstName,
+    lastName,
+    email: candidateEmail,
+    phone: candidatePhone ?? null,
+    position: jobTitle,
+    status: 'invited',
+    formToken,
+    formExpiresAt,
+    documents: buildInitialDocuments(),
+    completionPercentage: 0,
+    reminderCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdBy: 'viterbit_webhook',
+    viterbitCandidatureId: candidatureId || null,
+    viterbitJobId: jobId,
+  });
+
+  const appUrl = APP_URL.value();
+  const formUrl = `${appUrl}/form/${formToken}`;
+  const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+  const { subject, html } = (await import('../email/templates')).invitationTemplate({
+    firstName,
+    lastName,
+    position: jobTitle,
+    formUrl,
+    formExpiresAt: formExpiresAtStr,
+  });
+
+  const transport = await createGmailTransport();
+  await transport.sendMail({ from: getFromAddress(), to: candidateEmail, subject, html });
+
+  await db.collection('email_logs').add({
+    candidateId: candidateRef.id,
+    templateType: 'invitation',
+    sentTo: candidateEmail,
+    sentAt: FieldValue.serverTimestamp(),
+    sentBy: 'viterbit_webhook',
+    success: true,
+  });
+
+  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
+  return { action: 'created', candidateId: candidateRef.id };
+}
+
+/**
+ * Candidate reached "Onboarding":
+ * - Find existing candidate, update status, send generic onboarding email.
+ */
+async function handleOnboarding(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId } = parsed;
+
+  let candidateRef: FirebaseFirestore.DocumentReference | null = null;
+  let candidateData: FirebaseFirestore.DocumentData | null = null;
+
+  if (candidatureId) {
+    const existing = await db
+      .collection('candidates')
+      .where('viterbitCandidatureId', '==', candidatureId)
+      .limit(1)
+      .get();
+    if (!existing.empty) {
+      candidateRef = existing.docs[0].ref;
+      candidateData = existing.docs[0].data();
+    }
+  }
+
+  // If still not found, try fetching by email from Viterbit
+  if (!candidateRef) {
+    const viterbitCandidate = await fetchViterbitCandidate(candidateViterbitId, apiKey);
+    if (viterbitCandidate) {
+      const byEmail = await db
+        .collection('candidates')
+        .where('email', '==', viterbitCandidate.email)
+        .limit(1)
+        .get();
+      if (!byEmail.empty) {
+        candidateRef = byEmail.docs[0].ref;
+        candidateData = byEmail.docs[0].data();
+      }
+    }
+  }
+
+  if (!candidateRef || !candidateData) {
+    await logRef.update({ status: 'ignored', reason: 'no candidate record found for onboarding' });
+    return { action: 'ignored' };
+  }
+
+  await candidateRef.update({
+    status: 'onboarding',
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  const { subject, html } = onboardingTemplate({
+    firstName: candidateData.firstName as string,
+    lastName: candidateData.lastName as string,
+    position: candidateData.position as string,
+  });
+
+  try {
+    const transport = await createGmailTransport();
+    await transport.sendMail({ from: getFromAddress(), to: candidateData.email as string, subject, html });
+    await db.collection('email_logs').add({
+      candidateId: candidateRef.id,
+      templateType: 'onboarding',
+      sentTo: candidateData.email,
+      sentAt: FieldValue.serverTimestamp(),
+      sentBy: 'viterbit_webhook',
+      success: true,
+    });
+  } catch (err) {
+    console.error('[webhook] onboarding email error:', err);
+  }
+
+  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
+  return { action: 'onboarding', candidateId: candidateRef.id };
+}
+
 // ─── Cloud Function ────────────────────────────────────────────────────────────
+
 export const viterbitWebhook = onRequest(
   { region: 'us-central1' },
   async (req, res) => {
@@ -143,14 +520,11 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    // Validate Viterbit signature from x-viterbit-signature header.
+    // Validate Viterbit signature
     const secret = VITERBIT_WEBHOOK_SECRET.value();
     const signature = (req.headers['x-viterbit-signature'] as string) ?? '';
-    console.log('[webhookHandler] secret configured length:', secret.length);
-    console.log('[webhookHandler] received secret length:', signature.length);
     if (secret) {
       const valid = signature ? verifyViterbitSignature(req.rawBody, signature, secret) : false;
-      console.log('[webhookHandler] signature match:', valid);
       if (!valid) {
         res.status(401).json({ ok: false, error: 'Invalid signature' });
         return;
@@ -172,22 +546,7 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    const { stageName, stageId, candidatureId, candidateViterbitId, jobId } = parsed;
-
-    // Only trigger when candidate reaches the configured hiring stage.
-    // Matches against stage name OR stage id.
-    const hiringStage = HIRING_STAGE_NAME.value().toLowerCase();
-    const isHiringStage =
-      stageName.toLowerCase().includes(hiringStage) ||
-      stageId.toLowerCase() === hiringStage;
-    if (!isHiringStage) {
-      await logRef.update({
-        status: 'ignored',
-        reason: `stage "${stageName}" (${stageId}) is not the hiring stage`,
-      });
-      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${stageName}" skipped` });
-      return;
-    }
+    const { stageName, stageId, jobId } = parsed;
 
     const apiKey = VITERBIT_API_KEY.value();
     if (!apiKey) {
@@ -196,129 +555,48 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    // Filter by allowed jobs if configured (accepts job IDs or job names, comma-separated).
+    // Filter by allowed jobs if configured
     const allowedJobs = HIRING_JOB_NAMES.value()
       .split(',')
       .map((j) => j.trim().toLowerCase())
       .filter(Boolean);
     if (allowedJobs.length > 0) {
-      // Try to match by job ID first (no extra API call needed)
-      let jobTitle = '';
       const matchesById = allowedJobs.some((allowed) => jobId.toLowerCase() === allowed);
       if (!matchesById) {
-        // Fetch job title for name-based matching
-        jobTitle = await fetchViterbitJobTitle(jobId, apiKey);
-        const matchesByName = allowedJobs.some((allowed) =>
-          jobTitle.toLowerCase().includes(allowed)
-        );
+        const jobTitle = await fetchViterbitJobTitle(jobId, apiKey);
+        const matchesByName = allowedJobs.some((allowed) => jobTitle.toLowerCase().includes(allowed));
         if (!matchesByName) {
-          await logRef.update({
-            status: 'ignored',
-            reason: `job "${jobTitle}" (${jobId}) not in allowed list`,
-          });
-          res
-            .status(200)
-            .json({ ok: true, action: 'ignored', reason: `job "${jobTitle}" not configured` });
+          await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" (${jobId}) not in allowed list` });
+          res.status(200).json({ ok: true, action: 'ignored', reason: `job "${jobId}" not configured` });
           return;
         }
       }
     }
 
-    // Fetch candidate details from Viterbit API
-    const viterbitCandidate = await fetchViterbitCandidate(candidateViterbitId, apiKey);
-    if (!viterbitCandidate) {
+    // Identify which stage was reached (by name or by ID)
+    const stageNameLower = stageName.toLowerCase();
+    const stageIdLower = stageId.toLowerCase();
+
+    const matches = (configName: string) => {
+      const cfg = configName.toLowerCase();
+      return stageNameLower.includes(cfg) || stageIdLower === cfg;
+    };
+
+    if (matches(STAGE_APROBADO.value())) {
+      const result = await handleAprobado(parsed, apiKey, logRef);
+      res.status(200).json({ ok: true, ...result });
+    } else if (matches(STAGE_DOCUMENTOS.value())) {
+      const result = await handleDocumentos(parsed, apiKey, logRef);
+      res.status(200).json({ ok: true, ...result });
+    } else if (matches(STAGE_ONBOARDING.value())) {
+      const result = await handleOnboarding(parsed, apiKey, logRef);
+      res.status(200).json({ ok: true, ...result });
+    } else {
       await logRef.update({
-        status: 'error',
-        reason: `could not fetch candidate ${candidateViterbitId} from Viterbit API`,
+        status: 'ignored',
+        reason: `stage "${stageName}" (${stageId}) not handled`,
       });
-      res.status(200).json({ ok: true, action: 'ignored', reason: 'candidate fetch failed' });
-      return;
+      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${stageName}" skipped` });
     }
-
-    const { name: candidateName, email: candidateEmail, phone: candidatePhone } = viterbitCandidate;
-
-    // Idempotency: skip if this Viterbit candidature already has a candidate record
-    if (candidatureId) {
-      const existing = await db
-        .collection('candidates')
-        .where('viterbitCandidatureId', '==', candidatureId)
-        .limit(1)
-        .get();
-
-      if (!existing.empty) {
-        await logRef.update({
-          status: 'ignored',
-          reason: 'candidate already exists',
-          candidateId: existing.docs[0].id,
-        });
-        res.status(200).json({ ok: true, action: 'ignored', reason: 'already created' });
-        return;
-      }
-    }
-
-    // Fetch job title for the invitation email
-    const jobTitle = await fetchViterbitJobTitle(jobId, apiKey);
-
-    // Split full name into first / last
-    const nameParts = candidateName.trim().split(/\s+/);
-    const firstName = nameParts[0] ?? candidateName;
-    const lastName = nameParts.slice(1).join(' ') || '';
-
-    // Create candidate document
-    const token = generateToken();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    const candidateRef = db.collection('candidates').doc();
-    await candidateRef.set({
-      firstName,
-      lastName,
-      email: candidateEmail,
-      phone: candidatePhone ?? null,
-      position: jobTitle,
-      status: 'invited',
-      formToken: token,
-      formExpiresAt: expiresAt,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      createdBy: 'viterbit_webhook',
-      documents: buildInitialDocuments(),
-      completionPercentage: 0,
-      reminderCount: 0,
-      viterbitCandidatureId: candidatureId || null,
-    });
-
-    // Send invitation email
-    const appUrl = APP_URL.value();
-    const formUrl = `${appUrl}/form/${token}`;
-    const formExpiresAt = format(expiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
-
-    const { subject, html } = invitationTemplate({
-      firstName,
-      lastName,
-      position: jobTitle,
-      formUrl,
-      formExpiresAt,
-    });
-
-    const transport = await createGmailTransport();
-    await transport.sendMail({
-      from: getFromAddress(),
-      to: candidateEmail,
-      subject,
-      html,
-    });
-
-    await db.collection('email_logs').add({
-      candidateId: candidateRef.id,
-      templateType: 'invitation',
-      sentTo: candidateEmail,
-      sentAt: FieldValue.serverTimestamp(),
-      sentBy: 'viterbit_webhook',
-      success: true,
-    });
-
-    await logRef.update({ status: 'processed', candidateId: candidateRef.id });
-
-    res.status(200).json({ ok: true, action: 'created', candidateId: candidateRef.id });
   }
 );
