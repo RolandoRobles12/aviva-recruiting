@@ -18,8 +18,10 @@ export function useCandidates() {
 
   const stats: DashboardStats = {
     total: candidates.length,
-    invited: candidates.filter((c) => c.status === 'invited').length,
-    inProgress: candidates.filter((c) => c.status === 'in_progress').length,
+    offerSent: candidates.filter((c) => c.status === 'offer_sent').length,
+    documents: candidates.filter((c) =>
+      c.status === 'offer_signed' || c.status === 'invited' || c.status === 'in_progress'
+    ).length,
     underReview: candidates.filter((c) => c.status === 'under_review').length,
     approved: candidates.filter((c) => c.status === 'approved').length,
     rejected: candidates.filter((c) => c.status === 'rejected').length,

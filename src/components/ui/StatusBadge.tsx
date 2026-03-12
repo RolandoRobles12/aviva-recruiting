@@ -1,11 +1,14 @@
 import type { CandidateStatus, DocumentStatus } from '../../types';
 
 const CANDIDATE_STATUS_CONFIG: Record<CandidateStatus, { label: string; className: string }> = {
-  invited: { label: 'Invitado', className: 'badge-pending' },
-  in_progress: { label: 'En progreso', className: 'badge-review' },
-  under_review: { label: 'En revisión', className: 'badge-review' },
-  approved: { label: 'Aprobado', className: 'badge-valid' },
-  rejected: { label: 'Rechazado', className: 'badge-invalid' },
+  offer_sent:   { label: 'Carta enviada',  className: 'badge-offer-sent' },
+  offer_signed: { label: 'Carta firmada',  className: 'badge-offer-signed' },
+  invited:      { label: 'Invitado',       className: 'badge-pending' },
+  in_progress:  { label: 'En progreso',    className: 'badge-review' },
+  under_review: { label: 'En revisión',    className: 'badge-review' },
+  approved:     { label: 'Aprobado',       className: 'badge-valid' },
+  rejected:     { label: 'Rechazado',      className: 'badge-invalid' },
+  onboarding:   { label: 'Onboarding',     className: 'badge-onboarding' },
 };
 
 const DOCUMENT_STATUS_CONFIG: Record<DocumentStatus, { label: string; className: string }> = {

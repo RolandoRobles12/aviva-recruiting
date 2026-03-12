@@ -9,10 +9,13 @@ import { es } from 'date-fns/locale';
 
 const STATUS_FILTERS: { value: CandidateStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos' },
+  { value: 'offer_sent', label: 'Carta enviada' },
+  { value: 'offer_signed', label: 'Carta firmada' },
   { value: 'invited', label: 'Invitados' },
   { value: 'in_progress', label: 'En progreso' },
   { value: 'under_review', label: 'En revisión' },
   { value: 'approved', label: 'Aprobados' },
+  { value: 'onboarding', label: 'Onboarding' },
   { value: 'rejected', label: 'Rechazados' },
 ];
 

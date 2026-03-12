@@ -12,6 +12,10 @@ import {
   ExternalLink,
   Copy,
   Check,
+  FileText,
+  DollarSign,
+  Calendar,
+  User,
 } from 'lucide-react';
 import { DOCUMENT_CONFIG, DOCUMENT_TYPES } from '../../types';
 import type { Candidate } from '../../types';
@@ -39,9 +43,11 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [notes, setNotes] = useState(c.notes ?? '');
   const [savingNotes, setSavingNotes] = useState(false);
 
-  const formUrl = `${window.location.origin}/form/${c.formToken}`;
+  const formUrl = c.formToken ? `${window.location.origin}/form/${c.formToken}` : null;
+  const offerUrl = c.offerToken ? `${window.location.origin}/offer/${c.offerToken}` : null;
 
   const copyFormLink = async () => {
+    if (!formUrl) return;
     await navigator.clipboard.writeText(formUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -133,6 +139,68 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
           </div>
         </section>
 
+        {/* Offer letter details — shown when candidate came from Viterbit */}
+        {(c.viterbitSalary || c.viterbitStartDate || c.viterbitHiringManager || c.viterbitDepartmentProfile) && (
+          <section>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Datos del puesto (Viterbit)
+            </h3>
+            <div className="space-y-2">
+              {c.viterbitDepartmentProfile && (
+                <div className="flex items-start gap-2 text-sm text-gray-700">
+                  <Briefcase size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                  <span>{c.viterbitDepartmentProfile}</span>
+                </div>
+              )}
+              {c.viterbitSalary && (
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <DollarSign size={14} className="text-gray-400 shrink-0" />
+                  <span>{c.viterbitSalary}</span>
+                </div>
+              )}
+              {c.viterbitHiringManager && (
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <User size={14} className="text-gray-400 shrink-0" />
+                  <span>{c.viterbitHiringManager}</span>
+                </div>
+              )}
+              {c.viterbitStartDate && (
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <Calendar size={14} className="text-gray-400 shrink-0" />
+                  <span>{c.viterbitStartDate}</span>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Offer letter link */}
+        {offerUrl && (
+          <section>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Carta oferta
+            </h3>
+            {c.status === 'offer_signed' && c.offerSignedAt && (
+              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-2">
+                <CheckCircle size={13} />
+                <span>Firmada el {format(c.offerSignedAt.toDate(), "d MMM yyyy", { locale: es })}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <FileText size={13} className="text-gray-400 shrink-0" />
+              <span className="text-xs text-gray-500 flex-1 truncate">{offerUrl}</span>
+              <a href={offerUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0">
+                <ExternalLink size={14} />
+              </a>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Expira: {c.offerExpiresAt?.toDate
+                ? format(c.offerExpiresAt.toDate(), "d MMM yyyy", { locale: es })
+                : '—'}
+            </p>
+          </section>
+        )}
+
         {/* Progress */}
         <section>
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
@@ -153,26 +221,28 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
           </div>
         </section>
 
-        {/* Form link */}
-        <section>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Enlace del formulario
-          </h3>
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-            <span className="text-xs text-gray-500 flex-1 truncate">{formUrl}</span>
-            <button onClick={copyFormLink} className="text-primary-600 hover:text-primary-700 shrink-0">
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-            <a href={formUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0">
-              <ExternalLink size={14} />
-            </a>
-          </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Expira: {c.formExpiresAt?.toDate
-              ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
-              : '—'}
-          </p>
-        </section>
+        {/* Form link — only shown once documents phase has started */}
+        {formUrl && (
+          <section>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Enlace del formulario
+            </h3>
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <span className="text-xs text-gray-500 flex-1 truncate">{formUrl}</span>
+              <button onClick={copyFormLink} className="text-primary-600 hover:text-primary-700 shrink-0">
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+              <a href={formUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0">
+                <ExternalLink size={14} />
+              </a>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Expira: {c.formExpiresAt?.toDate
+                ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
+                : '—'}
+            </p>
+          </section>
+        )}
 
         {/* Actions */}
         <section>

@@ -54,6 +54,18 @@
   .badge-review {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700;
   }
+
+  .badge-offer-sent {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700;
+  }
+
+  .badge-offer-signed {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700;
+  }
+
+  .badge-onboarding {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700;
+  }
 }
 
 /* ─── Rich text editor (TipTap) ──────────────────────────────────────────── */
