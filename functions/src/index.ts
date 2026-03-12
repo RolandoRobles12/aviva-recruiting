@@ -5,3 +5,4 @@ export { triggerOcrValidation, onDocumentUploaded } from './ocr/triggerOcrValida
 export { syncToGoogleDrive } from './drive/syncToGoogleDrive';
 export { syncToGoogleSheets } from './sheets/syncToGoogleSheets';
 export { viterbitWebhook } from './viterbit/webhookHandler';
+export { signOffer, getOffer } from './offer/signOffer';

@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LogOut, User, LayoutDashboard, Settings } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Settings, FileText } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 interface Props {
@@ -39,6 +39,10 @@ export function DashboardLayout({ children }: Props) {
           <NavLink to="/" end className={navClass}>
             <LayoutDashboard size={18} className="shrink-0" />
             <span className="hidden lg:block">Candidatos</span>
+          </NavLink>
+          <NavLink to="/offer-templates" className={navClass}>
+            <FileText size={18} className="shrink-0" />
+            <span className="hidden lg:block">Cartas Oferta</span>
           </NavLink>
           <NavLink to="/settings" className={navClass}>
             <Settings size={18} className="shrink-0" />

@@ -35,11 +35,14 @@ export interface OcrResult {
 // ─── Candidate ────────────────────────────────────────────────────────────────
 
 export type CandidateStatus =
-  | 'invited'       // link sent, no documents yet
+  | 'offer_sent'    // offer letter sent, pending candidate signature
+  | 'offer_signed'  // candidate signed offer, document collection active
+  | 'invited'       // documents link sent, no documents yet
   | 'in_progress'   // uploading documents
   | 'under_review'  // all documents uploaded, team reviewing
   | 'approved'      // all documents valid
-  | 'rejected';     // rejected
+  | 'rejected'      // rejected
+  | 'onboarding';   // documents complete, in onboarding
 
 export interface Candidate {
   id: string;
@@ -67,8 +70,35 @@ export interface Candidate {
   driveFolder?: DriveFolderRef;
   sheetsRowIndex?: number;
   notes?: string;
+  // Offer letter
+  offerToken?: string;
+  offerExpiresAt?: Timestamp;
+  offerSignedAt?: Timestamp;
+  offerSignatureUrl?: string;
+  offerPdfUrl?: string;
+  offerTemplateId?: string;
   // Viterbit integration
   viterbitCandidatureId?: string;
+  viterbitJobId?: string;
+  viterbitStageIds?: {
+    ofertaEnviada: string;
+    documentos: string;
+    onboarding: string;
+  };
+}
+
+// ─── Offer Templates ──────────────────────────────────────────────────────────
+
+export interface OfferTemplate {
+  id: string;
+  name: string;              // e.g. "Promotor de crédito"
+  positionKeywords: string[]; // job title substrings to auto-match (lowercase)
+  salary: string;            // e.g. "$12,000 MXN mensuales brutos"
+  benefits: string;          // e.g. "Seguro de gastos médicos, vales de despensa..."
+  startDate: string;         // e.g. "a convenir" or "15 días hábiles después de tu firma"
+  bodyHtml: string;          // HTML with {{firstName}}, {{salary}}, etc.
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface DriveFolderRef {
@@ -90,7 +120,7 @@ export interface RecruiterProfile {
 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
-export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected' | 'ocr_error';
+export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected' | 'ocr_error' | 'offer' | 'onboarding';
 
 export interface EmailLog {
   id: string;
