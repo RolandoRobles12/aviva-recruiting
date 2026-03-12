@@ -179,6 +179,35 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
+/**
+ * Fetch candidature details to resolve the current stage name.
+ * Used when Format A webhooks only provide stage_id without a name.
+ */
+async function fetchViterbitCandidatureStage(
+  candidatureId: string,
+  apiKey: string
+): Promise<{ stageId: string; stageName: string } | null> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) {
+      console.error(`[viterbit] fetchCandidatureStage ${candidatureId} → HTTP ${resp.status}`);
+      return null;
+    }
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
+    const stageId   = (currentStage.id   as string) ?? '';
+    const stageName = (currentStage.name as string) ?? '';
+    if (!stageId) return null;
+    return { stageId, stageName };
+  } catch (err) {
+    console.error('[viterbit] fetchCandidatureStage error:', err);
+    return null;
+  }
+}
+
 async function fetchViterbitCandidate(
   candidateId: string,
   apiKey: string
@@ -605,8 +634,19 @@ export const viterbitWebhook = onRequest(
       }
     }
 
+    // Format A webhooks only carry stage_id without a name.
+    // Resolve the name by fetching the candidature (recommended flow per Viterbit docs).
+    let resolvedStageName = stageName;
+    if (!resolvedStageName && parsed.candidatureId) {
+      const resolved = await fetchViterbitCandidatureStage(parsed.candidatureId, apiKey);
+      if (resolved) {
+        resolvedStageName = resolved.stageName;
+        console.info(`[webhook] resolved stage name "${resolvedStageName}" from candidature ${parsed.candidatureId}`);
+      }
+    }
+
     // Identify which stage was reached (by name or by ID)
-    const stageNameLower = stageName.toLowerCase();
+    const stageNameLower = resolvedStageName.toLowerCase();
     const stageIdLower = stageId.toLowerCase();
 
     const matches = (configName: string) => {
@@ -626,9 +666,9 @@ export const viterbitWebhook = onRequest(
     } else {
       await logRef.update({
         status: 'ignored',
-        reason: `stage "${stageName}" (${stageId}) not handled`,
+        reason: `stage "${resolvedStageName}" (${stageId}) not handled`,
       });
-      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${stageName}" skipped` });
+      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${resolvedStageName}" skipped` });
     }
   }
 );
