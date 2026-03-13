@@ -16,17 +16,21 @@ import {
   DollarSign,
   Calendar,
   User,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
-import { DOCUMENT_CONFIG, DOCUMENT_TYPES } from '../../types';
+import { DOCUMENT_TYPES } from '../../types';
 import type { Candidate } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
+import { CandidateDocumentCard } from './CandidateDocumentCard';
 import {
   sendReminderEmail,
   syncToGoogleDrive,
   syncToGoogleSheets,
 } from '../../services/functions';
-import { updateCandidateStatus, updateCandidateNotes } from '../../services/candidates';
+import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
+import { sendInvitationEmail } from '../../services/functions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -42,9 +46,15 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState(c.notes ?? '');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [extendingToken, setExtendingToken] = useState(false);
+  const [tokenExtended, setTokenExtended] = useState(false);
 
   const formUrl = c.formToken ? `${window.location.origin}/form/${c.formToken}` : null;
   const offerUrl = c.offerToken ? `${window.location.origin}/offer/${c.offerToken}` : null;
+
+  const formExpired = c.formExpiresAt?.toDate
+    ? c.formExpiresAt.toDate() < new Date()
+    : false;
 
   const copyFormLink = async () => {
     if (!formUrl) return;
@@ -82,6 +92,18 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
 
   const handleApprove = () => updateCandidateStatus(c.id, 'approved');
   const handleReject = () => updateCandidateStatus(c.id, 'rejected');
+
+  const handleExtendToken = async () => {
+    setExtendingToken(true);
+    try {
+      await extendFormToken(c.id);
+      await sendInvitationEmail({ candidateId: c.id });
+      setTokenExtended(true);
+      setTimeout(() => setTokenExtended(false), 4000);
+    } finally {
+      setExtendingToken(false);
+    }
+  };
 
   const handleSaveNotes = async () => {
     setSavingNotes(true);
@@ -203,19 +225,22 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
 
         {/* Progress */}
         <section>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Progreso de documentación
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Documentación
+            </h3>
+            <span className="text-xs text-gray-400">{c.completionPercentage}% completado</span>
+          </div>
           <ProgressBar percentage={c.completionPercentage} />
           <div className="mt-3 space-y-2">
             {DOCUMENT_TYPES.map((type) => {
               const docItem = c.documents[type];
-              const config = DOCUMENT_CONFIG[type];
               return (
-                <div key={type} className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">{config.label}</span>
-                  <StatusBadge status={docItem?.status ?? 'pending'} type="document" />
-                </div>
+                <CandidateDocumentCard
+                  key={type}
+                  type={type}
+                  doc={docItem ?? { id: type, type, status: 'pending' }}
+                />
               );
             })}
           </div>
@@ -227,7 +252,22 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Enlace del formulario
             </h3>
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+
+            {/* Expired warning */}
+            {formExpired && (
+              <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                <span>
+                  El enlace venció el{' '}
+                  {c.formExpiresAt?.toDate
+                    ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
+                    : '—'}
+                  . El candidato ya no puede subir documentos.
+                </span>
+              </div>
+            )}
+
+            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 border ${formExpired ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
               <span className="text-xs text-gray-500 flex-1 truncate">{formUrl}</span>
               <button onClick={copyFormLink} className="text-primary-600 hover:text-primary-700 shrink-0">
                 {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -236,11 +276,30 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                 <ExternalLink size={14} />
               </a>
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Expira: {c.formExpiresAt?.toDate
-                ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
-                : '—'}
-            </p>
+
+            {!formExpired && (
+              <p className="text-xs text-gray-400 mt-1">
+                Expira: {c.formExpiresAt?.toDate
+                  ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
+                  : '—'}
+              </p>
+            )}
+
+            {/* Rescue button */}
+            {formExpired && c.status !== 'approved' && c.status !== 'rejected' && (
+              <button
+                onClick={handleExtendToken}
+                disabled={extendingToken}
+                className="mt-2 w-full flex items-center justify-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-amber-700 transition-colors disabled:opacity-60"
+              >
+                <RefreshCw size={13} className={extendingToken ? 'animate-spin' : ''} />
+                {extendingToken
+                  ? 'Renovando…'
+                  : tokenExtended
+                  ? '¡Enlace renovado y enviado!'
+                  : 'Renovar enlace (+7 días) y reenviar'}
+              </button>
+            )}
           </section>
         )}
 

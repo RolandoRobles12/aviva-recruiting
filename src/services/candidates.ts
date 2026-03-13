@@ -134,6 +134,17 @@ export async function updateCandidateNotes(
   });
 }
 
+export async function extendFormToken(candidateId: string): Promise<string> {
+  const newToken = generateToken();
+  const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
+    formToken: newToken,
+    formExpiresAt: newExpiresAt,
+    updatedAt: serverTimestamp(),
+  });
+  return newToken;
+}
+
 async function recalculateCompletion(candidateId: string): Promise<void> {
   const candidate = await getCandidateById(candidateId);
   if (!candidate) return;
