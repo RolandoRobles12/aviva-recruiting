@@ -24,14 +24,16 @@ export async function updateCandidateCompletion(candidateId: string) {
 
   const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
   const docs = candidate.documents as Record<string, { status: string }>;
-  const uploaded = DOCUMENT_TYPES.filter((t) => docs[t]?.status !== 'pending').length;
-  const completionPercentage = Math.round((uploaded / DOCUMENT_TYPES.length) * 100);
+  const validCount = DOCUMENT_TYPES.filter((t) => docs[t]?.status === 'valid').length;
+  const completionPercentage = Math.round((validCount / DOCUMENT_TYPES.length) * 100);
 
   const currentStatus = candidate.status as string;
+  const allValid = validCount === DOCUMENT_TYPES.length;
+  const hasAnyUpload = DOCUMENT_TYPES.some((t) => docs[t]?.status && docs[t].status !== 'pending');
   const newStatus =
-    completionPercentage === 100
+    allValid
       ? 'under_review'
-      : currentStatus === 'invited'
+      : hasAnyUpload && currentStatus === 'invited'
       ? 'in_progress'
       : currentStatus;
 

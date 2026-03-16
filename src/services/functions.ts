@@ -14,11 +14,6 @@ export const sendReminderEmail = httpsCallable<SendReminderPayload, { success: b
   'sendReminderEmail'
 );
 
-export const triggerOcrValidation = httpsCallable<
-  { candidateId: string; documentType: string; storagePath: string },
-  { success: boolean; result: unknown }
->(functions, 'triggerOcrValidation');
-
 export const createCandidateAndInvite = httpsCallable<
   CreateCandidatePayload & { recruiterUid: string },
   { success: boolean; candidateId: string }
