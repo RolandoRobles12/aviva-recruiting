@@ -2,8 +2,9 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getCandidateById } from '../utils/candidates';
-import { createGmailTransport, getFromAddress } from './gmailClient';
+import { sendEmail } from './gmailClient';
 import { reminderTemplate } from './templates';
+import { getRecruiterEmail } from '../utils/recruiters';
 
 const DOCUMENT_LABELS: Record<string, string> = {
   ine: 'INE / Identificación oficial',
@@ -23,6 +24,8 @@ export const sendReminderEmail = onCall(
     const { candidateId } = request.data as { candidateId: string; customMessage?: string };
     const candidate = await getCandidateById(candidateId);
     if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
+
+    const senderEmail = await getRecruiterEmail(request.auth.uid);
 
     const docs = candidate.documents as Record<string, { status: string }>;
     const missingDocs = DOCUMENT_TYPES
@@ -64,12 +67,11 @@ export const sendReminderEmail = onCall(
       customBodyText
     );
 
-    const transport = await createGmailTransport();
-    await transport.sendMail({
-      from: getFromAddress(),
+    await sendEmail({
       to: candidate.email as string,
       subject,
       html,
+      senderEmail,
     });
 
     // Update reminder count and timestamp

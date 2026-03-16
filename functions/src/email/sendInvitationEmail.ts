@@ -2,10 +2,11 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getCandidateById } from '../utils/candidates';
-import { createGmailTransport, getFromAddress } from './gmailClient';
+import { sendEmail } from './gmailClient';
 import { invitationTemplate } from './templates';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { getRecruiterEmail } from '../utils/recruiters';
 
 export const sendInvitationEmail = onCall(
   { region: 'us-central1' },
@@ -15,6 +16,8 @@ export const sendInvitationEmail = onCall(
     const { candidateId } = request.data as { candidateId: string };
     const candidate = await getCandidateById(candidateId);
     if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
+
+    const senderEmail = await getRecruiterEmail(request.auth.uid);
 
     const appUrl = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
     const formUrl = `${appUrl}/form/${candidate.formToken}`;
@@ -50,12 +53,11 @@ export const sendInvitationEmail = onCall(
       customBodyText
     );
 
-    const transport = await createGmailTransport();
-    await transport.sendMail({
-      from: getFromAddress(),
+    await sendEmail({
       to: candidate.email as string,
       subject,
       html,
+      senderEmail,
     });
 
     // Log the email

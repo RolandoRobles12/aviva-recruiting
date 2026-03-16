@@ -1,8 +1,9 @@
 import * as functions from 'firebase-functions/v1';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { createGmailTransport, getFromAddress } from './gmailClient';
+import { sendEmail } from './gmailClient';
 import { reminderTemplate } from './templates';
+import { getRecruiterEmail } from '../utils/recruiters';
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 
@@ -55,7 +56,6 @@ export const scheduleReminders = functions
 
     if (snap.empty) return null;
 
-    const transport = await createGmailTransport();
     const appUrl = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
     let sent = 0;
@@ -123,11 +123,13 @@ export const scheduleReminders = functions
       );
 
       try {
-        await transport.sendMail({
-          from: getFromAddress(),
+        // Send from the recruiter who created the candidate
+        const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
+        await sendEmail({
           to: candidate.email as string,
           subject,
           html,
+          senderEmail,
         });
 
         await docSnap.ref.update({

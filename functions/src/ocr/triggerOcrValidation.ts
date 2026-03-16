@@ -4,8 +4,9 @@ import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { sendEmail } from '../email/gmailClient';
 import { ocrErrorTemplate } from '../email/templates';
+import { getRecruiterEmail } from '../utils/recruiters';
 
 const DOCUMENT_LABELS: Record<string, string> = {
   ine: 'INE / Identificación oficial',
@@ -40,12 +41,12 @@ async function notifyOcrError(
       errors
     );
 
-    const transport = await createGmailTransport();
-    await transport.sendMail({
-      from: getFromAddress(),
+    const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
+    await sendEmail({
       to: candidate.email as string,
       subject,
       html,
+      senderEmail,
     });
 
     await db.collection('email_logs').add({
