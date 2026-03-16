@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getCandidateById } from '../utils/candidates';
-import { sendEmail, getFromAddress } from './gmailClient';
+import { createGmailTransport, getFromAddress } from './gmailClient';
 import { reminderTemplate } from './templates';
 
 const DOCUMENT_LABELS: Record<string, string> = {
@@ -64,7 +64,8 @@ export const sendReminderEmail = onCall(
       customBodyText
     );
 
-    await sendEmail({
+    const transport = await createGmailTransport();
+    await transport.sendMail({
       from: getFromAddress(),
       to: candidate.email as string,
       subject,
