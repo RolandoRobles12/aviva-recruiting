@@ -4,12 +4,13 @@ import {
   UserPlus,
   Clock,
   CheckCircle,
-  LayoutDashboard,
   FileSignature,
   FolderOpen,
+  FileText,
+  Mail,
+  GraduationCap,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { StatsCard } from '../components/dashboard/StatsCard';
 import { CandidateTable } from '../components/dashboard/CandidateTable';
 import { CandidateDetailPanel } from '../components/dashboard/CandidateDetailPanel';
 import { CreateCandidateModal } from '../components/dashboard/CreateCandidateModal';
@@ -21,63 +22,49 @@ export function DashboardPage() {
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
+  // Extended stats computed from candidates
+  const contractStats = {
+    contractSent: candidates.filter((c) => c.status === 'contract_sent').length,
+    contractSigned: candidates.filter((c) => c.status === 'contract_signed').length,
+    emailPending: candidates.filter((c) => c.status === 'email_pending').length,
+    induction: candidates.filter((c) => c.status === 'induction').length,
+  };
+
   return (
     <DashboardLayout>
       <div className="h-full flex flex-col">
-        {/* Stats Row */}
-        <div className="px-6 py-4 border-b border-gray-100 bg-white">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <LayoutDashboard size={18} className="text-primary-600" />
-              <h2 className="text-base font-semibold text-gray-900">Dashboard</h2>
-            </div>
+        {/* Header + Stats */}
+        <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-gray-900">Candidatos</h2>
             <button
               onClick={() => setShowCreate(true)}
-              className="btn-primary flex items-center gap-2 text-sm"
+              className="btn-primary flex items-center gap-2 text-sm py-1.5 px-3"
             >
-              <UserPlus size={15} />
+              <UserPlus size={14} />
               Nuevo candidato
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <StatsCard
-              label="Total"
-              value={stats.total}
-              icon={<Users size={20} className="text-gray-600" />}
-              color="bg-gray-100"
-            />
-            <StatsCard
-              label="Carta oferta"
-              value={stats.offerSent}
-              icon={<FileSignature size={20} className="text-purple-600" />}
-              color="bg-purple-100"
-            />
-            <StatsCard
-              label="Documentos"
-              value={stats.documents}
-              icon={<FolderOpen size={20} className="text-yellow-600" />}
-              color="bg-yellow-100"
-            />
-            <StatsCard
-              label="En revisión"
-              value={stats.underReview}
-              icon={<Clock size={20} className="text-primary-700" />}
-              color="bg-primary-100"
-            />
-            <StatsCard
-              label="Aprobados"
-              value={stats.approved}
-              icon={<CheckCircle size={20} className="text-primary-600" />}
-              color="bg-primary-100"
-            />
+          {/* Compact stat chips */}
+          <div className="flex flex-wrap gap-2">
+            <StatChip icon={<Users size={13} />} label="Total" value={stats.total} color="gray" />
+            <StatChip icon={<FileSignature size={13} />} label="Carta oferta" value={stats.offerSent} color="purple" />
+            <StatChip icon={<FolderOpen size={13} />} label="Documentos" value={stats.documents} color="amber" />
+            <StatChip icon={<Clock size={13} />} label="Revisión" value={stats.underReview} color="blue" />
+            <StatChip icon={<CheckCircle size={13} />} label="Aprobados" value={stats.approved} color="green" />
+            <StatChip icon={<FileText size={13} />} label="Contrato" value={contractStats.contractSent + contractStats.contractSigned} color="indigo" />
+            <StatChip icon={<Mail size={13} />} label="Correos" value={contractStats.emailPending} color="teal" />
+            <StatChip icon={<GraduationCap size={13} />} label="Inducción" value={contractStats.induction} color="rose" />
           </div>
         </div>
 
-        {/* Main Content */}
+        {/* Main Content — full-width split */}
         <div className="flex-1 overflow-hidden flex">
           {/* Candidate List */}
-          <div className={`border-r border-gray-100 bg-white flex flex-col ${selected ? 'hidden lg:flex lg:w-96' : 'flex-1'}`}>
+          <div className={`border-r border-gray-100 bg-white flex flex-col ${
+            selected ? 'hidden lg:flex lg:w-[380px] xl:w-[420px]' : 'flex-1'
+          }`}>
             {loading ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
@@ -100,10 +87,13 @@ export function DashboardPage() {
               />
             </div>
           ) : (
-            <div className="hidden lg:flex flex-1 items-center justify-center bg-gray-50">
+            <div className="hidden lg:flex flex-1 items-center justify-center bg-gray-50/50">
               <div className="text-center">
-                <Users size={48} className="mx-auto text-gray-200 mb-3" />
-                <p className="text-sm text-gray-400">Selecciona un candidato para ver su detalle</p>
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Users size={28} className="text-gray-300" />
+                </div>
+                <p className="text-sm text-gray-400 font-medium">Selecciona un candidato</p>
+                <p className="text-xs text-gray-300 mt-1">para ver su detalle completo</p>
               </div>
             </div>
           )}
@@ -112,5 +102,33 @@ export function DashboardPage() {
 
       <CreateCandidateModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
     </DashboardLayout>
+  );
+}
+
+/* ─── Compact stat chip ──────────────────────────────────────────────────── */
+
+const CHIP_COLORS: Record<string, string> = {
+  gray:   'bg-gray-100 text-gray-700',
+  purple: 'bg-purple-50 text-purple-700',
+  amber:  'bg-amber-50 text-amber-700',
+  blue:   'bg-blue-50 text-blue-700',
+  green:  'bg-green-50 text-green-700',
+  indigo: 'bg-indigo-50 text-indigo-700',
+  teal:   'bg-teal-50 text-teal-700',
+  rose:   'bg-rose-50 text-rose-700',
+};
+
+function StatChip({ icon, label, value, color }: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${CHIP_COLORS[color] ?? CHIP_COLORS.gray}`}>
+      {icon}
+      <span>{label}</span>
+      <span className="font-bold">{value}</span>
+    </div>
   );
 }
