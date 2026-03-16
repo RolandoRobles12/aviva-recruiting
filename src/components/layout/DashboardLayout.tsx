@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LogOut, User, LayoutDashboard, Settings, FileText } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Settings, FileText, FileSignature } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 }
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+  `flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
     isActive
       ? 'bg-primary-50 text-primary-700'
       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -35,19 +35,37 @@ export function DashboardLayout({ children }: Props) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-4 px-2 lg:px-3 space-y-1">
-          <NavLink to="/" end className={navClass}>
-            <LayoutDashboard size={18} className="shrink-0" />
-            <span className="hidden lg:block">Candidatos</span>
-          </NavLink>
-          <NavLink to="/offer-templates" className={navClass}>
-            <FileText size={18} className="shrink-0" />
-            <span className="hidden lg:block">Cartas Oferta</span>
-          </NavLink>
-          <NavLink to="/settings" className={navClass}>
-            <Settings size={18} className="shrink-0" />
-            <span className="hidden lg:block">Configuración</span>
-          </NavLink>
+        <nav className="flex-1 py-4 px-2 lg:px-3 space-y-5">
+          {/* Main */}
+          <div className="space-y-1">
+            <p className="hidden lg:block px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Principal</p>
+            <NavLink to="/" end className={navClass}>
+              <LayoutDashboard size={18} className="shrink-0" />
+              <span className="hidden lg:block">Candidatos</span>
+            </NavLink>
+          </div>
+
+          {/* Templates */}
+          <div className="space-y-1">
+            <p className="hidden lg:block px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Templates</p>
+            <NavLink to="/offer-templates" className={navClass}>
+              <FileSignature size={18} className="shrink-0" />
+              <span className="hidden lg:block">Cartas Oferta</span>
+            </NavLink>
+            <NavLink to="/contract-templates" className={navClass}>
+              <FileText size={18} className="shrink-0" />
+              <span className="hidden lg:block">Contratos</span>
+            </NavLink>
+          </div>
+
+          {/* Admin */}
+          <div className="space-y-1">
+            <p className="hidden lg:block px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Admin</p>
+            <NavLink to="/settings" className={navClass}>
+              <Settings size={18} className="shrink-0" />
+              <span className="hidden lg:block">Configuración</span>
+            </NavLink>
+          </div>
         </nav>
 
         {/* User */}
