@@ -178,7 +178,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     if (htmlToTemplate(editor.getHTML()) !== value) {
-      editor.commands.setContent(templateToHtml(value), false);
+      editor.commands.setContent(templateToHtml(value), { emitUpdate: false });
     }
   }, [value, editor]);
 
@@ -221,7 +221,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       if (unknown.length > 0) setDocxWarning(unknown);
       // Convert {{variable}} patterns to colored chips
       const htmlWithChips = templateToHtml(result.value);
-      editor.commands.setContent(htmlWithChips, true);
+      editor.commands.setContent(htmlWithChips, { emitUpdate: true });
       onChange(htmlToTemplate(editor.getHTML()));
     } finally {
       setImporting(false);
@@ -230,7 +230,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   if (!editor) return null;
 
-  const visibleVariables = VARIABLES.filter((v) => !v.hidden);
+  const visibleVariables = VARIABLES.filter((v) => !('hidden' in v && v.hidden));
 
   return (
     <div className="flex flex-col border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent h-full">
