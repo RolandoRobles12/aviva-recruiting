@@ -1,37 +1,37 @@
-import { google } from 'googleapis';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { defineString } from 'firebase-functions/params';
 
-// Firebase config parameters — set with: firebase functions:config:set
-const GMAIL_CLIENT_ID = defineString('GMAIL_CLIENT_ID');
-const GMAIL_CLIENT_SECRET = defineString('GMAIL_CLIENT_SECRET');
-const GMAIL_REFRESH_TOKEN = defineString('GMAIL_REFRESH_TOKEN');
-const GMAIL_USER = defineString('GMAIL_USER');
+const RESEND_API_KEY = defineString('RESEND_API_KEY');
+const EMAIL_FROM = defineString('EMAIL_FROM');
 
-export async function createGmailTransport() {
-  const oAuth2Client = new google.auth.OAuth2(
-    GMAIL_CLIENT_ID.value(),
-    GMAIL_CLIENT_SECRET.value(),
-    'https://developers.google.com/oauthplayground'
-  );
+let resendInstance: Resend | null = null;
 
-  oAuth2Client.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN.value() });
+function getResend(): Resend {
+  if (!resendInstance) {
+    resendInstance = new Resend(RESEND_API_KEY.value());
+  }
+  return resendInstance;
+}
 
-  const accessToken = await oAuth2Client.getAccessToken();
-
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: GMAIL_USER.value(),
-      clientId: GMAIL_CLIENT_ID.value(),
-      clientSecret: GMAIL_CLIENT_SECRET.value(),
-      refreshToken: GMAIL_REFRESH_TOKEN.value(),
-      accessToken: accessToken.token ?? '',
-    },
+export async function sendEmail(options: {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const resend = getResend();
+  const { error } = await resend.emails.send({
+    from: options.from,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
   });
+
+  if (error) {
+    throw new Error(`Error sending email: ${error.message}`);
+  }
 }
 
 export function getFromAddress(): string {
-  return `Aviva Recruiting <${GMAIL_USER.value()}>`;
+  return EMAIL_FROM.value();
 }

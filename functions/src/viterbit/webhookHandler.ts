@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { sendEmail, getFromAddress } from '../email/gmailClient';
 import { offerTemplate, onboardingTemplate } from '../email/templates';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
@@ -382,8 +382,7 @@ async function handleAprobado(
     offerExpiresAt: offerExpiresAtStr,
   });
 
-  const transport = await createGmailTransport();
-  await transport.sendMail({ from: getFromAddress(), to: candidateEmail, subject, html });
+  await sendEmail({ from: getFromAddress(), to: candidateEmail, subject, html });
 
   await db.collection('email_logs').add({
     candidateId: candidateRef.id,
@@ -478,8 +477,7 @@ async function handleDocumentos(
     formExpiresAt: formExpiresAtStr,
   });
 
-  const transport = await createGmailTransport();
-  await transport.sendMail({ from: getFromAddress(), to: candidateEmail, subject, html });
+  await sendEmail({ from: getFromAddress(), to: candidateEmail, subject, html });
 
   await db.collection('email_logs').add({
     candidateId: candidateRef.id,
@@ -553,8 +551,7 @@ async function handleOnboarding(
   });
 
   try {
-    const transport = await createGmailTransport();
-    await transport.sendMail({ from: getFromAddress(), to: candidateData.email as string, subject, html });
+    await sendEmail({ from: getFromAddress(), to: candidateData.email as string, subject, html });
     await db.collection('email_logs').add({
       candidateId: candidateRef.id,
       templateType: 'onboarding',

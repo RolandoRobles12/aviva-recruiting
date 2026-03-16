@@ -4,7 +4,7 @@ import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { sendEmail, getFromAddress } from '../email/gmailClient';
 import { ocrErrorTemplate } from '../email/templates';
 
 const DOCUMENT_LABELS: Record<string, string> = {
@@ -40,8 +40,7 @@ async function notifyOcrError(
       errors
     );
 
-    const transport = await createGmailTransport();
-    await transport.sendMail({
+    await sendEmail({
       from: getFromAddress(),
       to: candidate.email as string,
       subject,

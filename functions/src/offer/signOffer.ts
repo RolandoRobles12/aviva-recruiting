@@ -5,7 +5,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { sendEmail, getFromAddress } from '../email/gmailClient';
 import { invitationTemplate } from '../email/templates';
 import { generateOfferPdf, stripHtml } from './pdfGenerator';
 
@@ -191,8 +191,7 @@ export const signOffer = onRequest(
     });
 
     try {
-      const transport = await createGmailTransport();
-      await transport.sendMail({
+      await sendEmail({
         from: getFromAddress(),
         to: candidate.email as string,
         subject,

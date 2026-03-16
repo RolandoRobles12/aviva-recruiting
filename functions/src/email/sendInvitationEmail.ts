@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getCandidateById } from '../utils/candidates';
-import { createGmailTransport, getFromAddress } from './gmailClient';
+import { sendEmail, getFromAddress } from './gmailClient';
 import { invitationTemplate } from './templates';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -50,8 +50,7 @@ export const sendInvitationEmail = onCall(
       customBodyText
     );
 
-    const transport = await createGmailTransport();
-    await transport.sendMail({
+    await sendEmail({
       from: getFromAddress(),
       to: candidate.email as string,
       subject,
