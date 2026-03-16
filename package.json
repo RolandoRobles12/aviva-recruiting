@@ -21,6 +21,7 @@
     "axios": "^1.13.5",
     "date-fns": "^4.1.0",
     "firebase": "^12.9.0",
+    "firebase-functions": "^7.1.1",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
     "react": "^19.2.0",
