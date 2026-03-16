@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, ChevronRight, Users } from 'lucide-react';
+import { Search, Users } from 'lucide-react';
 import type { Candidate, CandidateStatus } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
@@ -46,8 +46,8 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Filters */}
-      <div className="p-4 border-b border-gray-100 space-y-3">
-        <div className="relative">
+      <div className="px-5 py-3 border-b border-gray-100 space-y-3 shrink-0">
+        <div className="relative max-w-md">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
@@ -56,7 +56,7 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
             className="input-field pl-9 text-sm"
           />
         </div>
-        <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
@@ -73,7 +73,7 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
         </div>
       </div>
 
-      {/* List */}
+      {/* Table */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <EmptyState
@@ -86,52 +86,72 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
             }
           />
         ) : (
-          <ul className="divide-y divide-gray-50">
-            {filtered.map((c) => {
-              const createdAt = c.createdAt?.toDate?.();
-              return (
-                <li key={c.id}>
-                  <button
+          <table className="w-full">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gray-50 border-b border-gray-100 text-left">
+                <th className="px-5 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Candidato</th>
+                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Puesto</th>
+                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Documentos</th>
+                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
+                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Fecha</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map((c) => {
+                const createdAt = c.createdAt?.toDate?.();
+                return (
+                  <tr
+                    key={c.id}
                     onClick={() => onSelect(c)}
-                    className={`w-full text-left px-4 py-3.5 hover:bg-gray-50 transition-colors flex items-center gap-3 ${
-                      selectedId === c.id ? 'bg-primary-50 border-l-2 border-primary-500' : ''
+                    className={`cursor-pointer transition-colors hover:bg-gray-50 ${
+                      selectedId === c.id ? 'bg-primary-50' : ''
                     }`}
                   >
-                    {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
-                      <span className="text-primary-700 text-sm font-semibold">
-                        {c.firstName[0]}{c.lastName[0]}
-                      </span>
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {c.firstName} {c.lastName}
-                        </p>
-                        <StatusBadge status={c.status} type="candidate" />
-                      </div>
-                      <p className="text-xs text-gray-500 truncate">{c.position}</p>
-                      <div className="mt-1.5">
-                        <ProgressBar percentage={c.completionPercentage} showLabel={false} size="sm" />
-                      </div>
-                      <div className="flex items-center justify-between mt-0.5">
-                        <p className="text-xs text-gray-400 truncate">{c.email}</p>
-                        {createdAt && (
-                          <p className="text-xs text-gray-400 shrink-0">
-                            {format(createdAt, 'd MMM', { locale: es })}
+                    {/* Candidate */}
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
+                          <span className="text-primary-700 text-xs font-semibold">
+                            {c.firstName[0]}{c.lastName[0]}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {c.firstName} {c.lastName}
                           </p>
-                        )}
+                          <p className="text-xs text-gray-400 truncate">{c.email}</p>
+                        </div>
                       </div>
-                    </div>
+                    </td>
 
-                    <ChevronRight size={14} className="text-gray-300 shrink-0" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                    {/* Position */}
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <p className="text-sm text-gray-600 truncate max-w-[200px]">{c.position}</p>
+                    </td>
+
+                    {/* Documents progress */}
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <div className="w-32">
+                        <ProgressBar percentage={c.completionPercentage} size="sm" />
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-4 py-3">
+                      <StatusBadge status={c.status} type="candidate" />
+                    </td>
+
+                    {/* Date */}
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      <span className="text-xs text-gray-400">
+                        {createdAt ? format(createdAt, 'd MMM', { locale: es }) : '—'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

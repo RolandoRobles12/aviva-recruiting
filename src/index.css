@@ -158,3 +158,14 @@
 .var-amber  { background-color: #fef3c7; color: #b45309; border-color: #fde68a; } /* benefits */
 .var-rose   { background-color: #ffe4e6; color: #be123c; border-color: #fecdd3; } /* startDate */
 .var-gray   { background-color: #f3f4f6; color: #6b7280; border-color: #e5e7eb; } /* unknown/imported */
+
+/* ─── Slide-over drawer animation ────────────────────────────────────── */
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}

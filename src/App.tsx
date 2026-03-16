@@ -9,6 +9,7 @@ import { OfferPage } from './pages/OfferPage';
 import { ContractPage } from './pages/ContractPage';
 import { OfferTemplatesPage } from './pages/OfferTemplatesPage';
 import { ContractTemplatesPage } from './pages/ContractTemplatesPage';
+import { DocumentsPage } from './pages/DocumentsPage';
 
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -64,6 +65,16 @@ export default function App() {
           element={
             <PrivateRoute>
               <OfferTemplatesPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Private: documents */}
+        <Route
+          path="/documents"
+          element={
+            <PrivateRoute>
+              <DocumentsPage />
             </PrivateRoute>
           }
         />

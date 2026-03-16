@@ -22,7 +22,6 @@ export function DashboardPage() {
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  // Extended stats computed from candidates
   const contractStats = {
     contractSent: candidates.filter((c) => c.status === 'contract_sent').length,
     contractSigned: candidates.filter((c) => c.status === 'contract_signed').length,
@@ -46,7 +45,6 @@ export function DashboardPage() {
             </button>
           </div>
 
-          {/* Compact stat chips */}
           <div className="flex flex-wrap gap-2">
             <StatChip icon={<Users size={13} />} label="Total" value={stats.total} color="gray" />
             <StatChip icon={<FileSignature size={13} />} label="Carta oferta" value={stats.offerSent} color="purple" />
@@ -59,46 +57,39 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Main Content — full-width split */}
-        <div className="flex-1 overflow-hidden flex">
-          {/* Candidate List */}
-          <div className={`border-r border-gray-100 bg-white flex flex-col ${
-            selected ? 'hidden lg:flex lg:w-[380px] xl:w-[420px]' : 'flex-1'
-          }`}>
-            {loading ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <CandidateTable
-                candidates={candidates}
-                onSelect={setSelected}
-                selectedId={selected?.id}
-              />
-            )}
-          </div>
-
-          {/* Detail Panel */}
-          {selected ? (
-            <div className="flex-1 bg-white overflow-hidden flex flex-col">
-              <CandidateDetailPanel
-                candidate={selected}
-                onClose={() => setSelected(null)}
-              />
+        {/* Full-width candidate list */}
+        <div className="flex-1 overflow-hidden bg-white">
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center h-full">
+              <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <div className="hidden lg:flex flex-1 items-center justify-center bg-gray-50/50">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Users size={28} className="text-gray-300" />
-                </div>
-                <p className="text-sm text-gray-400 font-medium">Selecciona un candidato</p>
-                <p className="text-xs text-gray-300 mt-1">para ver su detalle completo</p>
-              </div>
-            </div>
+            <CandidateTable
+              candidates={candidates}
+              onSelect={setSelected}
+              selectedId={selected?.id}
+            />
           )}
         </div>
       </div>
+
+      {/* ── Slide-over drawer ──────────────────────────────────────────────── */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/30 transition-opacity"
+            onClick={() => setSelected(null)}
+          />
+          {/* Panel */}
+          <div className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col animate-slide-in-right">
+            <CandidateDetailPanel
+              candidate={selected}
+              onClose={() => setSelected(null)}
+            />
+          </div>
+        </div>
+      )}
 
       <CreateCandidateModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
     </DashboardLayout>
