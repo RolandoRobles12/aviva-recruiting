@@ -66,9 +66,6 @@ export interface Candidate {
   // Follow-up emails
   lastReminderSentAt?: Timestamp;
   reminderCount: number;
-  // Integrations
-  driveFolder?: DriveFolderRef;
-  sheetsRowIndex?: number;
   notes?: string;
   // Offer letter
   offerToken?: string;
@@ -106,12 +103,6 @@ export interface OfferTemplate {
   bodyHtml: string;           // HTML with {{variable}} placeholders
   createdAt: Timestamp;
   updatedAt: Timestamp;
-}
-
-export interface DriveFolderRef {
-  folderId: string;
-  folderUrl: string;
-  createdAt: Timestamp;
 }
 
 // ─── Recruiter / Auth ─────────────────────────────────────────────────────────
