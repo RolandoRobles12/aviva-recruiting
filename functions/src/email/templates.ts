@@ -254,6 +254,148 @@ export function onboardingTemplate(c: {
   };
 }
 
+export function contractTemplate(c: {
+  firstName: string;
+  lastName: string;
+  position: string;
+  contractUrl: string;
+  contractExpiresAt: string;
+}): { subject: string; html: string } {
+  return {
+    subject: `Aviva | Tu contrato laboral está listo para firmar — ${c.position}`,
+    html: `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+        <!-- Header -->
+        <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
+          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
+          </div>
+          <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">Contrato de Trabajo</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">${c.position}</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:36px 40px;">
+          <p style="color:#374151;font-size:15px;margin:0 0 16px;">Hola <strong>${c.firstName}</strong>,</p>
+          <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px;">
+            Tu contrato laboral para el puesto de <strong>${c.position}</strong> está listo.
+            Por favor léelo con atención y fírmalo digitalmente desde cualquier dispositivo.
+            Tu firma electrónica simple tiene validez legal conforme a la legislación mexicana.
+          </p>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-bottom:24px;">
+            <p style="color:#15803d;font-size:13px;font-weight:600;margin:0 0 6px;">Firma electrónica simple (FES)</p>
+            <p style="color:#166534;font-size:12px;margin:0;line-height:1.5;">
+              Tu firma será registrada con evidencia criptográfica (SHA-256), IP, fecha/hora y certificado de firma.
+            </p>
+          </div>
+          <!-- CTA Button -->
+          <div style="text-align:center;margin:28px 0;">
+            <a href="${c.contractUrl}" style="background:#16b877;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;display:inline-block;">
+              Ver y firmar contrato →
+            </a>
+          </div>
+          <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">
+            Este enlace es personal e intransferible. Expira el <strong>${c.contractExpiresAt}</strong>.
+          </p>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">
+            Si tienes dudas, responde a este correo o contacta a tu reclutador.<br>
+            © ${new Date().getFullYear()} Aviva · Equipo de Reclutamiento
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  };
+}
+
+export function inductionTemplate(c: {
+  firstName: string;
+  lastName: string;
+  position: string;
+  corporateEmail: string;
+}): { subject: string; html: string } {
+  return {
+    subject: `Aviva | Tus cuentas están listas — Inducción y capacitación`,
+    html: `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+        <!-- Header -->
+        <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
+          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
+          </div>
+          <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">¡Todo listo, ${c.firstName}!</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Inducción y Capacitación · ${c.position}</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:36px 40px;">
+          <p style="color:#374151;font-size:15px;margin:0 0 16px;">Hola <strong>${c.firstName}</strong>,</p>
+          <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px;">
+            Tus cuentas corporativas han sido creadas. A continuación encontrarás la información
+            que necesitas para comenzar tu capacitación e inducción.
+          </p>
+
+          <!-- Corporate email -->
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:20px;">
+            <p style="color:#1e40af;font-size:13px;font-weight:600;margin:0 0 6px;">Tu correo corporativo</p>
+            <p style="color:#1e3a5f;font-size:16px;font-weight:700;margin:0;">${c.corporateEmail}</p>
+          </div>
+
+          <!-- Accounts info -->
+          <div style="background:#f8fafc;border-radius:12px;padding:20px;margin-bottom:24px;">
+            <p style="color:#374151;font-size:13px;font-weight:600;margin:0 0 12px;">Cuentas creadas:</p>
+            <ul style="margin:0;padding-left:20px;color:#6b7280;font-size:13px;line-height:2.2;">
+              <li><strong>Correo corporativo:</strong> ${c.corporateEmail}</li>
+              <li><strong>HubSpot:</strong> Se creó tu usuario con tu correo corporativo</li>
+              <li><strong>Slack:</strong> Revisa tu correo corporativo para la invitación</li>
+            </ul>
+          </div>
+
+          <!-- Induction steps -->
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;margin-bottom:24px;">
+            <p style="color:#15803d;font-size:13px;font-weight:600;margin:0 0 12px;">Pasos de inducción:</p>
+            <ol style="margin:0;padding-left:20px;color:#166534;font-size:13px;line-height:2.2;">
+              <li>Inicia sesión en tu correo corporativo con las credenciales que te compartirá IT</li>
+              <li>Acepta la invitación de Slack y únete a los canales de tu equipo</li>
+              <li>Inicia sesión en HubSpot con tu correo corporativo</li>
+              <li>Tu reclutador o líder de equipo te contactará para coordinar tu primer día</li>
+            </ol>
+          </div>
+
+          <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;">
+            Si tienes problemas con el acceso a cualquiera de tus cuentas, responde a este correo
+            o contacta al equipo de IT.
+          </p>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">
+            © ${new Date().getFullYear()} Aviva · Equipo de Reclutamiento
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  };
+}
+
 export function reminderTemplate(
   c: CandidateInfo,
   missingDocs: string[],

@@ -14,7 +14,6 @@ import type { DocumentType, CandidateDocument } from '../../types';
 import { DOCUMENT_CONFIG } from '../../types';
 import { uploadDocument } from '../../services/storage';
 import { updateCandidateDocumentStatus } from '../../services/candidates';
-import { triggerOcrValidation } from '../../services/functions';
 import { Timestamp } from 'firebase/firestore';
 
 interface Props {
@@ -63,6 +62,8 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
         );
 
         // 2. Update Firestore with upload info
+        // The storage trigger (onDocumentUploaded) will automatically
+        // validate the document with Claude and update the status.
         await updateCandidateDocumentStatus(candidateId, documentType, {
           id: documentType,
           type: documentType,
@@ -72,9 +73,6 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
           downloadUrl,
           uploadedAt: Timestamp.now(),
         });
-
-        // 3. Trigger OCR validation via Cloud Function
-        await triggerOcrValidation({ candidateId, documentType, storagePath });
       } catch (err) {
         setLocalError('Error al subir el archivo. Intenta de nuevo.');
         console.error(err);

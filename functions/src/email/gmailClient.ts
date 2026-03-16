@@ -1,37 +1,59 @@
 import { google } from 'googleapis';
-import * as nodemailer from 'nodemailer';
 import { defineString } from 'firebase-functions/params';
 
-// Firebase config parameters — set with: firebase functions:config:set
-const GMAIL_CLIENT_ID = defineString('GMAIL_CLIENT_ID');
-const GMAIL_CLIENT_SECRET = defineString('GMAIL_CLIENT_SECRET');
-const GMAIL_REFRESH_TOKEN = defineString('GMAIL_REFRESH_TOKEN');
-const GMAIL_USER = defineString('GMAIL_USER');
+// Service account credentials (JSON key file path or inline values)
+const GMAIL_SA_CLIENT_EMAIL = defineString('GMAIL_SA_CLIENT_EMAIL');
+const GMAIL_SA_PRIVATE_KEY = defineString('GMAIL_SA_PRIVATE_KEY');
+const GMAIL_DEFAULT_SENDER = defineString('GMAIL_DEFAULT_SENDER');
 
-export async function createGmailTransport() {
-  const oAuth2Client = new google.auth.OAuth2(
-    GMAIL_CLIENT_ID.value(),
-    GMAIL_CLIENT_SECRET.value(),
-    'https://developers.google.com/oauthplayground'
-  );
+/**
+ * Send an email via Gmail API using a Service Account with Domain-Wide Delegation.
+ *
+ * The service account impersonates `senderEmail` so the email is sent from
+ * that recruiter's actual Gmail inbox (appears in their Sent folder).
+ *
+ * If no senderEmail is provided, falls back to GMAIL_DEFAULT_SENDER.
+ */
+export async function sendEmail(options: {
+  to: string;
+  subject: string;
+  html: string;
+  senderEmail?: string;
+}): Promise<void> {
+  const sender = options.senderEmail || GMAIL_DEFAULT_SENDER.value();
 
-  oAuth2Client.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN.value() });
+  const auth = new google.auth.JWT({
+    email: GMAIL_SA_CLIENT_EMAIL.value(),
+    key: GMAIL_SA_PRIVATE_KEY.value().replace(/\\n/g, '\n'),
+    scopes: ['https://www.googleapis.com/auth/gmail.send'],
+    subject: sender, // impersonate this user
+  });
 
-  const accessToken = await oAuth2Client.getAccessToken();
+  const gmail = google.gmail({ version: 'v1', auth });
 
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: GMAIL_USER.value(),
-      clientId: GMAIL_CLIENT_ID.value(),
-      clientSecret: GMAIL_CLIENT_SECRET.value(),
-      refreshToken: GMAIL_REFRESH_TOKEN.value(),
-      accessToken: accessToken.token ?? '',
-    },
+  // Build RFC 2822 email
+  const messageParts = [
+    `From: ${sender}`,
+    `To: ${options.to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(options.subject).toString('base64')}?=`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    options.html,
+  ];
+  const rawMessage = messageParts.join('\r\n');
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw: encodedMessage },
   });
 }
 
 export function getFromAddress(): string {
-  return `Aviva Recruiting <${GMAIL_USER.value()}>`;
+  return GMAIL_DEFAULT_SENDER.value();
 }

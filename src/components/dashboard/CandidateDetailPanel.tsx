@@ -4,8 +4,6 @@ import {
   Mail,
   Phone,
   Briefcase,
-  FolderOpen,
-  FileSpreadsheet,
   Send,
   CheckCircle,
   XCircle,
@@ -26,8 +24,6 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { CandidateDocumentCard } from './CandidateDocumentCard';
 import {
   sendReminderEmail,
-  syncToGoogleDrive,
-  syncToGoogleSheets,
 } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
 import { sendInvitationEmail } from '../../services/functions';
@@ -41,8 +37,6 @@ interface Props {
 
 export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [sendingReminder, setSendingReminder] = useState(false);
-  const [syncingDrive, setSyncingDrive] = useState(false);
-  const [syncingSheets, setSyncingSheets] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState(c.notes ?? '');
   const [savingNotes, setSavingNotes] = useState(false);
@@ -69,24 +63,6 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
       await sendReminderEmail({ candidateId: c.id });
     } finally {
       setSendingReminder(false);
-    }
-  };
-
-  const handleSyncDrive = async () => {
-    setSyncingDrive(true);
-    try {
-      await syncToGoogleDrive({ candidateId: c.id });
-    } finally {
-      setSyncingDrive(false);
-    }
-  };
-
-  const handleSyncSheets = async () => {
-    setSyncingSheets(true);
-    try {
-      await syncToGoogleSheets({ candidateId: c.id });
-    } finally {
-      setSyncingSheets(false);
     }
   };
 
@@ -318,35 +294,6 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               {sendingReminder ? 'Enviando...' : 'Enviar recordatorio por email'}
             </button>
 
-            <button
-              onClick={handleSyncDrive}
-              disabled={syncingDrive || c.completionPercentage === 0}
-              className="w-full btn-secondary text-sm flex items-center justify-center gap-2"
-            >
-              <FolderOpen size={14} />
-              {syncingDrive ? 'Sincronizando...' : 'Sincronizar a Google Drive'}
-            </button>
-
-            {c.driveFolder && (
-              <a
-                href={c.driveFolder.folderUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full btn-secondary text-sm flex items-center justify-center gap-2"
-              >
-                <ExternalLink size={14} />
-                Abrir carpeta en Drive
-              </a>
-            )}
-
-            <button
-              onClick={handleSyncSheets}
-              disabled={syncingSheets}
-              className="w-full btn-secondary text-sm flex items-center justify-center gap-2"
-            >
-              <FileSpreadsheet size={14} />
-              {syncingSheets ? 'Sincronizando...' : 'Actualizar Google Sheets'}
-            </button>
           </div>
         </section>
 

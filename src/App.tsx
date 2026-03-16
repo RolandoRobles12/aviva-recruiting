@@ -6,7 +6,9 @@ import { DashboardPage } from './pages/DashboardPage';
 import { CandidateFormPage } from './pages/CandidateFormPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OfferPage } from './pages/OfferPage';
+import { ContractPage } from './pages/ContractPage';
 import { OfferTemplatesPage } from './pages/OfferTemplatesPage';
+import { ContractTemplatesPage } from './pages/ContractTemplatesPage';
 
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -29,6 +31,9 @@ export default function App() {
 
         {/* Public: candidate offer letter & signature */}
         <Route path="/offer/:token" element={<OfferPage />} />
+
+        {/* Public: candidate contract signing */}
+        <Route path="/contract/:token" element={<ContractPage />} />
 
         {/* Auth */}
         <Route path="/login" element={<LoginPage />} />
@@ -59,6 +64,16 @@ export default function App() {
           element={
             <PrivateRoute>
               <OfferTemplatesPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Private: contract templates */}
+        <Route
+          path="/contract-templates"
+          element={
+            <PrivateRoute>
+              <ContractTemplatesPage />
             </PrivateRoute>
           }
         />

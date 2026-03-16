@@ -1,11 +1,12 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
-import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { db } from '../utils/admin';
 import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { sendEmail } from '../email/gmailClient';
 import { ocrErrorTemplate } from '../email/templates';
+import { getRecruiterEmail } from '../utils/recruiters';
+import { validateDocument } from './documentValidator';
 
 const DOCUMENT_LABELS: Record<string, string> = {
   ine: 'INE / Identificación oficial',
@@ -15,6 +16,7 @@ const DOCUMENT_LABELS: Record<string, string> = {
   comprobante_estudios: 'Comprobante de estudios',
 };
 
+const VALID_DOCUMENT_TYPES = Object.keys(DOCUMENT_LABELS);
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
 async function notifyOcrError(
@@ -40,12 +42,12 @@ async function notifyOcrError(
       errors
     );
 
-    const transport = await createGmailTransport();
-    await transport.sendMail({
-      from: getFromAddress(),
+    const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
+    await sendEmail({
       to: candidate.email as string,
       subject,
       html,
+      senderEmail,
     });
 
     await db.collection('email_logs').add({
@@ -53,147 +55,120 @@ async function notifyOcrError(
       templateType: 'ocr_error',
       sentTo: candidate.email,
       sentAt: FieldValue.serverTimestamp(),
-      sentBy: 'ocr_trigger',
+      sentBy: 'document_validator',
       success: true,
       metadata: { documentType, errors },
     });
   } catch (err) {
-    // Non-fatal: log but don't throw — OCR result is already saved
-    console.error('Failed to send OCR error email:', err);
+    console.error('Failed to send validation error email:', err);
   }
 }
 
-const vision = new ImageAnnotatorClient();
+/**
+ * Convert a PDF stored in Cloud Storage to a JPEG image buffer.
+ * Uses pdf-to-img which works in Cloud Functions (Node.js).
+ * Falls back to treating as image if conversion fails.
+ */
+async function downloadFileAsImage(
+  bucket: string,
+  filePath: string,
+  contentType: string,
+): Promise<{ buffer: Buffer; mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' }> {
+  const storage = getStorage();
+  const file = storage.bucket(bucket).file(filePath);
+  const [fileBuffer] = await file.download();
 
-// Validation rules per document type
-const VALIDATION_RULES: Record<string, (text: string) => { passed: boolean; errors: string[]; data: Record<string, string> }> = {
-  ine: (text) => {
-    const errors: string[] = [];
-    const data: Record<string, string> = {};
-    const normalized = text.toUpperCase();
+  if (contentType === 'application/pdf') {
+    // For PDFs: use pdf2pic to convert first page to image
+    // Since pdf2pic requires filesystem, write to /tmp and convert
+    const { writeFileSync, readFileSync, unlinkSync } = await import('fs');
+    const tmpPdf = `/tmp/doc_${Date.now()}.pdf`;
+    const tmpPng = `/tmp/doc_${Date.now()}.png`;
 
-    // CURP pattern in INE: 18 chars alphanumeric
-    const curpMatch = normalized.match(/[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}/);
-    if (curpMatch) data['curp'] = curpMatch[0];
-    else errors.push('No se detectó un CURP válido en el documento');
-
-    if (!normalized.includes('INSTITUTO NACIONAL ELECTORAL') && !normalized.includes('INE') && !normalized.includes('IFE')) {
-      errors.push('No se detectó como documento INE/IFE válido');
-    }
-
-    return { passed: errors.length === 0, errors, data };
-  },
-
-  curp: (text) => {
-    const errors: string[] = [];
-    const data: Record<string, string> = {};
-    const normalized = text.toUpperCase().replace(/\s/g, '');
-
-    const curpMatch = normalized.match(/[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}/);
-    if (curpMatch) {
-      data['curp'] = curpMatch[0];
-    } else {
-      errors.push('No se encontró una CURP válida en el documento');
-    }
-
-    if (!normalized.includes('CURP') && !normalized.includes('REGISTRONACIONAL')) {
-      errors.push('El documento no parece ser una constancia de CURP oficial');
-    }
-
-    return { passed: errors.length === 0, errors, data };
-  },
-
-  rfc: (text) => {
-    const errors: string[] = [];
-    const data: Record<string, string> = {};
-    const normalized = text.toUpperCase().replace(/\s/g, '');
-
-    // RFC with homoclave: 12-13 chars
-    const rfcMatch = normalized.match(/[A-Z]{3,4}\d{6}[A-Z0-9]{3}/);
-    if (rfcMatch) {
-      data['rfc'] = rfcMatch[0];
-    } else {
-      errors.push('No se encontró un RFC con homoclave válido');
-    }
-
-    if (!text.toUpperCase().includes('SERVICIO DE ADMINISTRACIÓN TRIBUTARIA') &&
-        !text.toUpperCase().includes('SAT') &&
-        !text.toUpperCase().includes('RFC')) {
-      errors.push('El documento no parece ser emitido por el SAT');
-    }
-
-    return { passed: errors.length === 0, errors, data };
-  },
-
-  comprobante_domicilio: (text) => {
-    const errors: string[] = [];
-    const data: Record<string, string> = {};
-    const lower = text.toLowerCase();
-
-    const isUtility = ['cfe', 'comisión federal', 'telmex', 'izzi', 'totalplay', 'megacable',
-      'cablemás', 'infinitum', 'axtel', 'banco', 'estado de cuenta', 'agua'].some((k) => lower.includes(k));
-    if (!isUtility) errors.push('No se reconoce como comprobante de domicilio válido');
-
-    // Try to detect address
-    const addressMatch = text.match(/calle|av\.|avenida|blvd\.|boulevard|col\.|colonia/i);
-    if (addressMatch) data['address_detected'] = 'true';
-    else errors.push('No se detectó una dirección clara en el documento');
-
-    return { passed: errors.length === 0, errors, data };
-  },
-
-  comprobante_estudios: (text) => {
-    const errors: string[] = [];
-    const data: Record<string, string> = {};
-    const lower = text.toLowerCase();
-
-    const isStudiesDoc = ['universidad', 'instituto', 'tecnológico', 'escuela', 'título',
-      'certificado', 'constancia', 'bachillerato', 'licenciatura', 'maestría', 'doctorado',
-      'sep', 'secretaría de educación'].some((k) => lower.includes(k));
-
-    if (!isStudiesDoc) {
-      errors.push('No se reconoce como comprobante de estudios válido');
-    } else {
-      data['studies_detected'] = 'true';
-    }
-
-    return { passed: errors.length === 0, errors, data };
-  },
-};
-
-export const triggerOcrValidation = onCall(
-  { region: 'us-central1' },
-  async (request) => {
-    const { candidateId, documentType, storagePath } = request.data as {
-      candidateId: string;
-      documentType: string;
-      storagePath: string;
-    };
+    writeFileSync(tmpPdf, fileBuffer);
 
     try {
-      // Run OCR with Google Cloud Vision
-      const gcsUri = `gs://${process.env.GCLOUD_PROJECT}.appspot.com/${storagePath}`;
-      const [result] = await vision.textDetection(gcsUri);
-      const detections = result.textAnnotations;
-      const rawText = detections?.[0]?.description ?? '';
+      // Use GraphicsMagick/ImageMagick via child_process (available in Cloud Functions)
+      const { execSync } = await import('child_process');
+      execSync(
+        `convert -density 200 "${tmpPdf}[0]" -quality 90 "${tmpPng}"`,
+        { timeout: 30000 }
+      );
+      const pngBuffer = readFileSync(tmpPng);
+      unlinkSync(tmpPdf);
+      unlinkSync(tmpPng);
+      return { buffer: pngBuffer, mediaType: 'image/png' };
+    } catch (convErr) {
+      console.error('PDF conversion failed, attempting direct analysis:', convErr);
+      // Cleanup
+      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { unlinkSync(tmpPng); } catch { /* ignore */ }
+      // Fallback: send raw PDF bytes — Claude can sometimes handle embedded images
+      throw new Error('No se pudo procesar el PDF. Por favor sube una imagen (JPG o PNG) del documento.');
+    }
+  }
 
-      // Run validation rules
-      const validationFn = VALIDATION_RULES[documentType];
-      const { passed, errors, data: extractedData } = validationFn
-        ? validationFn(rawText)
-        : { passed: true, errors: [], data: {} };
+  // Map content type to Anthropic-supported media types
+  const mediaTypeMap: Record<string, 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'> = {
+    'image/jpeg': 'image/jpeg',
+    'image/jpg': 'image/jpeg',
+    'image/png': 'image/png',
+    'image/webp': 'image/webp',
+    'image/gif': 'image/gif',
+  };
+
+  const mediaType = mediaTypeMap[contentType];
+  if (!mediaType) {
+    throw new Error(`Formato no soportado: ${contentType}. Sube JPG, PNG o PDF.`);
+  }
+
+  return { buffer: fileBuffer, mediaType };
+}
+
+// ─── Storage trigger: auto-validate when a document is uploaded ──────────────
+
+export const onDocumentUploaded = onObjectFinalized(
+  {
+    region: 'us-central1',
+    memory: '512MiB',
+    timeoutSeconds: 120,
+  },
+  async (event) => {
+    const object = event.data;
+    const filePath = object.name ?? '';
+    const contentType = object.contentType ?? '';
+
+    // Pattern: candidates/{candidateId}/documents/{documentType}.{ext}
+    const match = filePath.match(/^candidates\/([^/]+)\/documents\/([^.]+)\./);
+    if (!match) return;
+
+    const [, candidateId, documentType] = match;
+
+    if (!VALID_DOCUMENT_TYPES.includes(documentType)) return;
+
+    try {
+      // Download and prepare image for Claude
+      const { buffer, mediaType } = await downloadFileAsImage(
+        object.bucket,
+        filePath,
+        contentType,
+      );
+
+      // Validate with Claude Haiku
+      const result = await validateDocument(buffer, mediaType, documentType);
 
       const ocrResult = {
-        rawText: rawText.substring(0, 2000), // Limit stored text
-        extractedData,
-        confidence: detections?.[0] ? 0.85 : 0,
-        validationPassed: passed,
-        validationErrors: errors,
+        rawText: '',
+        extractedData: result.extractedData,
+        confidence: result.confidence,
+        validationPassed: result.valid,
+        validationErrors: result.errors,
+        documentTypeDetected: result.documentTypeDetected,
         processedAt: FieldValue.serverTimestamp(),
       };
 
-      const newStatus = passed ? 'valid' : 'invalid';
-      const rejectionReason = errors.length > 0 ? errors.join('. ') : undefined;
+      const newStatus = result.valid ? 'valid' : 'invalid';
+      const rejectionReason = result.errors.length > 0 ? result.errors.join('. ') : undefined;
 
       await updateCandidateDocument(candidateId, documentType, {
         status: newStatus,
@@ -203,74 +178,31 @@ export const triggerOcrValidation = onCall(
 
       await updateCandidateCompletion(candidateId);
 
-      return { success: true, result: { passed, errors, extractedData } };
+      // Notify candidate by email when validation fails
+      if (!result.valid && result.errors.length > 0) {
+        await notifyOcrError(candidateId, documentType, result.errors);
+      }
     } catch (err) {
-      // Mark as needing manual review on OCR failure
+      console.error(`Document validation error for ${candidateId}/${documentType}:`, err);
+
+      const errorMessage = (err as Error).message || 'Error al procesar el documento.';
+
+      // Strict: mark as invalid (not review)
       await updateCandidateDocument(candidateId, documentType, {
-        status: 'review',
+        status: 'invalid',
         ocrResult: {
           rawText: '',
           extractedData: {},
           confidence: 0,
           validationPassed: false,
-          validationErrors: ['Error al procesar el OCR. Requiere revisión manual.'],
+          validationErrors: [errorMessage],
           processedAt: FieldValue.serverTimestamp(),
         },
-      });
-
-      throw new HttpsError('internal', `OCR error: ${(err as Error).message}`);
-    }
-  }
-);
-
-// Storage trigger: auto-run OCR when a document is uploaded
-export const onDocumentUploaded = onObjectFinalized(
-  { region: 'us-central1' },
-  async (event) => {
-    const object = event.data;
-    const filePath = object.name ?? '';
-    // Pattern: candidates/{candidateId}/documents/{documentType}.{ext}
-    const match = filePath.match(/^candidates\/([^/]+)\/documents\/([^.]+)\./);
-    if (!match) return;
-
-    const [, candidateId, documentType] = match;
-
-    const validTypes = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
-    if (!validTypes.includes(documentType)) return;
-
-    try {
-      const gcsUri = `gs://${object.bucket}/${filePath}`;
-      const [result] = await vision.textDetection(gcsUri);
-      const rawText = result.textAnnotations?.[0]?.description ?? '';
-
-      const validationFn = VALIDATION_RULES[documentType];
-      const { passed, errors, data: extractedData } = validationFn
-        ? validationFn(rawText)
-        : { passed: true, errors: [], data: {} };
-
-      const ocrResult = {
-        rawText: rawText.substring(0, 2000),
-        extractedData,
-        confidence: result.textAnnotations?.[0] ? 0.85 : 0,
-        validationPassed: passed,
-        validationErrors: errors,
-        processedAt: FieldValue.serverTimestamp(),
-      };
-
-      await updateCandidateDocument(candidateId, documentType, {
-        status: passed ? 'valid' : 'invalid',
-        ocrResult,
-        ...(errors.length > 0 && { rejectionReason: errors.join('. ') }),
+        rejectionReason: errorMessage,
       });
 
       await updateCandidateCompletion(candidateId);
-
-      // Notify candidate by email when a document fails OCR validation
-      if (!passed && errors.length > 0) {
-        await notifyOcrError(candidateId, documentType, errors);
-      }
-    } catch (err) {
-      console.error('OCR trigger error:', err);
+      await notifyOcrError(candidateId, documentType, [errorMessage]);
     }
   }
 );

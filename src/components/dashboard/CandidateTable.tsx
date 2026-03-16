@@ -15,7 +15,11 @@ const STATUS_FILTERS: { value: CandidateStatus | 'all'; label: string }[] = [
   { value: 'in_progress', label: 'En progreso' },
   { value: 'under_review', label: 'En revisión' },
   { value: 'approved', label: 'Aprobados' },
-  { value: 'onboarding', label: 'Onboarding' },
+  { value: 'contract_sent', label: 'Contrato enviado' },
+  { value: 'contract_signed', label: 'Contrato firmado' },
+  { value: 'email_pending', label: 'Correo pendiente' },
+  { value: 'email_ready', label: 'Correo listo' },
+  { value: 'induction', label: 'Inducción' },
   { value: 'rejected', label: 'Rechazados' },
 ];
 

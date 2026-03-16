@@ -5,8 +5,9 @@ import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
+import { sendEmail } from '../email/gmailClient';
 import { invitationTemplate } from '../email/templates';
+import { getRecruiterEmail } from '../utils/recruiters';
 import { generateOfferPdf, stripHtml } from './pdfGenerator';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
@@ -191,12 +192,12 @@ export const signOffer = onRequest(
     });
 
     try {
-      const transport = await createGmailTransport();
-      await transport.sendMail({
-        from: getFromAddress(),
+      const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
+      await sendEmail({
         to: candidate.email as string,
         subject,
         html,
+        senderEmail,
       });
       await db.collection('email_logs').add({
         candidateId,

@@ -4,7 +4,6 @@ import {
   UserPlus,
   Clock,
   CheckCircle,
-  Search,
   LayoutDashboard,
   FileSignature,
   FolderOpen,

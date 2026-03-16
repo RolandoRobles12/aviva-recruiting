@@ -5,8 +5,9 @@ import * as crypto from 'crypto';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
-import { createGmailTransport, getFromAddress } from '../email/gmailClient';
-import { offerTemplate, onboardingTemplate } from '../email/templates';
+import { sendEmail } from '../email/gmailClient';
+import { offerTemplate, contractTemplate } from '../email/templates';
+import { createEmailTicket } from '../integrations/jiraService';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -18,7 +19,9 @@ const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
 // Stage names (configurable, matched case-insensitively against webhook payload)
 const STAGE_APROBADO     = defineString('STAGE_APROBADO',     { default: 'Aprobado' });
 const STAGE_DOCUMENTOS   = defineString('STAGE_DOCUMENTOS',   { default: 'Documentos' });
-const STAGE_ONBOARDING   = defineString('STAGE_ONBOARDING',   { default: 'Onboarding' });
+const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contrato' });
+const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correos' });
+const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducción' });
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -303,7 +306,9 @@ async function handleAprobado(
 
   const ofertaEnviadaId = findStage('Oferta Enviada') ?? findStage('oferta') ?? '';
   const documentosId = findStage(STAGE_DOCUMENTOS.value()) ?? '';
-  const onboardingId = findStage(STAGE_ONBOARDING.value()) ?? '';
+  const contratoId = findStage(STAGE_CONTRATO.value()) ?? '';
+  const correosId = findStage(STAGE_CORREOS.value()) ?? '';
+  const induccionId = findStage(STAGE_INDUCCION.value()) ?? '';
 
   // Move to "Oferta Enviada" in Viterbit
   if (ofertaEnviadaId && candidatureId) {
@@ -365,7 +370,9 @@ async function handleAprobado(
     viterbitStageIds: {
       ofertaEnviada: ofertaEnviadaId,
       documentos: documentosId,
-      onboarding: onboardingId,
+      contrato: contratoId,
+      correos: correosId,
+      induccion: induccionId,
     },
   });
 
@@ -382,8 +389,7 @@ async function handleAprobado(
     offerExpiresAt: offerExpiresAtStr,
   });
 
-  const transport = await createGmailTransport();
-  await transport.sendMail({ from: getFromAddress(), to: candidateEmail, subject, html });
+  await sendEmail({ to: candidateEmail, subject, html });
 
   await db.collection('email_logs').add({
     candidateId: candidateRef.id,
@@ -478,8 +484,7 @@ async function handleDocumentos(
     formExpiresAt: formExpiresAtStr,
   });
 
-  const transport = await createGmailTransport();
-  await transport.sendMail({ from: getFromAddress(), to: candidateEmail, subject, html });
+  await sendEmail({ to: candidateEmail, subject, html });
 
   await db.collection('email_logs').add({
     candidateId: candidateRef.id,
@@ -494,20 +499,12 @@ async function handleDocumentos(
   return { action: 'created', candidateId: candidateRef.id };
 }
 
-/**
- * Candidate reached "Onboarding":
- * - Find existing candidate, update status, send generic onboarding email.
- */
-async function handleOnboarding(
-  parsed: ParsedViterbitEvent,
+/** Helper: find existing candidate by candidatureId or email */
+async function findCandidateDoc(
+  candidatureId: string,
+  candidateViterbitId: string,
   apiKey: string,
-  logRef: FirebaseFirestore.DocumentReference
-): Promise<{ action: string; candidateId?: string }> {
-  const { candidatureId, candidateViterbitId } = parsed;
-
-  let candidateRef: FirebaseFirestore.DocumentReference | null = null;
-  let candidateData: FirebaseFirestore.DocumentData | null = null;
-
+): Promise<{ ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData } | null> {
   if (candidatureId) {
     const existing = await db
       .collection('candidates')
@@ -515,60 +512,197 @@ async function handleOnboarding(
       .limit(1)
       .get();
     if (!existing.empty) {
-      candidateRef = existing.docs[0].ref;
-      candidateData = existing.docs[0].data();
+      return { ref: existing.docs[0].ref, data: existing.docs[0].data() };
     }
   }
 
-  // If still not found, try fetching by email from Viterbit
-  if (!candidateRef) {
-    const viterbitCandidate = await fetchViterbitCandidate(candidateViterbitId, apiKey);
-    if (viterbitCandidate) {
-      const byEmail = await db
-        .collection('candidates')
-        .where('email', '==', viterbitCandidate.email)
-        .limit(1)
-        .get();
-      if (!byEmail.empty) {
-        candidateRef = byEmail.docs[0].ref;
-        candidateData = byEmail.docs[0].data();
-      }
+  const viterbitCandidate = await fetchViterbitCandidate(candidateViterbitId, apiKey);
+  if (viterbitCandidate) {
+    const byEmail = await db
+      .collection('candidates')
+      .where('email', '==', viterbitCandidate.email)
+      .limit(1)
+      .get();
+    if (!byEmail.empty) {
+      return { ref: byEmail.docs[0].ref, data: byEmail.docs[0].data() };
     }
   }
 
-  if (!candidateRef || !candidateData) {
-    await logRef.update({ status: 'ignored', reason: 'no candidate record found for onboarding' });
+  return null;
+}
+
+/** Find the best-matching contract template for a job position */
+async function findContractTemplate(
+  position: string
+): Promise<{ id: string; data: Record<string, unknown> } | null> {
+  const snap = await db.collection('contract_templates').get();
+  if (snap.empty) return null;
+
+  const posLower = position.toLowerCase();
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const keywords = (data.positionKeywords as string[]) ?? [];
+    if (keywords.some((kw) => posLower.includes(kw.toLowerCase()))) {
+      return { id: doc.id, data };
+    }
+  }
+  return { id: snap.docs[0].id, data: snap.docs[0].data() };
+}
+
+const CONTRACT_EXPIRY_DAYS = 7;
+
+/**
+ * Candidate reached "Contrato":
+ * 1. Generate contract token
+ * 2. Send contract signing email
+ * 3. Update status to 'contract_sent'
+ */
+async function handleContrato(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId } = parsed;
+
+  const found = await findCandidateDoc(candidatureId, candidateViterbitId, apiKey);
+  if (!found) {
+    await logRef.update({ status: 'ignored', reason: 'no candidate record found for contrato' });
     return { action: 'ignored' };
   }
 
+  const { ref: candidateRef, data: candidate } = found;
+
+  // Find contract template
+  const templateMatch = await findContractTemplate(candidate.position as string);
+
+  // Generate contract token
+  const contractTokenValue = generateToken();
+  const contractExpiresAt = new Date(Date.now() + CONTRACT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
   await candidateRef.update({
-    status: 'onboarding',
+    status: 'contract_sent',
+    contractToken: contractTokenValue,
+    contractExpiresAt,
+    contractTemplateId: templateMatch?.id ?? null,
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  const { subject, html } = onboardingTemplate({
-    firstName: candidateData.firstName as string,
-    lastName: candidateData.lastName as string,
-    position: candidateData.position as string,
+  // Send contract email
+  const appUrl = APP_URL.value();
+  const contractUrl = `${appUrl}/contract/${contractTokenValue}`;
+  const contractExpiresAtStr = format(contractExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+  const { subject, html } = contractTemplate({
+    firstName: candidate.firstName as string,
+    lastName: candidate.lastName as string,
+    position: candidate.position as string,
+    contractUrl,
+    contractExpiresAt: contractExpiresAtStr,
   });
 
+  await sendEmail({ to: candidate.email as string, subject, html });
+
+  await db.collection('email_logs').add({
+    candidateId: candidateRef.id,
+    templateType: 'contract',
+    sentTo: candidate.email,
+    sentAt: FieldValue.serverTimestamp(),
+    sentBy: 'viterbit_webhook',
+    success: true,
+  });
+
+  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
+  return { action: 'contract_sent', candidateId: candidateRef.id };
+}
+
+/**
+ * Candidate reached "Correos":
+ * 1. Create Jira ticket for IT to create corporate email
+ * 2. Update status to 'email_pending'
+ */
+async function handleCorreos(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId } = parsed;
+
+  const found = await findCandidateDoc(candidatureId, candidateViterbitId, apiKey);
+  if (!found) {
+    await logRef.update({ status: 'ignored', reason: 'no candidate record found for correos' });
+    return { action: 'ignored' };
+  }
+
+  const { ref: candidateRef, data: candidate } = found;
+
+  // Don't create duplicate tickets
+  if (candidate.jiraTicketKey) {
+    await logRef.update({ status: 'ignored', reason: 'Jira ticket already exists', candidateId: candidateRef.id });
+    return { action: 'ignored', candidateId: candidateRef.id };
+  }
+
+  // Create Jira ticket
   try {
-    const transport = await createGmailTransport();
-    await transport.sendMail({ from: getFromAddress(), to: candidateData.email as string, subject, html });
-    await db.collection('email_logs').add({
+    const { ticketKey, ticketId } = await createEmailTicket({
+      candidateName: `${candidate.firstName} ${candidate.lastName}`,
+      position: candidate.position as string,
       candidateId: candidateRef.id,
-      templateType: 'onboarding',
-      sentTo: candidateData.email,
-      sentAt: FieldValue.serverTimestamp(),
-      sentBy: 'viterbit_webhook',
-      success: true,
+      personalEmail: candidate.email as string,
     });
+
+    await candidateRef.update({
+      status: 'email_pending',
+      jiraTicketKey: ticketKey,
+      jiraTicketId: ticketId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    console.info(`[webhook] Created Jira ticket ${ticketKey} for ${candidateRef.id}`);
+    await logRef.update({ status: 'processed', candidateId: candidateRef.id, jiraTicketKey: ticketKey });
+    return { action: 'email_pending', candidateId: candidateRef.id };
   } catch (err) {
-    console.error('[webhook] onboarding email error:', err);
+    console.error('[webhook] Jira ticket creation failed:', err);
+    // Still update status so it can be retried
+    await candidateRef.update({
+      status: 'email_pending',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await logRef.update({ status: 'error', reason: `Jira ticket creation failed: ${err}`, candidateId: candidateRef.id });
+    return { action: 'error', candidateId: candidateRef.id };
+  }
+}
+
+/**
+ * Candidate reached "Inducción":
+ * - Update status to 'induction'
+ * - The induction email is sent by checkEmailTickets when accounts are provisioned.
+ *   If manually moved here, just update the status.
+ */
+async function handleInduccion(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId } = parsed;
+
+  const found = await findCandidateDoc(candidatureId, candidateViterbitId, apiKey);
+  if (!found) {
+    await logRef.update({ status: 'ignored', reason: 'no candidate record found for induccion' });
+    return { action: 'ignored' };
+  }
+
+  const { ref: candidateRef, data: candidate } = found;
+
+  // Only update if not already in induction
+  if (candidate.status !== 'induction') {
+    await candidateRef.update({
+      status: 'induction',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   }
 
   await logRef.update({ status: 'processed', candidateId: candidateRef.id });
-  return { action: 'onboarding', candidateId: candidateRef.id };
+  return { action: 'induction', candidateId: candidateRef.id };
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -660,8 +794,14 @@ export const viterbitWebhook = onRequest(
     } else if (matches(STAGE_DOCUMENTOS.value())) {
       const result = await handleDocumentos(parsed, apiKey, logRef);
       res.status(200).json({ ok: true, ...result });
-    } else if (matches(STAGE_ONBOARDING.value())) {
-      const result = await handleOnboarding(parsed, apiKey, logRef);
+    } else if (matches(STAGE_CONTRATO.value())) {
+      const result = await handleContrato(parsed, apiKey, logRef);
+      res.status(200).json({ ok: true, ...result });
+    } else if (matches(STAGE_CORREOS.value())) {
+      const result = await handleCorreos(parsed, apiKey, logRef);
+      res.status(200).json({ ok: true, ...result });
+    } else if (matches(STAGE_INDUCCION.value()) || matches('induccion')) {
+      const result = await handleInduccion(parsed, apiKey, logRef);
       res.status(200).json({ ok: true, ...result });
     } else {
       await logRef.update({
