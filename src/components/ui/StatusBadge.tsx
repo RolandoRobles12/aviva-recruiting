@@ -7,8 +7,12 @@ const CANDIDATE_STATUS_CONFIG: Record<CandidateStatus, { label: string; classNam
   in_progress:  { label: 'En progreso',    className: 'badge-review' },
   under_review: { label: 'En revisión',    className: 'badge-review' },
   approved:     { label: 'Aprobado',       className: 'badge-valid' },
-  rejected:     { label: 'Rechazado',      className: 'badge-invalid' },
-  onboarding:   { label: 'Onboarding',     className: 'badge-onboarding' },
+  rejected:        { label: 'Rechazado',        className: 'badge-invalid' },
+  contract_sent:   { label: 'Contrato enviado', className: 'badge-review' },
+  contract_signed: { label: 'Contrato firmado', className: 'badge-valid' },
+  email_pending:   { label: 'Correo pendiente', className: 'badge-review' },
+  email_ready:     { label: 'Correo listo',     className: 'badge-valid' },
+  induction:       { label: 'Inducción',        className: 'badge-valid' },
 };
 
 const DOCUMENT_STATUS_CONFIG: Record<DocumentStatus, { label: string; className: string }> = {

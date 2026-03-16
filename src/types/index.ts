@@ -35,14 +35,18 @@ export interface OcrResult {
 // ─── Candidate ────────────────────────────────────────────────────────────────
 
 export type CandidateStatus =
-  | 'offer_sent'    // offer letter sent, pending candidate signature
-  | 'offer_signed'  // candidate signed offer, document collection active
-  | 'invited'       // documents link sent, no documents yet
-  | 'in_progress'   // uploading documents
-  | 'under_review'  // all documents uploaded, team reviewing
-  | 'approved'      // all documents valid
-  | 'rejected'      // rejected
-  | 'onboarding';   // documents complete, in onboarding
+  | 'offer_sent'       // offer letter sent, pending candidate signature
+  | 'offer_signed'     // candidate signed offer, document collection active
+  | 'invited'          // documents link sent, no documents yet
+  | 'in_progress'      // uploading documents
+  | 'under_review'     // all documents uploaded, team reviewing
+  | 'approved'         // all documents valid
+  | 'rejected'         // rejected
+  | 'contract_sent'    // employment contract sent, pending signature
+  | 'contract_signed'  // candidate signed contract
+  | 'email_pending'    // waiting for IT to create corporate email (Jira ticket)
+  | 'email_ready'      // corporate email created, HubSpot/Slack accounts provisioned
+  | 'induction';       // induction email sent, training phase
 
 export interface Candidate {
   id: string;
@@ -74,13 +78,27 @@ export interface Candidate {
   offerSignatureUrl?: string;
   offerPdfUrl?: string;
   offerTemplateId?: string;
+  // Contract
+  contractToken?: string;
+  contractExpiresAt?: Timestamp;
+  contractSignedAt?: Timestamp;
+  contractSignatureUrl?: string;
+  contractPdfUrl?: string;
+  contractEvidenceUrl?: string;
+  contractTemplateId?: string;
+  // Corporate email (Correos stage)
+  corporateEmail?: string;
+  jiraTicketKey?: string;
+  jiraTicketId?: string;
   // Viterbit integration
   viterbitCandidatureId?: string;
   viterbitJobId?: string;
   viterbitStageIds?: {
     ofertaEnviada: string;
     documentos: string;
-    onboarding: string;
+    contrato: string;
+    correos: string;
+    induccion: string;
   };
   // Viterbit job custom fields (populated from job API on webhook)
   viterbitSalary?: string;
@@ -118,7 +136,18 @@ export interface RecruiterProfile {
 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
-export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected' | 'ocr_error' | 'offer' | 'onboarding';
+export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected' | 'ocr_error' | 'offer' | 'onboarding' | 'contract' | 'induction';
+
+// ─── Contract Templates ──────────────────────────────────────────────────────
+
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  positionKeywords: string[];
+  bodyHtml: string;  // HTML with {{variable}} placeholders
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
 
 export interface EmailLog {
   id: string;
