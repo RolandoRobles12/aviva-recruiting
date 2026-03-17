@@ -7,14 +7,22 @@ import { db, auth } from '../utils/admin';
 const GMAIL_OAUTH_CLIENT_ID = defineString('GMAIL_OAUTH_CLIENT_ID');
 const GMAIL_OAUTH_CLIENT_SECRET = defineString('GMAIL_OAUTH_CLIENT_SECRET');
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
+const FUNCTIONS_URL = defineString('FUNCTIONS_URL', {
+  default: 'https://us-central1-aviva-recruiting.cloudfunctions.net',
+});
 
 const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
 
-function getOAuth2Client(redirectUri: string) {
+/** The OAuth redirect URI always points to the Cloud Function, not the frontend. */
+function getCallbackUrl() {
+  return `${FUNCTIONS_URL.value()}/gmailOAuthCallback`;
+}
+
+function getOAuth2Client() {
   return new google.auth.OAuth2(
     GMAIL_OAUTH_CLIENT_ID.value(),
     GMAIL_OAUTH_CLIENT_SECRET.value(),
-    redirectUri
+    getCallbackUrl()
   );
 }
 
@@ -23,12 +31,11 @@ function getOAuth2Client(redirectUri: string) {
  * The recruiter clicks this link to authorize Gmail access.
  */
 export const getGmailAuthUrl = onCall(
-  { region: 'us-central1' },
+  { region: 'us-central1', cors: true },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'No autenticado');
 
-    const redirectUri = `${APP_URL.value()}/gmail/callback`;
-    const oauth2Client = getOAuth2Client(redirectUri);
+    const oauth2Client = getOAuth2Client();
 
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -44,7 +51,9 @@ export const getGmailAuthUrl = onCall(
 
 /**
  * HTTP endpoint: handles the OAuth callback from Google.
- * Exchanges the authorization code for tokens and stores them in Firestore.
+ * Google redirects here after the recruiter grants consent.
+ * Exchanges the authorization code for tokens, stores them, then redirects
+ * the browser back to the frontend Settings page.
  */
 export const gmailOAuthCallback = onRequest(
   { region: 'us-central1' },
@@ -54,7 +63,7 @@ export const gmailOAuthCallback = onRequest(
     const appUrl = APP_URL.value();
 
     if (error) {
-      res.redirect(`${appUrl}/settings?gmail=error&reason=${error as string}`);
+      res.redirect(`${appUrl}/settings?gmail=error&reason=${encodeURIComponent(error as string)}`);
       return;
     }
 
@@ -72,8 +81,7 @@ export const gmailOAuthCallback = onRequest(
         return;
       }
 
-      const redirectUri = `${appUrl}/gmail/callback`;
-      const oauth2Client = getOAuth2Client(redirectUri);
+      const oauth2Client = getOAuth2Client();
       const { tokens } = await oauth2Client.getToken(code as string);
 
       if (!tokens.refresh_token) {
@@ -108,7 +116,7 @@ export const gmailOAuthCallback = onRequest(
  * Revokes the token and removes stored credentials.
  */
 export const disconnectGmail = onCall(
-  { region: 'us-central1' },
+  { region: 'us-central1', cors: true },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'No autenticado');
 
@@ -122,7 +130,7 @@ export const disconnectGmail = onCall(
 
         // Try to revoke the token at Google
         if (tokens.refresh_token) {
-          const oauth2Client = getOAuth2Client('');
+          const oauth2Client = getOAuth2Client();
           oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
           try {
             await oauth2Client.revokeToken(tokens.refresh_token);
