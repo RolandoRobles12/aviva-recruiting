@@ -3,9 +3,6 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 export interface OfferPdfInput {
   candidateName: string;
   position: string;
-  salary: string;
-  benefits: string;
-  startDate: string;
   bodyText: string;       // plain text, HTML tags already stripped
   signatureBase64: string; // data:image/png;base64,...
   signedAt: Date;
@@ -83,35 +80,23 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
 
   // Divider
   page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.5, color: rgb(0.88, 0.9, 0.93) });
-  y -= 20;
-
-  // ── Key details grid ─────────────────────────────────────────────────────────
-  const col2 = margin + contentWidth / 2;
-
-  page.drawText('Salario', { x: margin, y, size: 9, font: fontBold, color: gray });
-  page.drawText('Fecha de Inicio', { x: col2, y, size: 9, font: fontBold, color: gray });
-  y -= 14;
-  page.drawText(input.salary, { x: margin, y, size: 11, font: fontBold, color: dark });
-  page.drawText(input.startDate, { x: col2, y, size: 11, font: fontBold, color: dark });
-  y -= 24;
-
-  page.drawText('Beneficios', { x: margin, y, size: 9, font: fontBold, color: gray });
-  y -= 14;
-  const benefitLines = wrapText(input.benefits, fontRegular, 10, contentWidth);
-  for (const line of benefitLines) {
-    page.drawText(line, { x: margin, y, size: 10, font: fontRegular, color: dark });
-    y -= 14;
-  }
-  y -= 10;
-
-  // Divider
-  page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.5, color: rgb(0.88, 0.9, 0.93) });
   y -= 18;
 
-  // ── Body text ────────────────────────────────────────────────────────────────
+  // ── Body text (contains all sections: position, responsibilities, compensation) ─
   const bodyLines = wrapText(input.bodyText, fontRegular, 10, contentWidth);
   for (const line of bodyLines) {
-    if (y < 160) break; // leave room for signature
+    if (y < 160) {
+      // Add a new page if we run out of space
+      const newPage = pdfDoc.addPage([595, 842]);
+      y = newPage.getSize().height - margin;
+      // Continue rendering on the new page
+      for (const remainingLine of bodyLines.slice(bodyLines.indexOf(line))) {
+        if (y < 160) break;
+        newPage.drawText(remainingLine, { x: margin, y, size: 10, font: fontRegular, color: dark });
+        y -= 14;
+      }
+      break;
+    }
     page.drawText(line, { x: margin, y, size: 10, font: fontRegular, color: dark });
     y -= 14;
   }
@@ -139,6 +124,7 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
 
   // Date signed
   const dateStr = input.signedAt.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+  const col2 = margin + contentWidth / 2;
   page.drawText(`Firmado el ${dateStr}`, { x: col2, y: sigAreaTop + 30, size: 9, font: fontRegular, color: gray });
 
   // Footer

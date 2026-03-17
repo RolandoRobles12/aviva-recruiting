@@ -17,16 +17,34 @@ import {
 // in the insertion palette (inserted automatically or not user-facing).
 
 export const VARIABLES = [
-  { id: 'firstName',         label: 'Nombre',          colorClass: 'var-blue'   },
+  { id: 'name',              label: 'Nombre completo',  colorClass: 'var-blue'   },
+  { id: 'firstName',         label: 'Nombre',           colorClass: 'var-blue'   },
   { id: 'lastName',          label: 'Apellido',         colorClass: 'var-blue'   },
   { id: 'position',          label: 'Puesto',           colorClass: 'var-purple' },
   { id: 'departmentProfile', label: 'Perfil del puesto',colorClass: 'var-purple' },
   { id: 'hiringManager',     label: 'Líder',            colorClass: 'var-purple' },
+  { id: 'company',           label: 'Empresa',          colorClass: 'var-purple' },
   { id: 'salary',            label: 'Salario',          colorClass: 'var-green'  },
   { id: 'benefits',          label: 'Beneficios',       colorClass: 'var-amber', hidden: true },
   { id: 'startDate',         label: 'Fecha de inicio',  colorClass: 'var-rose'   },
   { id: 'date',              label: 'Fecha de hoy',     colorClass: 'var-rose'   },
 ] as const satisfies Array<{ id: string; label: string; colorClass: string; hidden?: boolean }>;
+
+// ─── Viterbit → system variable mapping ──────────────────────────────────────
+// Maps ${viterbit_variable} names (used in Word templates) to {{systemVariable}}.
+const VITERBIT_VAR_MAP: Record<string, string> = {
+  name:                       'name',
+  first_name:                 'firstName',
+  last_name:                  'lastName',
+  job_department_profile:     'departmentProfile',
+  custom_job_empresa:         'company',
+  custom_job_hiring_manager:  'hiringManager',
+  hired_start_date_job:       'startDate',
+  hired_salary_job:           'salary',
+  position:                   'position',
+  date:                       'date',
+  benefits:                   'benefits',
+};
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -123,6 +141,17 @@ function findUnknownVars(html: string): string[] {
   return [...new Set(matches.filter((id) => !known.has(id as typeof VARIABLES[number]['id'])))];
 }
 
+/**
+ * Convert Viterbit-style ${variable} patterns to system {{variable}} patterns.
+ * Handles both ${var} and ${ var } (with whitespace).
+ */
+function convertViterbitVars(html: string): string {
+  return html.replace(/\$\{\s*(\w+)\s*\}/g, (_, viterbitName: string) => {
+    const systemName = VITERBIT_VAR_MAP[viterbitName];
+    return systemName ? `{{${systemName}}}` : `{{${viterbitName}}}`;
+  });
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface RichTextEditorProps {
@@ -216,11 +245,13 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           ),
         }
       );
+      // Convert Viterbit ${variable} patterns to system {{variable}} patterns
+      const converted = convertViterbitVars(result.value);
       // Detect unknown variables in the imported content
-      const unknown = findUnknownVars(result.value);
+      const unknown = findUnknownVars(converted);
       if (unknown.length > 0) setDocxWarning(unknown);
       // Convert {{variable}} patterns to colored chips
-      const htmlWithChips = templateToHtml(result.value);
+      const htmlWithChips = templateToHtml(converted);
       editor.commands.setContent(htmlWithChips, { emitUpdate: true });
       onChange(htmlToTemplate(editor.getHTML()));
     } finally {

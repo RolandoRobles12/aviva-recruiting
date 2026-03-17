@@ -31,8 +31,30 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
 
 // ─── Helper: interpolate template variables ────────────────────────────────────
 
+// Maps Viterbit ${variable} names (from Word templates) to system variable names.
+const VITERBIT_VAR_MAP: Record<string, string> = {
+  name:                       'name',
+  first_name:                 'firstName',
+  last_name:                  'lastName',
+  job_department_profile:     'departmentProfile',
+  custom_job_empresa:         'company',
+  custom_job_hiring_manager:  'hiringManager',
+  hired_start_date_job:       'startDate',
+  hired_salary_job:           'salary',
+  position:                   'position',
+  date:                       'date',
+  benefits:                   'benefits',
+};
+
 function interpolate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  // Replace {{variable}} patterns (system syntax)
+  let result = template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  // Replace ${variable} patterns (Viterbit / Word syntax)
+  result = result.replace(/\$\{\s*(\w+)\s*\}/g, (_, key: string) => {
+    const systemKey = VITERBIT_VAR_MAP[key] ?? key;
+    return vars[systemKey] ?? '';
+  });
+  return result;
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -102,9 +124,12 @@ export const signOffer = onRequest(
     const benefits    = (offerTemplate?.benefits as string) ?? '';
     const bodyHtml    = (offerTemplate?.bodyHtml as string) ?? '';
 
+    const firstNameVal = (candidate.firstName as string) || '';
+    const lastNameVal  = (candidate.lastName  as string) || '';
     const vars: Record<string, string> = {
-      firstName: candidate.firstName as string,
-      lastName:  candidate.lastName  as string,
+      name:      `${firstNameVal} ${lastNameVal}`.trim(),
+      firstName: firstNameVal,
+      lastName:  lastNameVal,
       position:  candidate.position  as string,
       departmentProfile,
       hiringManager,
@@ -120,9 +145,6 @@ export const signOffer = onRequest(
     const pdfBuffer = await generateOfferPdf({
       candidateName: `${candidate.firstName} ${candidate.lastName}`,
       position: candidate.position as string,
-      salary,
-      benefits,
-      startDate,
       bodyText,
       signatureBase64,
       signedAt: now,
@@ -284,9 +306,12 @@ export const getOffer = onRequest(
     const offerStartDate = (candidate.viterbitStartDate   as string) || (offerTemplate?.startDate as string) || 'a convenir';
     const offerBenefits  = (offerTemplate?.benefits as string) ?? '';
 
+    const firstNameVal = (candidate.firstName as string) || '';
+    const lastNameVal  = (candidate.lastName  as string) || '';
     const vars: Record<string, string> = {
-      firstName: candidate.firstName as string,
-      lastName:  candidate.lastName  as string,
+      name:      `${firstNameVal} ${lastNameVal}`.trim(),
+      firstName: firstNameVal,
+      lastName:  lastNameVal,
       position:  candidate.position  as string,
       departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
       hiringManager:     (candidate.viterbitHiringManager     as string) || '',
@@ -298,7 +323,7 @@ export const getOffer = onRequest(
     };
 
     const rawHtml = (offerTemplate?.bodyHtml as string) ?? '<p>Carta oferta en preparación.</p>';
-    const renderedHtml = rawHtml.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+    const renderedHtml = interpolate(rawHtml, vars);
 
     res.status(200).json({
       ok: true,
