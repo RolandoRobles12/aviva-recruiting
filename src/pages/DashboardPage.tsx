@@ -2,8 +2,6 @@ import { useState } from 'react';
 import {
   Users,
   UserPlus,
-  Clock,
-  CheckCircle,
   FileSignature,
   FolderOpen,
   FileText,
@@ -18,15 +16,19 @@ import { useCandidates } from '../hooks/useCandidates';
 import type { Candidate } from '../types';
 
 export function DashboardPage() {
-  const { candidates, loading, stats } = useCandidates();
+  const { candidates, loading } = useCandidates();
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const contractStats = {
-    contractSent: candidates.filter((c) => c.status === 'contract_sent').length,
-    contractSigned: candidates.filter((c) => c.status === 'contract_signed').length,
-    emailPending: candidates.filter((c) => c.status === 'email_pending').length,
-    induction: candidates.filter((c) => c.status === 'induction').length,
+  const pipelineStats = {
+    total: candidates.length,
+    offer: candidates.filter((c) => c.status === 'offer_sent' || c.status === 'offer_signed').length,
+    documentos: candidates.filter((c) =>
+      ['invited', 'in_progress', 'under_review', 'approved', 'rejected'].includes(c.status)
+    ).length,
+    contrato: candidates.filter((c) => c.status === 'contract_sent' || c.status === 'contract_signed').length,
+    correos: candidates.filter((c) => c.status === 'email_pending' || c.status === 'email_ready').length,
+    induccion: candidates.filter((c) => c.status === 'induction').length,
   };
 
   return (
@@ -46,14 +48,12 @@ export function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <StatChip icon={<Users size={13} />} label="Total" value={stats.total} color="gray" />
-            <StatChip icon={<FileSignature size={13} />} label="Carta oferta" value={stats.offerSent} color="purple" />
-            <StatChip icon={<FolderOpen size={13} />} label="Documentos" value={stats.documents} color="amber" />
-            <StatChip icon={<Clock size={13} />} label="Revisión" value={stats.underReview} color="blue" />
-            <StatChip icon={<CheckCircle size={13} />} label="Aprobados" value={stats.approved} color="green" />
-            <StatChip icon={<FileText size={13} />} label="Contrato" value={contractStats.contractSent + contractStats.contractSigned} color="indigo" />
-            <StatChip icon={<Mail size={13} />} label="Correos" value={contractStats.emailPending} color="teal" />
-            <StatChip icon={<GraduationCap size={13} />} label="Inducción" value={contractStats.induction} color="rose" />
+            <StatChip icon={<Users size={13} />} label="Total" value={pipelineStats.total} color="gray" />
+            <StatChip icon={<FileSignature size={13} />} label="Carta oferta" value={pipelineStats.offer} color="purple" />
+            <StatChip icon={<FolderOpen size={13} />} label="Documentos" value={pipelineStats.documentos} color="amber" />
+            <StatChip icon={<FileText size={13} />} label="Contrato" value={pipelineStats.contrato} color="indigo" />
+            <StatChip icon={<Mail size={13} />} label="Correos" value={pipelineStats.correos} color="teal" />
+            <StatChip icon={<GraduationCap size={13} />} label="Inducción" value={pipelineStats.induccion} color="rose" />
           </div>
         </div>
 
@@ -82,7 +82,7 @@ export function DashboardPage() {
             onClick={() => setSelected(null)}
           />
           {/* Panel */}
-          <div className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col animate-slide-in-right">
+          <div className="relative w-full max-w-2xl bg-white shadow-2xl flex flex-col animate-slide-in-right">
             <CandidateDetailPanel
               candidate={selected}
               onClose={() => setSelected(null)}

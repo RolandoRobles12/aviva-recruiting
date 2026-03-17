@@ -263,6 +263,12 @@ export interface ReminderSettings {
   maxReminders: number;
 }
 
+export interface LinkDurationSettings {
+  formDays: number;
+  offerDays: number;
+  contractDays: number;
+}
+
 export interface DocumentSetting {
   label: string;
   description: string;

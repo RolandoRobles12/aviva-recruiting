@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { EmailTemplatesSettings, ReminderSettings, DocumentSettings } from '../types';
+import type { EmailTemplatesSettings, ReminderSettings, DocumentSettings, LinkDurationSettings } from '../types';
 import { DOCUMENT_CONFIG } from '../types';
 
 export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
@@ -54,4 +54,22 @@ export async function getDocumentSettings(): Promise<DocumentSettings> {
 
 export async function saveDocumentSettings(settings: DocumentSettings): Promise<void> {
   await setDoc(doc(db, 'settings', 'documents'), settings);
+}
+
+// ─── Link Duration Settings ──────────────────────────────────────────────────
+
+export const DEFAULT_LINK_DURATION: LinkDurationSettings = {
+  formDays: 7,
+  offerDays: 7,
+  contractDays: 7,
+};
+
+export async function getLinkDurationSettings(): Promise<LinkDurationSettings> {
+  const snap = await getDoc(doc(db, 'settings', 'linkDuration'));
+  if (!snap.exists()) return DEFAULT_LINK_DURATION;
+  return { ...DEFAULT_LINK_DURATION, ...(snap.data() as Partial<LinkDurationSettings>) };
+}
+
+export async function saveLinkDurationSettings(settings: LinkDurationSettings): Promise<void> {
+  await setDoc(doc(db, 'settings', 'linkDuration'), settings);
 }

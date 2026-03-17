@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Candidate, DashboardStats } from '../types';
+import type { Candidate } from '../types';
 
 export function useCandidates() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -16,18 +16,7 @@ export function useCandidates() {
     return unsubscribe;
   }, []);
 
-  const stats: DashboardStats = {
-    total: candidates.length,
-    offerSent: candidates.filter((c) => c.status === 'offer_sent').length,
-    documents: candidates.filter((c) =>
-      c.status === 'offer_signed' || c.status === 'invited' || c.status === 'in_progress'
-    ).length,
-    underReview: candidates.filter((c) => c.status === 'under_review').length,
-    approved: candidates.filter((c) => c.status === 'approved').length,
-    rejected: candidates.filter((c) => c.status === 'rejected').length,
-  };
-
-  return { candidates, loading, stats };
+  return { candidates, loading };
 }
 
 export function useCandidate(id: string | undefined) {
