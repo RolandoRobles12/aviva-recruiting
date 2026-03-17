@@ -14,7 +14,8 @@ const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 async function notifyOcrError(
   candidateId: string,
   documentType: string,
-  errors: string[]
+  errors: string[],
+  details?: { documentTypeDetected?: string; confidence?: number }
 ): Promise<void> {
   try {
     const candidate = await getCandidateById(candidateId);
@@ -31,7 +32,8 @@ async function notifyOcrError(
         formUrl,
       },
       documentLabel,
-      errors
+      errors,
+      details
     );
 
     const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
@@ -172,7 +174,10 @@ export const onDocumentUploaded = onObjectFinalized(
 
       // Notify candidate by email when validation fails
       if (!result.valid && result.errors.length > 0) {
-        await notifyOcrError(candidateId, documentType, result.errors);
+        await notifyOcrError(candidateId, documentType, result.errors, {
+          documentTypeDetected: result.documentTypeDetected,
+          confidence: result.confidence,
+        });
       }
     } catch (err) {
       console.error(`Document validation error for ${candidateId}/${documentType}:`, err);

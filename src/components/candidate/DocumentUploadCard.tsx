@@ -193,11 +193,29 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
 
       {/* Error: invalid doc */}
       {document.status === 'invalid' && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-          <p className="text-xs font-medium text-red-700 mb-1">Documento rechazado</p>
-          <p className="text-xs text-red-600">
-            {document.rejectionReason ?? 'El documento no cumple los requisitos. Sube uno nuevo.'}
-          </p>
+        <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg space-y-2">
+          <p className="text-xs font-medium text-red-700">Documento rechazado</p>
+          {document.ocrResult?.documentTypeDetected &&
+            document.ocrResult.documentTypeDetected !== 'parse_error' &&
+            document.ocrResult.documentTypeDetected !== 'unknown' && (
+            <p className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded px-2 py-1">
+              Documento detectado: <strong>{document.ocrResult.documentTypeDetected}</strong>
+              {document.ocrResult.confidence != null && (
+                <> · Confianza: {Math.round(document.ocrResult.confidence * 100)}%</>
+              )}
+            </p>
+          )}
+          {document.ocrResult?.validationErrors && document.ocrResult.validationErrors.length > 0 ? (
+            <ul className="text-xs text-red-600 list-disc pl-4 space-y-0.5">
+              {document.ocrResult.validationErrors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-red-600">
+              {document.rejectionReason ?? 'El documento no cumple los requisitos. Sube uno nuevo.'}
+            </p>
+          )}
         </div>
       )}
 

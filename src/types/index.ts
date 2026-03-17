@@ -36,6 +36,7 @@ export interface OcrResult {
   confidence: number;
   validationPassed: boolean;
   validationErrors: string[];
+  documentTypeDetected?: string;
   processedAt: Timestamp;
 }
 
