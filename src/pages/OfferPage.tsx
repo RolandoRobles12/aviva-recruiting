@@ -154,27 +154,8 @@ export function OfferPage() {
           <p className="text-white/80 text-sm mt-1">{offer?.position}</p>
         </div>
 
-        {/* Key details */}
+        {/* Offer letter content */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-6 mb-6">
-            <div>
-              <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Salario</p>
-              <p className="text-gray-900 font-semibold">{offer?.salary || '—'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Fecha de inicio</p>
-              <p className="text-gray-900 font-semibold">{offer?.startDate || '—'}</p>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Beneficios</p>
-            <p className="text-gray-700 text-sm leading-relaxed">{offer?.benefits || '—'}</p>
-          </div>
-        </div>
-
-        {/* Body content */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Términos y condiciones</h2>
           <div
             className="prose prose-sm max-w-none text-gray-600"
             dangerouslySetInnerHTML={{ __html: offer?.bodyHtml ?? '' }}

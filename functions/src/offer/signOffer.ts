@@ -145,9 +145,6 @@ export const signOffer = onRequest(
     const pdfBuffer = await generateOfferPdf({
       candidateName: `${candidate.firstName} ${candidate.lastName}`,
       position: candidate.position as string,
-      salary,
-      benefits,
-      startDate,
       bodyText,
       signatureBase64,
       signedAt: now,

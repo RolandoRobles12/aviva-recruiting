@@ -17,23 +17,41 @@ type FormValues = {
   benefits: string;
 };
 
-const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{firstName}} {{lastName}}</strong>,</p>
+const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{name}}</strong>,</p>
 
-<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra misión. Hoy queremos darte un paso más y compartirte nuestra carta oferta.</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas.</p>
 
-<h2>I. Posición y organización</h2>
+<p>Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
+
+<p>Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
+
+<h2>1. Posición y organización</h2>
 <p><strong>Puesto:</strong> {{departmentProfile}}<br>
-<strong>Empresa:</strong> Aviva Financial S.A. de C.V. SOFOM ENR<br>
+<strong>Empresa:</strong> {{company}}<br>
 <strong>Líder:</strong> {{hiringManager}}<br>
-<strong>Fecha de inicio:</strong> {{startDate}}</p>
+<strong>Fecha de inicio:</strong> {{startDate}}<br>
+<strong>Horario:</strong> Lunes a Domingo 10 a 19 con Descanso Jueves*</p>
+<p><em>*Pueden cambiar de acuerdo a necesidades del negocio</em></p>
 
-<h2>II. Compensación y beneficios</h2>
-<p><strong>Sueldo Bruto:</strong> {{salary}}</p>
+<h2>2. Responsabilidades clave</h2>
+<ul>
+<li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
+<li>Tener pleno conocimiento de las características de los productos que se venden en tienda física y digital.</li>
+<li>Construir relaciones positivas y efectivas con gerentes, subgerentes y asociados de tienda.</li>
+<li>Ejecutar estrategias de venta, activaciones y promociones dentro del punto de venta.</li>
+<li>Proponer e implementar acciones comerciales en colaboración con el equipo de tienda, principalmente con el asociado de venta en línea.</li>
+<li>En caso necesario, realizar actividades de cambaceo en zonas cercanas para impulsar el tráfico y las ventas.</li>
+<li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
+</ul>
+
+<h2>3. Compensación y beneficios iniciales</h2>
+<p>El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
+<p><strong>Sueldo Bruto:</strong> {{salary}} (antes de impuestos)</p>
 <p>{{benefits}}</p>
 
-<p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
+<p><em>*La compensación variable y beneficios superiores están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
 
-<p>Atentamente,<br><strong>Equipo de Reclutamiento · Aviva</strong></p>`;
+<p><strong>¡Nos encanta que estés a unos pasos de ser parte de Aviva!</strong></p>`;
 
 export function OfferTemplatesPage() {
   const [templates, setTemplates] = useState<OfferTemplate[]>([]);
@@ -277,7 +295,7 @@ export function OfferTemplatesPage() {
                       <textarea
                         {...register('benefits')}
                         rows={7}
-                        placeholder={'Seguridad social: IMSS\nPrima vacacional: 25%\nPrima dominical: 25%\nAguinaldo: 15 días\nDías Aviva: 7 días personales al año'}
+                        placeholder={'Bono Garantía Bruto: 1750 MXN (pagado únicamente en las primeras 2 quincenas)*\nBono Mensual Bruto: 0 a 14373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*\nPremios bimestral: bono variable a los 3 primeros lugares de cada grupo de tienda*\nSeguridad social: IMSS\nPrima vacacional: 25%\nPrima dominical: 25%\nAguinaldo: 15 días (proporcional a los días laborados en el año)\nDías Aviva: 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva\nDía de cumpleaños: 1 día al año para celebrar tu vida\nBono de Maternidad o paternidad: 15 días de tu salario bruto mensual al nacer tu hijo/a'}
                         className="input-field resize-none text-xs leading-relaxed"
                       />
                     </div>
