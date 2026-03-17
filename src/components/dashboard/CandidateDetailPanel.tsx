@@ -144,64 +144,199 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
         </button>
       </div>
 
-      {/* ── Tabs ───────────────────────────────────────────────────────────── */}
-      <div className="flex border-b border-gray-100 px-5 shrink-0 bg-gray-50/50">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
-              tab === t.id
-                ? 'border-primary-600 text-primary-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* ── Two-column body ────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: Tabs + content */}
+        <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-100">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-100 px-5 shrink-0 bg-gray-50/50">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
+                  tab === t.id
+                    ? 'border-primary-600 text-primary-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-      {/* ── Tab content ────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
-        {tab === 'info' && (
-          <TabInfo
-            c={c}
-            notes={notes}
-            setNotes={setNotes}
-            savingNotes={savingNotes}
-            onSaveNotes={handleSaveNotes}
-            sendingReminder={sendingReminder}
-            onSendReminder={handleSendReminder}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            createdAt={createdAt}
-            updatedAt={updatedAt}
-            formUrl={formUrl}
-            formExpired={formExpired}
-            copied={copied}
-            onCopy={copyToClipboard}
-          />
-        )}
-        {tab === 'answers' && <TabAnswers c={c} />}
-        {tab === 'docs' && (
-          <TabDocs
-            c={c}
-            formUrl={formUrl}
-            formExpired={formExpired}
-            copied={copied}
-            onCopy={copyToClipboard}
-            extendingToken={extendingToken}
-            tokenExtended={tokenExtended}
-            onExtendToken={handleExtendToken}
-          />
-        )}
-        {tab === 'offer' && (
-          <TabOffer c={c} offerUrl={offerUrl} copied={copied} onCopy={copyToClipboard} />
-        )}
-        {tab === 'contract' && (
-          <TabContract c={c} contractUrl={contractUrl} copied={copied} onCopy={copyToClipboard} />
-        )}
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto">
+            {tab === 'info' && (
+              <TabInfo
+                c={c}
+                notes={notes}
+                setNotes={setNotes}
+                savingNotes={savingNotes}
+                onSaveNotes={handleSaveNotes}
+              />
+            )}
+            {tab === 'answers' && <TabAnswers c={c} />}
+            {tab === 'docs' && (
+              <TabDocs
+                c={c}
+                formUrl={formUrl}
+                formExpired={formExpired}
+                copied={copied}
+                onCopy={copyToClipboard}
+                extendingToken={extendingToken}
+                tokenExtended={tokenExtended}
+                onExtendToken={handleExtendToken}
+              />
+            )}
+            {tab === 'offer' && (
+              <TabOffer c={c} offerUrl={offerUrl} copied={copied} onCopy={copyToClipboard} />
+            )}
+            {tab === 'contract' && (
+              <TabContract c={c} contractUrl={contractUrl} copied={copied} onCopy={copyToClipboard} />
+            )}
+          </div>
+        </div>
+
+        {/* Right sidebar: Links & quick actions — always visible */}
+        <div className="w-72 shrink-0 overflow-y-auto bg-gray-50/50 p-4 space-y-4">
+          {/* Document form link */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
+              <FolderOpen size={13} className="text-amber-500" />
+              Enlace de documentación
+            </h4>
+            {formUrl ? (
+              <>
+                {formExpired ? (
+                  <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2">
+                    <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                    <span>
+                      Venció el{' '}
+                      {c.formExpiresAt?.toDate
+                        ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
+                        : '—'}
+                    </span>
+                  </div>
+                ) : c.formExpiresAt?.toDate && (
+                  <p className="text-[11px] text-gray-400 mb-2">
+                    Vigente hasta {format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
+                  </p>
+                )}
+                <div className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 border text-xs ${
+                  formExpired ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'
+                }`}>
+                  <span className="flex-1 truncate font-mono text-gray-500">{formUrl}</span>
+                  <button onClick={() => copyToClipboard(formUrl)} className="text-primary-600 hover:text-primary-700 shrink-0" title="Copiar">
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                  <a href={formUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0" title="Abrir">
+                    <ExternalLink size={13} />
+                  </a>
+                </div>
+                {formExpired && c.status !== 'approved' && c.status !== 'rejected' && (
+                  <button
+                    onClick={handleExtendToken}
+                    disabled={extendingToken}
+                    className="mt-2 w-full flex items-center justify-center gap-1.5 bg-amber-600 text-white px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-700 transition-colors disabled:opacity-60"
+                  >
+                    <RefreshCw size={12} className={extendingToken ? 'animate-spin' : ''} />
+                    {extendingToken ? 'Renovando...' : tokenExtended ? 'Renovado!' : 'Renovar enlace'}
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-gray-400">
+                El enlace se genera cuando el candidato firma la carta oferta o se crea manualmente.
+              </p>
+            )}
+          </div>
+
+          {/* Offer link */}
+          {offerUrl && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
+                <FileSignature size={13} className="text-purple-500" />
+                Carta oferta
+              </h4>
+              <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 border bg-gray-50 border-gray-200 text-xs">
+                <span className="flex-1 truncate font-mono text-gray-500">{offerUrl}</span>
+                <button onClick={() => copyToClipboard(offerUrl)} className="text-primary-600 hover:text-primary-700 shrink-0" title="Copiar">
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+                <a href={offerUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0" title="Abrir">
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+              {c.offerSignedAt && (
+                <p className="text-[11px] text-green-600 mt-1.5 flex items-center gap-1">
+                  <CheckCircle size={11} /> Firmada
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Contract link */}
+          {contractUrl && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
+                <ClipboardList size={13} className="text-indigo-500" />
+                Contrato
+              </h4>
+              <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 border bg-gray-50 border-gray-200 text-xs">
+                <span className="flex-1 truncate font-mono text-gray-500">{contractUrl}</span>
+                <button onClick={() => copyToClipboard(contractUrl)} className="text-primary-600 hover:text-primary-700 shrink-0" title="Copiar">
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+                <a href={contractUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0" title="Abrir">
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+              {c.contractSignedAt && (
+                <p className="text-[11px] text-green-600 mt-1.5 flex items-center gap-1">
+                  <CheckCircle size={11} /> Firmado
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Quick actions */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+            <h4 className="text-xs font-semibold text-gray-700 mb-2">Acciones rápidas</h4>
+            <button
+              onClick={handleSendReminder}
+              disabled={sendingReminder || c.status === 'approved' || c.status === 'rejected'}
+              className="w-full btn-secondary text-xs flex items-center justify-center gap-2 py-2"
+            >
+              <Send size={12} />
+              {sendingReminder ? 'Enviando...' : 'Enviar recordatorio'}
+            </button>
+            {c.status === 'under_review' && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleApprove}
+                  className="flex-1 flex items-center justify-center gap-1 bg-green-600 text-white px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
+                >
+                  <CheckCircle size={12} /> Aprobar
+                </button>
+                <button
+                  onClick={handleReject}
+                  className="flex-1 flex items-center justify-center gap-1 bg-red-600 text-white px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
+                >
+                  <XCircle size={12} /> Rechazar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Timestamps */}
+          <div className="text-[11px] text-gray-400 space-y-0.5 px-1">
+            {createdAt && <p>Creado: {format(createdAt, "d MMM yyyy HH:mm", { locale: es })}</p>}
+            {updatedAt && <p>Actualizado: {format(updatedAt, "d MMM yyyy HH:mm", { locale: es })}</p>}
+            <p>Recordatorios: {c.reminderCount}</p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -211,52 +346,15 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
    TAB: Info
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes, sendingReminder, onSendReminder, onApprove, onReject, createdAt, updatedAt, formUrl, formExpired, copied, onCopy }: {
+function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
   c: Candidate;
   notes: string;
   setNotes: (v: string) => void;
   savingNotes: boolean;
   onSaveNotes: () => void;
-  sendingReminder: boolean;
-  onSendReminder: () => void;
-  onApprove: () => void;
-  onReject: () => void;
-  createdAt?: Date;
-  updatedAt?: Date;
-  formUrl: string | null;
-  formExpired: boolean;
-  copied: boolean;
-  onCopy: (text: string) => void;
 }) {
   return (
     <div className="px-5 py-4 space-y-5">
-      {/* Form link — prominent at the top */}
-      {formUrl && (
-        <Section title="Enlace de documentación">
-          {formExpired ? (
-            <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
-              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-              <span>
-                El enlace venció el{' '}
-                {c.formExpiresAt?.toDate
-                  ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
-                  : '—'}
-              </span>
-            </div>
-          ) : c.formExpiresAt?.toDate && (
-            <p className="text-[11px] text-gray-400 mb-1.5">
-              Vigente hasta: {format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
-            </p>
-          )}
-          <LinkBox
-            url={formUrl}
-            expired={formExpired}
-            copied={copied}
-            onCopy={() => onCopy(formUrl)}
-          />
-        </Section>
-      )}
-
       {/* Contact */}
       <Section title="Contacto">
         <div className="space-y-1.5">
@@ -294,38 +392,6 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes, sendingReminder
         </Section>
       )}
 
-      {/* Actions */}
-      <Section title="Acciones">
-        <button
-          onClick={onSendReminder}
-          disabled={sendingReminder || c.status === 'approved' || c.status === 'rejected'}
-          className="w-full btn-secondary text-xs flex items-center justify-center gap-2 py-2"
-        >
-          <Send size={13} />
-          {sendingReminder ? 'Enviando...' : 'Enviar recordatorio'}
-        </button>
-      </Section>
-
-      {/* Approve / Reject */}
-      {c.status === 'under_review' && (
-        <Section title="Decisión">
-          <div className="flex gap-2">
-            <button
-              onClick={onApprove}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
-            >
-              <CheckCircle size={13} /> Aprobar
-            </button>
-            <button
-              onClick={onReject}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
-            >
-              <XCircle size={13} /> Rechazar
-            </button>
-          </div>
-        </Section>
-      )}
-
       {/* Notes */}
       <Section title="Notas internas">
         <textarea
@@ -343,13 +409,6 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes, sendingReminder
           {savingNotes ? 'Guardando...' : 'Guardar notas'}
         </button>
       </Section>
-
-      {/* Timestamps */}
-      <div className="text-[11px] text-gray-400 space-y-0.5 pb-4 border-t border-gray-100 pt-3">
-        {createdAt && <p>Creado: {format(createdAt, "d MMM yyyy HH:mm", { locale: es })}</p>}
-        {updatedAt && <p>Actualizado: {format(updatedAt, "d MMM yyyy HH:mm", { locale: es })}</p>}
-        <p>Recordatorios enviados: {c.reminderCount}</p>
-      </div>
     </div>
   );
 }

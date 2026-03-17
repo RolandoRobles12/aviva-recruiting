@@ -82,7 +82,7 @@ export function DashboardPage() {
             onClick={() => setSelected(null)}
           />
           {/* Panel */}
-          <div className="relative w-full max-w-2xl bg-white shadow-2xl flex flex-col animate-slide-in-right">
+          <div className="relative w-full max-w-4xl bg-white shadow-2xl flex flex-col animate-slide-in-right">
             <CandidateDetailPanel
               candidate={selected}
               onClose={() => setSelected(null)}
