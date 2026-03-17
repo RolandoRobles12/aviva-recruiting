@@ -26,6 +26,11 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
+    // Gmail OAuth tokens — only Cloud Functions can read/write
+    match /recruiters/{uid}/private/gmailTokens {
+      allow read, write: if false;
+    }
+
     // ─── Candidates ───────────────────────────────────────────────────────────
 
     match /candidates/{candidateId} {

@@ -16,7 +16,8 @@ export const sendReminderEmail = onCall(
     const candidate = await getCandidateById(candidateId);
     if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
 
-    const senderEmail = await getRecruiterEmail(request.auth.uid);
+    const recruiterUid = request.auth.uid;
+    const senderEmail = await getRecruiterEmail(recruiterUid);
 
     const docs = candidate.documents as Record<string, { status: string }>;
     // Build candidate-specific required types
@@ -69,6 +70,7 @@ export const sendReminderEmail = onCall(
       subject,
       html,
       senderEmail,
+      recruiterUid,
     });
 
     // Update reminder count and timestamp

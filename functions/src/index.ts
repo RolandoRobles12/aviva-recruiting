@@ -1,6 +1,7 @@
 export { sendInvitationEmail } from './email/sendInvitationEmail';
 export { sendReminderEmail } from './email/sendReminderEmail';
 export { scheduleReminders } from './email/scheduleReminders';
+export { getGmailAuthUrl, gmailOAuthCallback, disconnectGmail } from './email/gmailOAuth';
 export { onDocumentUploaded } from './ocr/triggerOcrValidation';
 export { viterbitWebhook } from './viterbit/webhookHandler';
 export { signOffer, getOffer } from './offer/signOffer';

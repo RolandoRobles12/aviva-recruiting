@@ -172,6 +172,13 @@ export interface OfferTemplate {
 
 // ─── Recruiter / Auth ─────────────────────────────────────────────────────────
 
+export interface GmailTokens {
+  access_token: string;
+  refresh_token: string;
+  expiry_date: number;
+  scope: string;
+}
+
 export interface RecruiterProfile {
   uid: string;
   email: string;
@@ -179,6 +186,7 @@ export interface RecruiterProfile {
   photoUrl?: string;
   role: 'admin' | 'recruiter';
   createdAt: Timestamp;
+  gmailConnected?: boolean;
 }
 
 // ─── Email ────────────────────────────────────────────────────────────────────

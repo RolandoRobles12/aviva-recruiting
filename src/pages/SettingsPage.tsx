@@ -1,21 +1,23 @@
 import { useState } from 'react';
-import { Mail, Bell, FileText, Settings } from 'lucide-react';
+import { Mail, Bell, FileText, Settings, Link } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmailTemplatesTab } from '../components/settings/EmailTemplatesTab';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { DocumentsTab } from '../components/settings/DocumentsTab';
+import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { useSettings } from '../hooks/useSettings';
 
-type Tab = 'emails' | 'reminders' | 'documents';
+type Tab = 'emails' | 'reminders' | 'documents' | 'gmail';
 
 const TABS: { id: Tab; label: string; Icon: typeof Mail }[] = [
+  { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
   { id: 'emails', label: 'Plantillas de correo', Icon: Mail },
   { id: 'reminders', label: 'Recordatorios', Icon: Bell },
   { id: 'documents', label: 'Documentos', Icon: FileText },
 ];
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('emails');
+  const [activeTab, setActiveTab] = useState<Tab>('gmail');
   const {
     reminderSettings,
     emailTemplates,
@@ -63,6 +65,7 @@ export function SettingsPage() {
             </div>
           ) : (
             <>
+              {activeTab === 'gmail' && <GmailConnectionTab />}
               {activeTab === 'emails' && (
                 <EmailTemplatesTab
                   templates={emailTemplates}
