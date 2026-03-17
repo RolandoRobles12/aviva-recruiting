@@ -29,6 +29,7 @@ import {
   sendReminderEmail,
 } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
+import { getLinkDurationSettings } from '../../services/settings';
 import { sendInvitationEmail } from '../../services/functions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -92,7 +93,8 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const handleExtendToken = async () => {
     setExtendingToken(true);
     try {
-      await extendFormToken(c.id);
+      const linkSettings = await getLinkDurationSettings();
+      await extendFormToken(c.id, linkSettings.formDays);
       await sendInvitationEmail({ candidateId: c.id });
       setTokenExtended(true);
       setTimeout(() => setTokenExtended(false), 4000);
@@ -175,6 +177,10 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             onReject={handleReject}
             createdAt={createdAt}
             updatedAt={updatedAt}
+            formUrl={formUrl}
+            formExpired={formExpired}
+            copied={copied}
+            onCopy={copyToClipboard}
           />
         )}
         {tab === 'answers' && <TabAnswers c={c} />}
@@ -205,7 +211,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
    TAB: Info
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes, sendingReminder, onSendReminder, onApprove, onReject, createdAt, updatedAt }: {
+function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes, sendingReminder, onSendReminder, onApprove, onReject, createdAt, updatedAt, formUrl, formExpired, copied, onCopy }: {
   c: Candidate;
   notes: string;
   setNotes: (v: string) => void;
@@ -217,9 +223,40 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes, sendingReminder
   onReject: () => void;
   createdAt?: Date;
   updatedAt?: Date;
+  formUrl: string | null;
+  formExpired: boolean;
+  copied: boolean;
+  onCopy: (text: string) => void;
 }) {
   return (
     <div className="px-5 py-4 space-y-5">
+      {/* Form link — prominent at the top */}
+      {formUrl && (
+        <Section title="Enlace de documentación">
+          {formExpired ? (
+            <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+              <span>
+                El enlace venció el{' '}
+                {c.formExpiresAt?.toDate
+                  ? format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })
+                  : '—'}
+              </span>
+            </div>
+          ) : c.formExpiresAt?.toDate && (
+            <p className="text-[11px] text-gray-400 mb-1.5">
+              Vigente hasta: {format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
+            </p>
+          )}
+          <LinkBox
+            url={formUrl}
+            expired={formExpired}
+            copied={copied}
+            onCopy={() => onCopy(formUrl)}
+          />
+        </Section>
+      )}
+
       {/* Contact */}
       <Section title="Contacto">
         <div className="space-y-1.5">

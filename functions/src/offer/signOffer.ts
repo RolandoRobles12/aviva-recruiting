@@ -8,6 +8,7 @@ import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
 import { invitationTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
+import { getLinkDuration } from '../utils/linkDuration';
 import { generateOfferPdf, stripHtml } from './pdfGenerator';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
@@ -165,7 +166,8 @@ export const signOffer = onRequest(
     // ── Generate documents form token ───────────────────────────────────────────
     const crypto = await import('crypto');
     const formToken = crypto.randomBytes(32).toString('hex');
-    const formExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const linkDurations = await getLinkDuration();
+    const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
 
     // ── Update candidate in Firestore ───────────────────────────────────────────
     await candidateDoc.ref.update({

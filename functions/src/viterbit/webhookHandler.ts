@@ -8,6 +8,7 @@ import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
 import { offerTemplate, contractTemplate } from '../email/templates';
 import { createEmailTicket } from '../integrations/jiraService';
+import { getLinkDuration } from '../utils/linkDuration';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -25,7 +26,6 @@ const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducc
 
 const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
-const OFFER_EXPIRY_DAYS = 7;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -332,9 +332,10 @@ async function handleAprobado(
   // Find best offer template for this position
   const templateMatch = await findOfferTemplate(jobTitle);
 
-  // Create offer token (7-day expiry)
+  // Create offer token (configurable expiry)
+  const linkDurations = await getLinkDuration();
   const offerToken = generateToken();
-  const offerExpiresAt = new Date(Date.now() + OFFER_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const offerExpiresAt = new Date(Date.now() + linkDurations.offerDays * 24 * 60 * 60 * 1000);
 
   // Create candidate in Firestore
   const candidateRef = db.collection('candidates').doc();
@@ -450,7 +451,8 @@ async function handleDocumentos(
   const lastName = nameParts.slice(1).join(' ') || '';
 
   const formToken = generateToken();
-  const formExpiresAt = new Date(Date.now() + OFFER_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const linkDurations = await getLinkDuration();
+  const formExpiresAt = new Date(Date.now() + linkDurations.formDays * 24 * 60 * 60 * 1000);
 
   const candidateRef = db.collection('candidates').doc();
   await candidateRef.set({
@@ -549,8 +551,6 @@ async function findContractTemplate(
   return { id: snap.docs[0].id, data: snap.docs[0].data() };
 }
 
-const CONTRACT_EXPIRY_DAYS = 7;
-
 /**
  * Candidate reached "Contrato":
  * 1. Generate contract token
@@ -577,7 +577,8 @@ async function handleContrato(
 
   // Generate contract token
   const contractTokenValue = generateToken();
-  const contractExpiresAt = new Date(Date.now() + CONTRACT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const contractLinkDuration = await getLinkDuration();
+  const contractExpiresAt = new Date(Date.now() + contractLinkDuration.contractDays * 24 * 60 * 60 * 1000);
 
   await candidateRef.update({
     status: 'contract_sent',

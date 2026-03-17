@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { UserPlus } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { createCandidate } from '../../services/candidates';
+import { getLinkDurationSettings } from '../../services/settings';
 import { sendInvitationEmail } from '../../services/functions';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -39,7 +40,8 @@ export function CreateCandidateModal({ isOpen, onClose }: Props) {
     if (!user) return;
     setLoading(true);
     try {
-      const candidate = await createCandidate(data, user.uid);
+      const linkSettings = await getLinkDurationSettings();
+      const candidate = await createCandidate(data, user.uid, linkSettings.formDays);
       await sendInvitationEmail({ candidateId: candidate.id });
       setSuccess(true);
       reset();

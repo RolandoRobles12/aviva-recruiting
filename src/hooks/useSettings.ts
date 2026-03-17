@@ -6,26 +6,31 @@ import {
   saveEmailTemplates,
   getDocumentSettings,
   saveDocumentSettings,
+  getLinkDurationSettings,
+  saveLinkDurationSettings,
   DEFAULT_REMINDER_SETTINGS,
   DEFAULT_EMAIL_TEMPLATES,
+  DEFAULT_LINK_DURATION,
 } from '../services/settings';
-import type { ReminderSettings, EmailTemplatesSettings, DocumentSettings } from '../types';
+import type { ReminderSettings, EmailTemplatesSettings, DocumentSettings, LinkDurationSettings } from '../types';
 import { DOCUMENT_CONFIG } from '../types';
 
 export function useSettings() {
   const [reminderSettings, setReminderSettings] = useState<ReminderSettings>(DEFAULT_REMINDER_SETTINGS);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplatesSettings>(DEFAULT_EMAIL_TEMPLATES);
   const [documentSettings, setDocumentSettings] = useState<DocumentSettings>(DOCUMENT_CONFIG as DocumentSettings);
+  const [linkDuration, setLinkDuration] = useState<LinkDurationSettings>(DEFAULT_LINK_DURATION);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getReminderSettings(), getEmailTemplates(), getDocumentSettings()])
-      .then(([reminders, emails, documents]) => {
+    Promise.all([getReminderSettings(), getEmailTemplates(), getDocumentSettings(), getLinkDurationSettings()])
+      .then(([reminders, emails, documents, links]) => {
         setReminderSettings(reminders);
         setEmailTemplates(emails);
         setDocumentSettings(documents);
+        setLinkDuration(links);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -68,15 +73,28 @@ export function useSettings() {
     }
   };
 
+  const handleSaveLinkDuration = async (settings: LinkDurationSettings) => {
+    setSaving(true);
+    try {
+      await saveLinkDurationSettings(settings);
+      setLinkDuration(settings);
+      showSaved('links');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return {
     reminderSettings,
     emailTemplates,
     documentSettings,
+    linkDuration,
     loading,
     saving,
     savedKey,
     saveReminders: handleSaveReminders,
     saveEmailTemplates: handleSaveEmailTemplates,
     saveDocuments: handleSaveDocuments,
+    saveLinkDuration: handleSaveLinkDuration,
   };
 }

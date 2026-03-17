@@ -7,20 +7,17 @@ import { EmptyState } from '../ui/EmptyState';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-const STATUS_FILTERS: { value: CandidateStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'Todos' },
-  { value: 'offer_sent', label: 'Carta enviada' },
-  { value: 'offer_signed', label: 'Carta firmada' },
-  { value: 'invited', label: 'Invitados' },
-  { value: 'in_progress', label: 'En progreso' },
-  { value: 'under_review', label: 'En revisión' },
-  { value: 'approved', label: 'Aprobados' },
-  { value: 'contract_sent', label: 'Contrato enviado' },
-  { value: 'contract_signed', label: 'Contrato firmado' },
-  { value: 'email_pending', label: 'Correo pendiente' },
-  { value: 'email_ready', label: 'Correo listo' },
-  { value: 'induction', label: 'Inducción' },
-  { value: 'rejected', label: 'Rechazados' },
+// Pipeline stages matching Viterbit: Documentos → Contrato → Correos → Inducción
+// Each filter groups related sub-statuses together
+type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'offer';
+
+const STATUS_FILTERS: { value: FilterValue; label: string; statuses: CandidateStatus[] }[] = [
+  { value: 'all',        label: 'Todos',        statuses: [] },
+  { value: 'offer',      label: 'Carta oferta',  statuses: ['offer_sent', 'offer_signed'] },
+  { value: 'documentos', label: 'Documentos',   statuses: ['invited', 'in_progress', 'under_review', 'approved', 'rejected'] },
+  { value: 'contrato',   label: 'Contrato',     statuses: ['contract_sent', 'contract_signed'] },
+  { value: 'correos',    label: 'Correos',      statuses: ['email_pending', 'email_ready'] },
+  { value: 'induction',  label: 'Inducción',    statuses: ['induction'] },
 ];
 
 interface Props {
@@ -31,15 +28,16 @@ interface Props {
 
 export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<CandidateStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<FilterValue>('all');
 
+  const activeFilter = STATUS_FILTERS.find((f) => f.value === statusFilter);
   const filtered = candidates.filter((c) => {
     const matchSearch =
       !search ||
       `${c.firstName} ${c.lastName} ${c.email} ${c.position}`
         .toLowerCase()
         .includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || c.status === statusFilter;
+    const matchStatus = statusFilter === 'all' || (activeFilter?.statuses.includes(c.status) ?? false);
     return matchSearch && matchStatus;
   });
 
@@ -57,19 +55,24 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
           />
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                statusFilter === f.value
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+          {STATUS_FILTERS.map((f) => {
+            const count = f.value === 'all'
+              ? candidates.length
+              : candidates.filter((c) => f.statuses.includes(c.status)).length;
+            return (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  statusFilter === f.value
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {f.label} <span className="opacity-70">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

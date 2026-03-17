@@ -39,11 +39,12 @@ function buildInitialDocuments() {
 
 export async function createCandidate(
   payload: CreateCandidatePayload,
-  recruiterUid: string
+  recruiterUid: string,
+  formDays = 7
 ): Promise<Candidate> {
   const ref = doc(collection(db, CANDIDATES_COLLECTION));
   const token = generateToken();
-  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // 7 days
+  const expiresAt = Timestamp.fromDate(new Date(Date.now() + formDays * 24 * 60 * 60 * 1000));
 
   const candidate: Omit<Candidate, 'id'> = {
     firstName: payload.firstName,
@@ -163,9 +164,9 @@ export async function updateCandidateFormAnswers(
   await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), updateData);
 }
 
-export async function extendFormToken(candidateId: string): Promise<string> {
+export async function extendFormToken(candidateId: string, formDays = 7): Promise<string> {
   const newToken = generateToken();
-  const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + formDays * 24 * 60 * 60 * 1000));
   await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
     formToken: newToken,
     formExpiresAt: newExpiresAt,
