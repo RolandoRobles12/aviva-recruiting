@@ -29,6 +29,53 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
+/** Fetch job details live from Viterbit API */
+async function fetchViterbitJobLive(
+  jobId: string,
+  apiKey: string
+): Promise<{ title: string; salary: string; hiringManager: string; startDate: string; company: string }> {
+  const empty = { title: '', salary: '', hiringManager: '', startDate: '', company: '' };
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}`, {
+      headers: { accept: 'application/json', 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) return empty;
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+
+    // Parse salary from salary_min / salary_max
+    const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
+    const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
+    let salary = '';
+    if (salaryMin?.amount && salaryMax?.amount) {
+      const currency = salaryMin.currency ?? 'MXN';
+      salary = salaryMin.amount === salaryMax.amount
+        ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
+        : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
+    } else if (salaryMin?.amount) {
+      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
+    } else if (salaryMax?.amount) {
+      salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
+    }
+
+    const custom = (data.custom_fields as Record<string, unknown>) ?? {};
+    const getCustom = (key: string): string =>
+      (custom[key] as string) ?? (data[key] as string) ?? '';
+
+    return {
+      title: (data.title as string) ?? '',
+      salary,
+      hiringManager: getCustom('hiring_manager') || getCustom('custom_job_hiring_manager') || '',
+      startDate: getCustom('start_date') || getCustom('hired_start_date_job') || '',
+      company: getCustom('company') || getCustom('custom_job_empresa') || (data.external_id as string) || '',
+    };
+  } catch (err) {
+    console.error('[signOffer] fetchViterbitJobLive error:', err);
+    return empty;
+  }
+}
+
+
 // ─── Helper: interpolate template variables ────────────────────────────────────
 
 // Maps Viterbit ${variable} names (from Word templates) to system variable names.
@@ -119,49 +166,40 @@ export const signOffer = onRequest(
       return;
     }
 
-    // ── Fetch offer template ────────────────────────────────────────────────────
-    const templateId = candidate.offerTemplateId as string | undefined;
-    let offerTemplate: Record<string, unknown> | null = null;
-    if (templateId) {
-      const tSnap = await db.collection('offer_templates').doc(templateId).get();
-      if (tSnap.exists) offerTemplate = tSnap.data() as Record<string, unknown>;
-    }
-    // Fallback: find any template matching the position
-    if (!offerTemplate) {
-      const allTemplates = await db.collection('offer_templates').limit(1).get();
-      if (!allTemplates.empty) offerTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
-    }
+    // ── Fetch live job data from Viterbit API ──────────────────────────────────
+    const apiKey = VITERBIT_API_KEY.value();
+    const jobId = (candidate.viterbitJobId as string) || '';
 
-    // Viterbit job fields take priority; template fields are fallbacks
-    const salary      = (candidate.viterbitSalary      as string) || (offerTemplate?.salary      as string) || '';
-    const startDate   = (candidate.viterbitStartDate   as string) || (offerTemplate?.startDate   as string) || 'a convenir';
-    const hiringManager     = (candidate.viterbitHiringManager     as string) || '';
-    const company           = (candidate.viterbitCompany           as string) || 'Aviva';
-    const departmentProfile = (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '';
-    const benefits    = (offerTemplate?.benefits as string) ?? '';
-    const bodyHtml    = DEFAULT_OFFER_BODY_HTML;
+    const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
 
     const firstNameVal = (candidate.firstName as string) || '';
     const lastNameVal  = (candidate.lastName  as string) || '';
+    const positionVal  = jobInfo?.title || (candidate.position as string) || '';
+    const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
+    const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
+    const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
+    const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
+    const departmentProfile = (candidate.viterbitDepartmentProfile as string) || positionVal;
+
     const vars: Record<string, string> = {
       name:      `${firstNameVal} ${lastNameVal}`.trim(),
       firstName: firstNameVal,
       lastName:  lastNameVal,
-      position:  candidate.position  as string,
+      position:  positionVal,
       departmentProfile,
       hiringManager,
       company,
       salary,
-      benefits,
+      benefits:  '',
       startDate,
       date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
-    const bodyText = stripHtml(interpolate(bodyHtml, vars));
+    const bodyText = stripHtml(interpolate(DEFAULT_OFFER_BODY_HTML, vars));
 
     // ── Generate PDF ────────────────────────────────────────────────────────────
     const pdfBuffer = await generateOfferPdf({
-      candidateName: `${candidate.firstName} ${candidate.lastName}`,
-      position: candidate.position as string,
+      candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
+      position: positionVal,
       bodyText,
       signatureBase64,
       signedAt: now,
@@ -188,7 +226,6 @@ export const signOffer = onRequest(
     });
 
     // ── Move candidate in Viterbit to "Documentos" ──────────────────────────────
-    const apiKey = VITERBIT_API_KEY.value();
     const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
     const documentosStageId = stageIds?.documentos;
     const candidatureId = candidate.viterbitCandidatureId as string | undefined;
@@ -307,48 +344,44 @@ export const getOffer = onRequest(
       return;
     }
 
-    // Fetch offer template
-    const templateId = candidate.offerTemplateId as string | undefined;
-    let offerTemplate: Record<string, unknown> | null = null;
-    if (templateId) {
-      const tSnap = await db.collection('offer_templates').doc(templateId).get();
-      if (tSnap.exists) offerTemplate = tSnap.data() as Record<string, unknown>;
-    }
-    if (!offerTemplate) {
-      const allTemplates = await db.collection('offer_templates').limit(1).get();
-      if (!allTemplates.empty) offerTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
-    }
+    // Fetch live job data from Viterbit API (don't rely on stored values)
+    const apiKey = VITERBIT_API_KEY.value();
+    const jobId = (candidate.viterbitJobId as string) || '';
 
-    const offerSalary    = (candidate.viterbitSalary      as string) || (offerTemplate?.salary    as string) || '';
-    const offerStartDate = (candidate.viterbitStartDate   as string) || (offerTemplate?.startDate as string) || 'a convenir';
-    const offerBenefits  = (offerTemplate?.benefits as string) ?? '';
+    const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
 
+    // Candidate name comes from Firestore (set by webhook)
     const firstNameVal = (candidate.firstName as string) || '';
     const lastNameVal  = (candidate.lastName  as string) || '';
+    const positionVal  = jobInfo?.title || (candidate.position as string) || '';
+    const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
+    const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
+    const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
+    const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
+
     const vars: Record<string, string> = {
       name:      `${firstNameVal} ${lastNameVal}`.trim(),
       firstName: firstNameVal,
       lastName:  lastNameVal,
-      position:  candidate.position  as string,
-      departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
-      hiringManager:     (candidate.viterbitHiringManager     as string) || '',
-      company:           (candidate.viterbitCompany           as string) || 'Aviva',
+      position:  positionVal,
+      departmentProfile: (candidate.viterbitDepartmentProfile as string) || positionVal,
+      hiringManager,
+      company,
       salary:    offerSalary,
-      benefits:  offerBenefits,
+      benefits:  '',
       startDate: offerStartDate,
       date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
-    const rawHtml = DEFAULT_OFFER_BODY_HTML;
-    const renderedHtml = interpolate(rawHtml, vars);
+    const renderedHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
 
     res.status(200).json({
       ok: true,
       offer: {
-        candidateName: `${candidate.firstName} ${candidate.lastName}`,
-        position: candidate.position,
+        candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
+        position: positionVal,
         salary: offerSalary,
-        benefits: offerBenefits,
+        benefits: '',
         startDate: offerStartDate,
         bodyHtml: renderedHtml,
         expiresAt: expiresAt?.toISOString(),
