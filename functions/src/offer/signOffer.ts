@@ -29,46 +29,62 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
+interface ViterbitJobLive {
+  title: string;
+  salary: string;
+  hiringManager: string;
+  startDate: string;
+  company: string;
+  departmentProfile: string;
+}
+
 /** Fetch job details live from Viterbit API */
-async function fetchViterbitJobLive(
-  jobId: string,
-  apiKey: string
-): Promise<{ title: string; salary: string; hiringManager: string; startDate: string; company: string }> {
-  const empty = { title: '', salary: '', hiringManager: '', startDate: '', company: '' };
+async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<ViterbitJobLive> {
+  const empty: ViterbitJobLive = { title: '', salary: '', hiringManager: '', startDate: '', company: '', departmentProfile: '' };
   try {
     const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}`, {
       headers: { accept: 'application/json', 'X-API-Key': apiKey },
     });
-    if (!resp.ok) return empty;
+    if (!resp.ok) {
+      console.error(`[signOffer] fetchViterbitJobLive HTTP ${resp.status} for job ${jobId}`);
+      return empty;
+    }
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
 
-    // Parse salary from salary_min / salary_max
+    // Log the full response so we can debug what fields Viterbit returns
+    console.log('[signOffer] Viterbit job API response keys:', Object.keys(data));
+    console.log('[signOffer] Viterbit job custom_fields:', JSON.stringify(data.custom_fields));
+    console.log('[signOffer] Viterbit job salary_min:', JSON.stringify(data.salary_min));
+    console.log('[signOffer] Viterbit job salary_max:', JSON.stringify(data.salary_max));
+    console.log('[signOffer] Viterbit job department_profile_id:', data.department_profile_id);
+    console.log('[signOffer] Viterbit job title:', data.title);
+
+    // Salary: use salary_min only (as per business requirement)
     const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
-    const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
     let salary = '';
-    if (salaryMin?.amount && salaryMax?.amount) {
+    if (salaryMin?.amount) {
       const currency = salaryMin.currency ?? 'MXN';
-      salary = salaryMin.amount === salaryMax.amount
-        ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
-        : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
-    } else if (salaryMin?.amount) {
-      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
-    } else if (salaryMax?.amount) {
-      salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
+      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`;
     }
 
     const custom = (data.custom_fields as Record<string, unknown>) ?? {};
-    const getCustom = (key: string): string =>
-      (custom[key] as string) ?? (data[key] as string) ?? '';
-
-    return {
-      title: (data.title as string) ?? '',
-      salary,
-      hiringManager: getCustom('hiring_manager') || getCustom('custom_job_hiring_manager') || '',
-      startDate: getCustom('start_date') || getCustom('hired_start_date_job') || '',
-      company: getCustom('company') || getCustom('custom_job_empresa') || (data.external_id as string) || '',
+    const getCustom = (key: string): string => {
+      const val = (custom[key] as string) ?? (data[key] as string) ?? '';
+      return typeof val === 'string' ? val : String(val || '');
     };
+
+    const result: ViterbitJobLive = {
+      title: (data.title as string) ?? (data.name as string) ?? '',
+      salary,
+      hiringManager:     getCustom('hiring_manager') || getCustom('custom_job_hiring_manager') || '',
+      startDate:         getCustom('start_date') || getCustom('hired_start_date_job') || '',
+      company:           getCustom('company') || getCustom('custom_job_empresa') || (data.external_id as string) || 'Aviva',
+      departmentProfile: (data.department_profile_id as string) ?? getCustom('department_profile') ?? getCustom('job_department_profile') ?? '',
+    };
+
+    console.log('[signOffer] Parsed job info:', JSON.stringify(result));
+    return result;
   } catch (err) {
     console.error('[signOffer] fetchViterbitJobLive error:', err);
     return empty;
@@ -107,18 +123,42 @@ function interpolate(template: string, vars: Record<string, string>): string {
 // ─── Default offer letter body (matches Carta Oferta design) ─────────────────
 
 const DEFAULT_OFFER_BODY_HTML = `
-<p>Bienvenido/a {{name}},</p>
-<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra misión. Hoy queremos darte un paso más y compartirte nuestra carta oferta.</p>
-<p>I. Posición y organización</p>
-<p><strong>Puesto:</strong> {{position}}<br>
-<strong>Empresa:</strong> Aviva Financial S.A. de C.V. SOFOM ENR<br>
-<strong>Líder:</strong> {{hiringManager}}<br>
-<strong>Fecha de inicio:</strong> {{startDate}}</p>
-<p>II. Compensación y beneficios</p>
-<p><strong>Sueldo Bruto:</strong> {{salary}}</p>
-<p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
-<p>Atentamente,</p>
-<p><strong>Equipo de Reclutamiento · Aviva</strong></p>
+<p>Bienvenido/a \${name},</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas.</p>
+<p>Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
+<p>Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
+<p><strong>1. Posición y organización</strong></p>
+<p><strong>Puesto:</strong> \${job_department_profile}<br>
+<strong>Empresa:</strong> \${custom_job_empresa}<br>
+<strong>Líder:</strong> \${custom_job_hiring_manager}<br>
+<strong>Fecha de inicio:</strong> \${hired_start_date_job}<br>
+<strong>Horario:</strong> Lunes a Domingo 10 a 19 con Descanso Jueves*<br>
+<em>*Pueden cambiar de acuerdo a necesidades del negocio</em></p>
+<p><strong>2. Responsabilidades clave</strong></p>
+<ul>
+<li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
+<li>Tener pleno conocimiento de las características de los productos que se venden en tienda física y digital.</li>
+<li>Construir relaciones positivas y efectivas con gerentes, subgerentes y asociados de tienda.</li>
+<li>Ejecutar estrategias de venta, activaciones y promociones dentro del punto de venta.</li>
+<li>Proponer e implementar acciones comerciales en colaboración con el equipo de tienda, principalmente con el asociado de venta en línea.</li>
+<li>En caso necesario, realizar actividades de cambaceo en zonas cercanas para impulsar el tráfico y las ventas.</li>
+<li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
+</ul>
+<p><strong>3. Compensación y beneficios iniciales</strong></p>
+<p>El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
+<p><strong>Sueldo Bruto:</strong> \${hired_salary_job} (antes de impuestos)<br>
+<strong>Bono Garantía Bruto:</strong> 1750 MXN (pagado únicamente en las primeras 2 quincenas)*<br>
+<strong>Bono Mensual Bruto:</strong> 0 a 14373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*<br>
+<strong>Premios bimestral:</strong> bono variable a los 3 primeros lugares de cada grupo de tienda*<br>
+<strong>Seguridad social:</strong> IMSS<br>
+<strong>Prima vacacional:</strong> 25%<br>
+<strong>Prima dominical:</strong> 25%<br>
+<strong>Aguinaldo:</strong> 15 días (proporcional a los días laborados en el año)<br>
+<strong>Días Aviva:</strong> 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva<br>
+<strong>Día de cumpleaños:</strong> 1 día al año para celebrar tu vida<br>
+<strong>Bono de Maternidad o paternidad:</strong> 15 días de tu salario bruto mensual al nacer tu hijo/a</p>
+<p><em>*La compensación variable y beneficios superiores están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
+<p><strong>¡Nos encanta que estés a unos pasos de ser parte de Aviva!</strong></p>
 `;
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -179,7 +219,11 @@ export const signOffer = onRequest(
     const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
     const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
     const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
-    const departmentProfile = (candidate.viterbitDepartmentProfile as string) || positionVal;
+    const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
+
+    console.log('[signOffer] Template vars:', JSON.stringify({
+      name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, salary, startDate, hiringManager, company, departmentProfile,
+    }));
 
     const vars: Record<string, string> = {
       name:      `${firstNameVal} ${lastNameVal}`.trim(),
@@ -190,7 +234,6 @@ export const signOffer = onRequest(
       hiringManager,
       company,
       salary,
-      benefits:  '',
       startDate,
       date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
@@ -358,17 +401,22 @@ export const getOffer = onRequest(
     const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
     const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
     const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
+    const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
+
+    console.log('[getOffer] Template vars:', JSON.stringify({
+      name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, offerSalary, offerStartDate,
+      hiringManager, company, departmentProfile, jobId,
+    }));
 
     const vars: Record<string, string> = {
       name:      `${firstNameVal} ${lastNameVal}`.trim(),
       firstName: firstNameVal,
       lastName:  lastNameVal,
       position:  positionVal,
-      departmentProfile: (candidate.viterbitDepartmentProfile as string) || positionVal,
+      departmentProfile,
       hiringManager,
       company,
       salary:    offerSalary,
-      benefits:  '',
       startDate: offerStartDate,
       date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
@@ -381,7 +429,6 @@ export const getOffer = onRequest(
         candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
         position: positionVal,
         salary: offerSalary,
-        benefits: '',
         startDate: offerStartDate,
         bodyHtml: renderedHtml,
         expiresAt: expiresAt?.toISOString(),
