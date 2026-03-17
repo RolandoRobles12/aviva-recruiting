@@ -3,11 +3,18 @@ import { Timestamp } from 'firebase/firestore';
 // ─── Document Types ───────────────────────────────────────────────────────────
 
 export type DocumentType =
-  | 'ine'
+  | 'acta_nacimiento'
   | 'curp'
-  | 'rfc'
+  | 'nss'
+  | 'caratula_bancaria'
+  | 'certificado_estudios'
+  | 'constancia_fiscal'
+  | 'carta_recomendacion'
+  | 'ine'
   | 'comprobante_domicilio'
-  | 'comprobante_estudios';
+  | 'foto_profesional'
+  | 'aviso_retencion'
+  | 'estado_cuenta_fonacot';
 
 export type DocumentStatus = 'pending' | 'uploaded' | 'valid' | 'invalid' | 'review';
 
@@ -31,6 +38,43 @@ export interface OcrResult {
   validationErrors: string[];
   processedAt: Timestamp;
 }
+
+// ─── Form Answers (candidate questionnaire) ──────────────────────────────────
+
+export type Parentesco = 'padre_madre' | 'hermano' | 'esposo' | 'hijo';
+
+export interface FormAnswers {
+  estadoCivil?: 'soltero' | 'casado' | 'union_libre';
+  tieneHijos?: boolean;
+  tieneInfonavit?: boolean;
+  tieneFonacot?: boolean;
+  tallaPlayera?: 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
+  sobreTi?: string;
+  trabajoEntidadFinanciera?: boolean;
+  nombreEntidadFinanciera?: string;
+  // Beneficiario
+  beneficiarioNombre?: string;
+  beneficiarioTelefono?: string;
+  beneficiarioCorreo?: string;
+  beneficiarioParentesco?: Parentesco;
+  // Contacto de emergencia 1
+  contacto1Nombre?: string;
+  contacto1Telefono?: string;
+  contacto1Correo?: string;
+  contacto1Parentesco?: Parentesco;
+  // Contacto de emergencia 2
+  contacto2Nombre?: string;
+  contacto2Telefono?: string;
+  contacto2Correo?: string;
+  contacto2Parentesco?: Parentesco;
+}
+
+export const PARENTESCO_LABELS: Record<Parentesco, string> = {
+  padre_madre: 'Padre / Madre',
+  hermano: 'Hermano(a)',
+  esposo: 'Esposo(a)',
+  hijo: 'Hijo(a)',
+};
 
 // ─── Candidate ────────────────────────────────────────────────────────────────
 
@@ -65,6 +109,8 @@ export interface Candidate {
   createdBy: string; // recruiter uid
   // Documents
   documents: Record<DocumentType, CandidateDocument>;
+  // Form answers (questionnaire)
+  formAnswers?: FormAnswers;
   // Completion tracking
   completionPercentage: number;
   // Follow-up emails
@@ -219,9 +265,9 @@ export type DocumentSettings = Record<DocumentType, DocumentSetting>;
 // ─── Document Config ──────────────────────────────────────────────────────────
 
 export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description: string; required: boolean }> = {
-  ine: {
-    label: 'INE / Identificación Oficial',
-    description: 'Credencial de elector vigente (ambos lados) u otro ID oficial',
+  acta_nacimiento: {
+    label: 'Acta de Nacimiento',
+    description: 'Copia de tu acta de nacimiento',
     required: true,
   },
   curp: {
@@ -229,27 +275,80 @@ export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description:
     description: 'Clave Única de Registro de Población (documento oficial)',
     required: true,
   },
-  rfc: {
-    label: 'RFC con homoclave',
-    description: 'Registro Federal de Contribuyentes con homoclave (SAT)',
+  nss: {
+    label: 'Número de Seguridad Social',
+    description: 'Documento con tu Número de Seguridad Social (NSS)',
+    required: true,
+  },
+  caratula_bancaria: {
+    label: 'Carátula Bancaria',
+    description: 'Carátula bancaria o último estado de cuenta',
+    required: true,
+  },
+  certificado_estudios: {
+    label: 'Certificado de Estudios',
+    description: 'Último certificado de estudios oficial (Título universitario, Certificado de bachiller o preparatoria)',
+    required: true,
+  },
+  constancia_fiscal: {
+    label: 'Constancia de Situación Fiscal',
+    description: 'Constancia de Situación Fiscal Actualizada (SAT)',
+    required: true,
+  },
+  carta_recomendacion: {
+    label: 'Carta de Recomendación',
+    description: 'Copia de carta de recomendación o constancia laboral',
+    required: true,
+  },
+  ine: {
+    label: 'INE',
+    description: 'Credencial de elector vigente (ambos lados)',
     required: true,
   },
   comprobante_domicilio: {
     label: 'Comprobante de Domicilio',
-    description: 'Recibo de luz, agua, teléfono o estado de cuenta (máx. 3 meses)',
+    description: 'Comprobante de domicilio menor a 3 meses (luz, agua, teléfono)',
     required: true,
   },
-  comprobante_estudios: {
-    label: 'Comprobante de Estudios',
-    description: 'Título, certificado o constancia de último grado de estudios',
+  foto_profesional: {
+    label: 'Foto Profesional',
+    description: 'Sube una foto profesional tuya',
     required: true,
+  },
+  aviso_retencion: {
+    label: 'Aviso de Retención (INFONAVIT)',
+    description: 'Documento de aviso de retención del INFONAVIT',
+    required: false, // conditional on tieneInfonavit
+  },
+  estado_cuenta_fonacot: {
+    label: 'Estado de Cuenta (FONACOT)',
+    description: 'Estado de cuenta del crédito FONACOT',
+    required: false, // conditional on tieneFonacot
   },
 };
 
-export const DOCUMENT_TYPES: DocumentType[] = [
-  'ine',
+/** Core required document types (always shown) */
+export const DOCUMENT_TYPES_REQUIRED: DocumentType[] = [
+  'acta_nacimiento',
   'curp',
-  'rfc',
+  'nss',
+  'caratula_bancaria',
+  'certificado_estudios',
+  'constancia_fiscal',
+  'carta_recomendacion',
+  'ine',
   'comprobante_domicilio',
-  'comprobante_estudios',
+  'foto_profesional',
+];
+
+/** Conditional document types */
+export const DOCUMENT_TYPES_CONDITIONAL: DocumentType[] = [
+  'aviso_retencion',
+  'estado_cuenta_fonacot',
+];
+
+/** All document types (for iteration) */
+export const DOCUMENT_TYPES: DocumentType[] = [
+  ...DOCUMENT_TYPES_REQUIRED,
+  ...DOCUMENT_TYPES_CONDITIONAL,
 ];

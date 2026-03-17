@@ -12,8 +12,8 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Candidate, CandidateStatus, CreateCandidatePayload, DocumentType } from '../types';
-import { DOCUMENT_TYPES } from '../types';
+import type { Candidate, CandidateStatus, CreateCandidatePayload, DocumentType, FormAnswers } from '../types';
+import { DOCUMENT_TYPES_REQUIRED } from '../types';
 
 const CANDIDATES_COLLECTION = 'candidates';
 
@@ -24,8 +24,9 @@ function generateToken(): string {
 }
 
 function buildInitialDocuments() {
+  // Only initialize required docs — conditional ones are added dynamically
   return Object.fromEntries(
-    DOCUMENT_TYPES.map((type) => [
+    DOCUMENT_TYPES_REQUIRED.map((type) => [
       type,
       {
         id: type,
@@ -134,6 +135,34 @@ export async function updateCandidateNotes(
   });
 }
 
+export async function updateCandidateFormAnswers(
+  candidateId: string,
+  formAnswers: FormAnswers
+): Promise<void> {
+  const updateData: Record<string, unknown> = {
+    formAnswers,
+    updatedAt: serverTimestamp(),
+  };
+
+  // Add conditional document slots based on answers
+  if (formAnswers.tieneInfonavit) {
+    updateData['documents.aviso_retencion'] = {
+      id: 'aviso_retencion',
+      type: 'aviso_retencion',
+      status: 'pending',
+    };
+  }
+  if (formAnswers.tieneFonacot) {
+    updateData['documents.estado_cuenta_fonacot'] = {
+      id: 'estado_cuenta_fonacot',
+      type: 'estado_cuenta_fonacot',
+      status: 'pending',
+    };
+  }
+
+  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), updateData);
+}
+
 export async function extendFormToken(candidateId: string): Promise<string> {
   const newToken = generateToken();
   const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
@@ -149,12 +178,22 @@ async function recalculateCompletion(candidateId: string): Promise<void> {
   const candidate = await getCandidateById(candidateId);
   if (!candidate) return;
 
-  const totalDocs = DOCUMENT_TYPES.length;
-  const uploadedDocs = DOCUMENT_TYPES.filter(
+  // Figure out which doc types are required for this candidate
+  const requiredTypes = [...DOCUMENT_TYPES_REQUIRED];
+  if (candidate.formAnswers?.tieneInfonavit) requiredTypes.push('aviso_retencion');
+  if (candidate.formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
+
+  const totalDocs = requiredTypes.length;
+  const uploadedDocs = requiredTypes.filter(
     (type) => candidate.documents[type]?.status !== 'pending'
   ).length;
 
-  const completionPercentage = Math.round((uploadedDocs / totalDocs) * 100);
+  // Also count form answers completion
+  const hasFormAnswers = candidate.formAnswers != null;
+  const totalItems = totalDocs + 1; // +1 for form answers
+  const completedItems = uploadedDocs + (hasFormAnswers ? 1 : 0);
+
+  const completionPercentage = Math.round((completedItems / totalItems) * 100);
   const newStatus: CandidateStatus =
     completionPercentage === 100
       ? 'under_review'

@@ -1,13 +1,19 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Clock, AlertTriangle, ChevronRight } from 'lucide-react';
 import { useCandidateForm } from '../hooks/useCandidateForm';
 import { CandidateFormHeader } from '../components/candidate/CandidateFormHeader';
 import { DocumentUploadCard } from '../components/candidate/DocumentUploadCard';
-import { DOCUMENT_TYPES } from '../types';
+import { CandidateQuestionnaire } from '../components/candidate/CandidateQuestionnaire';
+import { DOCUMENT_TYPES_REQUIRED } from '../types';
+import type { Candidate } from '../types';
+
+type Section = 'questions' | 'documents';
 
 export function CandidateFormPage() {
   const { token } = useParams<{ token: string }>();
   const { candidate, loading, error } = useCandidateForm(token);
+  const [activeSection, setActiveSection] = useState<Section>('questions');
 
   if (loading) {
     return (
@@ -71,54 +77,121 @@ export function CandidateFormPage() {
   }
 
   const allDone = candidate.completionPercentage === 100;
+  const hasAnswers = candidate.formAnswers != null;
 
   return (
     <div className="min-h-screen bg-aviva-fondo">
       <CandidateFormHeader candidate={candidate} />
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        {/* Instructions */}
-        <div className="card p-4 bg-primary-50 border-primary-100">
-          <h2 className="text-sm font-semibold text-primary-900 mb-1">
-            Instrucciones
-          </h2>
-          <ul className="text-xs text-primary-800 space-y-1 list-disc list-inside">
-            <li>Sube cada documento de forma individual en su sección correspondiente.</li>
-            <li>Formatos aceptados: PDF, JPG o PNG (máx. 10 MB por archivo).</li>
-            <li>Asegúrate de que el documento sea legible y no esté cortado.</li>
-            <li>Después de subir, el sistema validará automáticamente cada documento.</li>
-          </ul>
+        {/* Section tabs */}
+        <div className="flex gap-2">
+          <SectionTab
+            label="1. Preguntas"
+            active={activeSection === 'questions'}
+            completed={hasAnswers}
+            onClick={() => setActiveSection('questions')}
+          />
+          <SectionTab
+            label="2. Documentos"
+            active={activeSection === 'documents'}
+            completed={allDone}
+            onClick={() => setActiveSection('documents')}
+          />
         </div>
 
-        {/* Document Cards */}
-        {DOCUMENT_TYPES.map((type) => (
-          <DocumentUploadCard
-            key={type}
-            candidateId={candidate.id}
-            documentType={type}
-            document={candidate.documents[type] ?? { id: type, type, status: 'pending' }}
+        {activeSection === 'questions' && (
+          <CandidateQuestionnaire
+            candidate={candidate}
+            onComplete={() => setActiveSection('documents')}
           />
-        ))}
+        )}
 
-        {/* Completion message */}
-        {allDone && (
-          <div className="card p-5 border-green-200 bg-green-50 text-center">
-            <Clock size={28} className="mx-auto text-green-500 mb-2" />
-            <h3 className="font-semibold text-green-800 mb-1">
-              ¡Todos los documentos recibidos!
-            </h3>
-            <p className="text-sm text-green-700">
-              El equipo de reclutamiento está revisando tu expediente. Te notificaremos
-              por correo cuando el proceso avance.
-            </p>
-          </div>
+        {activeSection === 'documents' && (
+          <DocumentsSection candidate={candidate} />
         )}
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 pb-8">
-          Tus documentos están protegidos y solo son accesibles por el equipo de reclutamiento.
+          Tus datos y documentos están protegidos y solo son accesibles por el equipo de reclutamiento.
         </p>
       </div>
     </div>
+  );
+}
+
+/* ─── Section Tab ────────────────────────────────────────────────────────── */
+
+function SectionTab({ label, active, completed, onClick }: {
+  label: string;
+  active: boolean;
+  completed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
+        active
+          ? 'bg-white shadow-sm border border-gray-200 text-gray-900'
+          : 'bg-transparent text-gray-500 hover:text-gray-700'
+      }`}
+    >
+      {completed && <CheckCircle size={14} className="text-green-500" />}
+      {label}
+      {!active && <ChevronRight size={14} />}
+    </button>
+  );
+}
+
+/* ─── Documents Section ──────────────────────────────────────────────────── */
+
+function DocumentsSection({ candidate }: { candidate: Candidate }) {
+  // Build doc types for this candidate
+  const docTypes = [...DOCUMENT_TYPES_REQUIRED];
+  if (candidate.formAnswers?.tieneInfonavit) docTypes.push('aviso_retencion');
+  if (candidate.formAnswers?.tieneFonacot) docTypes.push('estado_cuenta_fonacot');
+
+  const allDone = candidate.completionPercentage === 100;
+
+  return (
+    <>
+      {/* Instructions */}
+      <div className="card p-4 bg-primary-50 border-primary-100">
+        <h2 className="text-sm font-semibold text-primary-900 mb-1">
+          Instrucciones
+        </h2>
+        <ul className="text-xs text-primary-800 space-y-1 list-disc list-inside">
+          <li>Sube cada documento de forma individual en su sección correspondiente.</li>
+          <li>Formatos aceptados: PDF, JPG o PNG (máx. 10 MB por archivo).</li>
+          <li>Asegúrate de que el documento sea legible y no esté cortado.</li>
+          <li>Después de subir, el sistema validará automáticamente cada documento.</li>
+        </ul>
+      </div>
+
+      {/* Document Cards */}
+      {docTypes.map((type) => (
+        <DocumentUploadCard
+          key={type}
+          candidateId={candidate.id}
+          documentType={type}
+          document={candidate.documents[type] ?? { id: type, type, status: 'pending' }}
+        />
+      ))}
+
+      {/* Completion message */}
+      {allDone && (
+        <div className="card p-5 border-green-200 bg-green-50 text-center">
+          <Clock size={28} className="mx-auto text-green-500 mb-2" />
+          <h3 className="font-semibold text-green-800 mb-1">
+            ¡Todos los documentos recibidos!
+          </h3>
+          <p className="text-sm text-green-700">
+            El equipo de reclutamiento está revisando tu expediente. Te notificaremos
+            por correo cuando el proceso avance.
+          </p>
+        </div>
+      )}
+    </>
   );
 }
