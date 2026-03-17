@@ -57,6 +57,23 @@ function interpolate(template: string, vars: Record<string, string>): string {
   return result;
 }
 
+// ─── Default offer letter body (matches Carta Oferta design) ─────────────────
+
+const DEFAULT_OFFER_BODY_HTML = `
+<p>Bienvenido/a {{name}},</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra misión. Hoy queremos darte un paso más y compartirte nuestra carta oferta.</p>
+<p>I. Posición y organización</p>
+<p><strong>Puesto:</strong> {{position}}<br>
+<strong>Empresa:</strong> Aviva Financial S.A. de C.V. SOFOM ENR<br>
+<strong>Líder:</strong> {{hiringManager}}<br>
+<strong>Fecha de inicio:</strong> {{startDate}}</p>
+<p>II. Compensación y beneficios</p>
+<p><strong>Sueldo Bruto:</strong> {{salary}}</p>
+<p>Esta oferta está sujeta a la satisfactoria entrega y validación de tu documentación de ingreso.</p>
+<p>Atentamente,</p>
+<p><strong>Equipo de Reclutamiento · Aviva</strong></p>
+`;
+
 // ─── Cloud Function ────────────────────────────────────────────────────────────
 
 export const signOffer = onRequest(
@@ -122,7 +139,7 @@ export const signOffer = onRequest(
     const company           = (candidate.viterbitCompany           as string) || 'Aviva';
     const departmentProfile = (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '';
     const benefits    = (offerTemplate?.benefits as string) ?? '';
-    const bodyHtml    = (offerTemplate?.bodyHtml as string) ?? '';
+    const bodyHtml    = (offerTemplate?.bodyHtml as string) || DEFAULT_OFFER_BODY_HTML;
 
     const firstNameVal = (candidate.firstName as string) || '';
     const lastNameVal  = (candidate.lastName  as string) || '';
@@ -322,7 +339,7 @@ export const getOffer = onRequest(
       date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
-    const rawHtml = (offerTemplate?.bodyHtml as string) ?? '<p>Carta oferta en preparación.</p>';
+    const rawHtml = (offerTemplate?.bodyHtml as string) || DEFAULT_OFFER_BODY_HTML;
     const renderedHtml = interpolate(rawHtml, vars);
 
     res.status(200).json({
