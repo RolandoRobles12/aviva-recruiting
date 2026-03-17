@@ -139,7 +139,7 @@ export const signOffer = onRequest(
     const company           = (candidate.viterbitCompany           as string) || 'Aviva';
     const departmentProfile = (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '';
     const benefits    = (offerTemplate?.benefits as string) ?? '';
-    const bodyHtml    = (offerTemplate?.bodyHtml as string) || DEFAULT_OFFER_BODY_HTML;
+    const bodyHtml    = DEFAULT_OFFER_BODY_HTML;
 
     const firstNameVal = (candidate.firstName as string) || '';
     const lastNameVal  = (candidate.lastName  as string) || '';
@@ -339,7 +339,7 @@ export const getOffer = onRequest(
       date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
-    const rawHtml = (offerTemplate?.bodyHtml as string) || DEFAULT_OFFER_BODY_HTML;
+    const rawHtml = DEFAULT_OFFER_BODY_HTML;
     const renderedHtml = interpolate(rawHtml, vars);
 
     res.status(200).json({
