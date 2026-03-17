@@ -10,8 +10,30 @@ import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractP
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
+// Maps Viterbit ${variable} names (from Word templates) to system variable names.
+const VITERBIT_VAR_MAP: Record<string, string> = {
+  name:                       'name',
+  first_name:                 'firstName',
+  last_name:                  'lastName',
+  job_department_profile:     'departmentProfile',
+  custom_job_empresa:         'company',
+  custom_job_hiring_manager:  'hiringManager',
+  hired_start_date_job:       'startDate',
+  hired_salary_job:           'salary',
+  position:                   'position',
+  date:                       'date',
+  benefits:                   'benefits',
+};
+
 function interpolate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  // Replace {{variable}} patterns (system syntax)
+  let result = template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  // Replace ${variable} patterns (Viterbit / Word syntax)
+  result = result.replace(/\$\{\s*(\w+)\s*\}/g, (_, key: string) => {
+    const systemKey = VITERBIT_VAR_MAP[key] ?? key;
+    return vars[systemKey] ?? '';
+  });
+  return result;
 }
 
 async function moveToStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
@@ -83,9 +105,12 @@ export const signContract = onRequest(
     }
 
     const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
+    const firstNameVal = (candidate.firstName as string) || '';
+    const lastNameVal  = (candidate.lastName  as string) || '';
     const vars: Record<string, string> = {
-      firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
+      name: `${firstNameVal} ${lastNameVal}`.trim(),
+      firstName: firstNameVal,
+      lastName: lastNameVal,
       position: candidate.position as string,
       departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
       hiringManager: (candidate.viterbitHiringManager as string) || '',
@@ -234,9 +259,12 @@ export const getContract = onRequest(
       if (!allTemplates.empty) contractTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
     }
 
+    const firstNameVal2 = (candidate.firstName as string) || '';
+    const lastNameVal2  = (candidate.lastName  as string) || '';
     const vars: Record<string, string> = {
-      firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
+      name: `${firstNameVal2} ${lastNameVal2}`.trim(),
+      firstName: firstNameVal2,
+      lastName: lastNameVal2,
       position: candidate.position as string,
       departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
       hiringManager: (candidate.viterbitHiringManager as string) || '',
@@ -247,7 +275,7 @@ export const getContract = onRequest(
     };
 
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
-    const renderedHtml = rawHtml.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+    const renderedHtml = interpolate(rawHtml, vars);
 
     res.status(200).json({
       ok: true,
