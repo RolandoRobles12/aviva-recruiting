@@ -7,16 +7,8 @@ import { sendEmail } from '../email/gmailClient';
 import { ocrErrorTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { validateDocument } from './documentValidator';
+import { ALL_DOCUMENT_TYPES, DOCUMENT_LABELS } from '../utils/documentTypes';
 
-const DOCUMENT_LABELS: Record<string, string> = {
-  ine: 'INE / Identificación oficial',
-  curp: 'CURP',
-  rfc: 'RFC con homoclave',
-  comprobante_domicilio: 'Comprobante de domicilio',
-  comprobante_estudios: 'Comprobante de estudios',
-};
-
-const VALID_DOCUMENT_TYPES = Object.keys(DOCUMENT_LABELS);
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
 async function notifyOcrError(
@@ -144,7 +136,7 @@ export const onDocumentUploaded = onObjectFinalized(
 
     const [, candidateId, documentType] = match;
 
-    if (!VALID_DOCUMENT_TYPES.includes(documentType)) return;
+    if (!ALL_DOCUMENT_TYPES.includes(documentType)) return;
 
     try {
       // Download and prepare image for Claude

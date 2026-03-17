@@ -1,5 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from './admin';
+import { DOCUMENT_TYPES_REQUIRED } from './documentTypes';
 
 export async function getCandidateById(id: string) {
   const snap = await db.collection('candidates').doc(id).get();
@@ -22,16 +23,27 @@ export async function updateCandidateCompletion(candidateId: string) {
   const candidate = await getCandidateById(candidateId);
   if (!candidate) return;
 
-  const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
+  // Determine which doc types are required for this candidate
+  const requiredTypes = [...DOCUMENT_TYPES_REQUIRED];
+  const formAnswers = candidate.formAnswers as Record<string, unknown> | undefined;
+  if (formAnswers?.tieneInfonavit) requiredTypes.push('aviso_retencion');
+  if (formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
+
   const docs = candidate.documents as Record<string, { status: string }>;
-  const validCount = DOCUMENT_TYPES.filter((t) => docs[t]?.status === 'valid').length;
-  const completionPercentage = Math.round((validCount / DOCUMENT_TYPES.length) * 100);
+  const validCount = requiredTypes.filter((t) => docs[t]?.status === 'valid').length;
+
+  // Count form answers as 1 item toward completion
+  const hasFormAnswers = formAnswers != null;
+  const totalItems = requiredTypes.length + 1; // +1 for form answers
+  const completedItems = validCount + (hasFormAnswers ? 1 : 0);
+
+  const completionPercentage = Math.round((completedItems / totalItems) * 100);
 
   const currentStatus = candidate.status as string;
-  const allValid = validCount === DOCUMENT_TYPES.length;
-  const hasAnyUpload = DOCUMENT_TYPES.some((t) => docs[t]?.status && docs[t].status !== 'pending');
+  const allValid = validCount === requiredTypes.length;
+  const hasAnyUpload = requiredTypes.some((t) => docs[t]?.status && docs[t].status !== 'pending');
   const newStatus =
-    allValid
+    allValid && hasFormAnswers
       ? 'under_review'
       : hasAnyUpload && currentStatus === 'invited'
       ? 'in_progress'

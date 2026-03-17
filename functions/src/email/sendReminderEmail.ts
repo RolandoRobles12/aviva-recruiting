@@ -5,16 +5,7 @@ import { getCandidateById } from '../utils/candidates';
 import { sendEmail } from './gmailClient';
 import { reminderTemplate } from './templates';
 import { getRecruiterEmail } from '../utils/recruiters';
-
-const DOCUMENT_LABELS: Record<string, string> = {
-  ine: 'INE / Identificación oficial',
-  curp: 'CURP',
-  rfc: 'RFC con homoclave',
-  comprobante_domicilio: 'Comprobante de domicilio',
-  comprobante_estudios: 'Comprobante de estudios',
-};
-
-const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
+import { DOCUMENT_TYPES_REQUIRED, DOCUMENT_LABELS } from '../utils/documentTypes';
 
 export const sendReminderEmail = onCall(
   { region: 'us-central1' },
@@ -28,9 +19,15 @@ export const sendReminderEmail = onCall(
     const senderEmail = await getRecruiterEmail(request.auth.uid);
 
     const docs = candidate.documents as Record<string, { status: string }>;
-    const missingDocs = DOCUMENT_TYPES
+    // Build candidate-specific required types
+    const formAnswers = candidate.formAnswers as Record<string, unknown> | undefined;
+    const requiredTypes = [...DOCUMENT_TYPES_REQUIRED];
+    if (formAnswers?.tieneInfonavit) requiredTypes.push('aviso_retencion');
+    if (formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
+
+    const missingDocs = requiredTypes
       .filter((t) => !docs[t] || docs[t].status === 'pending' || docs[t].status === 'invalid')
-      .map((t) => DOCUMENT_LABELS[t]);
+      .map((t) => DOCUMENT_LABELS[t] ?? t);
 
     if (missingDocs.length === 0) {
       return { success: true, message: 'No hay documentos pendientes' };
