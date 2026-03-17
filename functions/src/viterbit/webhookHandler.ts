@@ -122,7 +122,7 @@ interface ViterbitCandidate {
 interface ViterbitJobInfo {
   title: string;
   stages: ViterbitStage[];
-  // Custom fields from the job posting
+  // Fields from the Viterbit job endpoint
   salary: string;
   startDate: string;
   hiringManager: string;
@@ -131,11 +131,16 @@ interface ViterbitJobInfo {
 }
 
 /**
- * Fetch job info in a single API call: title, stages, and all
- * custom fields used in offer letter templates.
+ * Fetch job info from Viterbit API.
  *
- * Viterbit stores custom fields either at the root of `data` or under
- * `data.custom_fields`. We try both locations with graceful fallback.
+ * Real Viterbit /jobs/:id response shape:
+ *   title: string
+ *   salary_min: { amount: number, currency: string }
+ *   salary_max: { amount: number, currency: string }
+ *   department_profile_id: string
+ *   location_id: string
+ *   external_id: string
+ *   stages: ViterbitStage[]  (when ?includes[]=stages)
  */
 async function fetchViterbitJob(jobId: string, apiKey: string): Promise<ViterbitJobInfo> {
   const empty: ViterbitJobInfo = {
@@ -150,19 +155,34 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
 
-    // Custom fields may be nested or at root level
+    // Parse salary from salary_min / salary_max objects
+    const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
+    const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
+    let salary = '';
+    if (salaryMin?.amount && salaryMax?.amount) {
+      const currency = salaryMin.currency ?? 'MXN';
+      salary = salaryMin.amount === salaryMax.amount
+        ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
+        : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
+    } else if (salaryMin?.amount) {
+      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
+    } else if (salaryMax?.amount) {
+      salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
+    }
+
+    // Try custom_fields for any extra fields (hiring manager, start date, company)
     const custom = (data.custom_fields as Record<string, unknown>) ?? {};
-    const get = (key: string): string =>
+    const getCustom = (key: string): string =>
       (custom[key] as string) ?? (data[key] as string) ?? '';
 
     return {
-      title: (data.name as string) ?? (data.title as string) ?? jobId,
+      title: (data.title as string) ?? (data.name as string) ?? jobId,
       stages: (data.stages as ViterbitStage[]) ?? [],
-      salary:            get('hired_salary_job'),
-      startDate:         get('hired_start_date_job'),
-      hiringManager:     get('custom_job_hiring_manager'),
-      company:           get('custom_job_empresa') || 'Aviva',
-      departmentProfile: get('job_department_profile'),
+      salary,
+      startDate:         getCustom('start_date') || getCustom('hired_start_date_job') || '',
+      hiringManager:     getCustom('hiring_manager') || getCustom('custom_job_hiring_manager') || '',
+      company:           getCustom('company') || getCustom('custom_job_empresa') || (data.external_id as string) || 'Aviva',
+      departmentProfile: (data.department_profile_id as string) ?? getCustom('department_profile') ?? '',
     };
   } catch (err) {
     console.error('[viterbit] fetchViterbitJob error:', err);
