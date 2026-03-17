@@ -121,12 +121,14 @@ export const scheduleReminders = functions
 
       try {
         // Send from the recruiter who created the candidate
-        const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
+        const createdBy = candidate.createdBy as string;
+        const senderEmail = await getRecruiterEmail(createdBy);
         await sendEmail({
           to: candidate.email as string,
           subject,
           html,
           senderEmail,
+          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
         });
 
         await docSnap.ref.update({

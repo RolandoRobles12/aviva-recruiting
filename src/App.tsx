@@ -10,6 +10,7 @@ import { ContractPage } from './pages/ContractPage';
 import { OfferTemplatesPage } from './pages/OfferTemplatesPage';
 import { ContractTemplatesPage } from './pages/ContractTemplatesPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { GmailCallbackPage } from './pages/GmailCallbackPage';
 
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -35,6 +36,9 @@ export default function App() {
 
         {/* Public: candidate contract signing */}
         <Route path="/contract/:token" element={<ContractPage />} />
+
+        {/* Gmail OAuth callback — redirects to /settings with status */}
+        <Route path="/gmail/callback" element={<GmailCallbackPage />} />
 
         {/* Auth */}
         <Route path="/login" element={<LoginPage />} />

@@ -17,7 +17,8 @@ export const sendInvitationEmail = onCall(
     const candidate = await getCandidateById(candidateId);
     if (!candidate) throw new HttpsError('not-found', 'Candidato no encontrado');
 
-    const senderEmail = await getRecruiterEmail(request.auth.uid);
+    const recruiterUid = request.auth.uid;
+    const senderEmail = await getRecruiterEmail(recruiterUid);
 
     const appUrl = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
     const formUrl = `${appUrl}/form/${candidate.formToken}`;
@@ -58,6 +59,7 @@ export const sendInvitationEmail = onCall(
       subject,
       html,
       senderEmail,
+      recruiterUid,
     });
 
     // Log the email

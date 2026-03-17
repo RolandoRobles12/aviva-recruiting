@@ -107,7 +107,13 @@ async function processTicket(doc: FirebaseFirestore.QueryDocumentSnapshot): Prom
       position: candidate.position as string,
       corporateEmail,
     });
-    await sendEmail({ to: candidate.email as string, subject, html });
+    const createdBy = candidate.createdBy as string | undefined;
+    await sendEmail({
+      to: candidate.email as string,
+      subject,
+      html,
+      recruiterUid: createdBy && createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+    });
     await db.collection('email_logs').add({
       candidateId: doc.id,
       templateType: 'induction',

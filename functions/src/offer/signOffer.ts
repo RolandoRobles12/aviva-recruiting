@@ -192,12 +192,14 @@ export const signOffer = onRequest(
     });
 
     try {
-      const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
+      const createdBy = candidate.createdBy as string;
+      const senderEmail = await getRecruiterEmail(createdBy);
       await sendEmail({
         to: candidate.email as string,
         subject,
         html,
         senderEmail,
+        recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
       });
       await db.collection('email_logs').add({
         candidateId,
