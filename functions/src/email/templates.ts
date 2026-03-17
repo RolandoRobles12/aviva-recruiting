@@ -9,9 +9,18 @@ interface CandidateInfo {
 export function ocrErrorTemplate(
   c: Pick<CandidateInfo, 'firstName' | 'lastName' | 'position' | 'formUrl'>,
   documentLabel: string,
-  errors: string[]
+  errors: string[],
+  details?: { documentTypeDetected?: string; confidence?: number }
 ): { subject: string; html: string } {
   const errorList = errors.map((e) => `<li>${e}</li>`).join('');
+  const detectedBadge =
+    details?.documentTypeDetected && details.documentTypeDetected !== 'parse_error' && details.documentTypeDetected !== 'unknown'
+      ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;margin-bottom:16px;">
+            <p style="color:#9a3412;font-size:12px;margin:0;">
+              <strong>Documento detectado:</strong> ${details.documentTypeDetected}${details.confidence != null ? ` · Confianza: ${Math.round(details.confidence * 100)}%` : ''}
+            </p>
+          </div>`
+      : '';
   return {
     subject: `Aviva | Documento inválido, sube nuevamente — ${documentLabel}`,
     html: `
@@ -35,6 +44,9 @@ export function ocrErrorTemplate(
             Revisamos el documento que subiste (<strong>${documentLabel}</strong>) y encontramos
             los siguientes problemas que impiden su validación:
           </p>
+
+          <!-- Detected document badge -->
+          ${detectedBadge}
 
           <!-- Errors list -->
           <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:24px;">

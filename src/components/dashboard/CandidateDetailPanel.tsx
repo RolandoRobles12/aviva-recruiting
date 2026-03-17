@@ -20,8 +20,8 @@ import {
   FileSignature,
   ClipboardList,
 } from 'lucide-react';
-import { DOCUMENT_TYPES } from '../../types';
-import type { Candidate } from '../../types';
+import { DOCUMENT_TYPES_REQUIRED, PARENTESCO_LABELS } from '../../types';
+import type { Candidate, DocumentType } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
 import { CandidateDocumentCard } from './CandidateDocumentCard';
@@ -38,10 +38,11 @@ interface Props {
   onClose: () => void;
 }
 
-type TabId = 'info' | 'docs' | 'offer' | 'contract';
+type TabId = 'info' | 'answers' | 'docs' | 'offer' | 'contract';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'info',     label: 'Info',        icon: <User size={14} /> },
+  { id: 'answers',  label: 'Respuestas',  icon: <ClipboardList size={14} /> },
   { id: 'docs',     label: 'Documentos',  icon: <FolderOpen size={14} /> },
   { id: 'offer',    label: 'Carta Oferta', icon: <FileSignature size={14} /> },
   { id: 'contract', label: 'Contrato',    icon: <ClipboardList size={14} /> },
@@ -176,6 +177,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             updatedAt={updatedAt}
           />
         )}
+        {tab === 'answers' && <TabAnswers c={c} />}
         {tab === 'docs' && (
           <TabDocs
             c={c}
@@ -337,7 +339,7 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs text-gray-500">{c.completionPercentage}% completado</span>
             <span className="text-xs text-gray-400">
-              {DOCUMENT_TYPES.filter((t) => c.documents[t]?.status === 'valid').length}/{DOCUMENT_TYPES.length} documentos
+              {getCandidateDocTypes(c).filter((t) => c.documents[t]?.status === 'valid').length}/{getCandidateDocTypes(c).length} documentos
             </span>
           </div>
           <ProgressBar percentage={c.completionPercentage} showLabel={false} />
@@ -347,7 +349,7 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
       {/* Document cards */}
       <Section title="Documentos">
         <div className="space-y-2">
-          {DOCUMENT_TYPES.map((type) => {
+          {getCandidateDocTypes(c).map((type) => {
             const docItem = c.documents[type];
             return (
               <CandidateDocumentCard
@@ -591,6 +593,79 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Helper: candidate-specific doc types
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function getCandidateDocTypes(c: Candidate): DocumentType[] {
+  const types: DocumentType[] = [...DOCUMENT_TYPES_REQUIRED];
+  if (c.formAnswers?.tieneInfonavit) types.push('aviso_retencion');
+  if (c.formAnswers?.tieneFonacot) types.push('estado_cuenta_fonacot');
+  return types;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB: Respuestas
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function TabAnswers({ c }: { c: Candidate }) {
+  const a = c.formAnswers;
+
+  if (!a) {
+    return (
+      <div className="px-5 py-10 text-center">
+        <ClipboardList size={28} className="mx-auto text-gray-300 mb-2" />
+        <p className="text-sm text-gray-500">El candidato aún no ha respondido las preguntas.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-5 py-4 space-y-4">
+      <AnswerRow label="Estado civil" value={a.estadoCivil === 'soltero' ? 'Soltero/a' : a.estadoCivil === 'casado' ? 'Casado/a' : a.estadoCivil === 'union_libre' ? 'Unión Libre' : '—'} />
+      <AnswerRow label="¿Tiene hijos?" value={a.tieneHijos === true ? 'Sí' : a.tieneHijos === false ? 'No' : '—'} />
+      <AnswerRow label="¿Crédito INFONAVIT?" value={a.tieneInfonavit === true ? 'Sí' : a.tieneInfonavit === false ? 'No' : '—'} />
+      <AnswerRow label="¿Crédito FONACOT?" value={a.tieneFonacot === true ? 'Sí' : a.tieneFonacot === false ? 'No' : '—'} />
+      <AnswerRow label="Talla de playera" value={a.tallaPlayera ?? '—'} />
+      {a.sobreTi && <AnswerRow label="Sobre ti" value={a.sobreTi} />}
+      <AnswerRow label="¿Laboró en entidad financiera?" value={a.trabajoEntidadFinanciera === true ? `Sí — ${a.nombreEntidadFinanciera ?? ''}` : a.trabajoEntidadFinanciera === false ? 'No' : '—'} />
+
+      <div className="border-t border-gray-100 pt-3">
+        <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Beneficiario</h4>
+        <AnswerRow label="Nombre" value={a.beneficiarioNombre ?? '—'} />
+        <AnswerRow label="Teléfono" value={a.beneficiarioTelefono ?? '—'} />
+        <AnswerRow label="Correo" value={a.beneficiarioCorreo ?? '—'} />
+        <AnswerRow label="Parentesco" value={a.beneficiarioParentesco ? PARENTESCO_LABELS[a.beneficiarioParentesco] : '—'} />
+      </div>
+
+      <div className="border-t border-gray-100 pt-3">
+        <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Contacto de emergencia 1</h4>
+        <AnswerRow label="Nombre" value={a.contacto1Nombre ?? '—'} />
+        <AnswerRow label="Teléfono" value={a.contacto1Telefono ?? '—'} />
+        <AnswerRow label="Correo" value={a.contacto1Correo ?? '—'} />
+        <AnswerRow label="Parentesco" value={a.contacto1Parentesco ? PARENTESCO_LABELS[a.contacto1Parentesco] : '—'} />
+      </div>
+
+      <div className="border-t border-gray-100 pt-3">
+        <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Contacto de emergencia 2</h4>
+        <AnswerRow label="Nombre" value={a.contacto2Nombre ?? '—'} />
+        <AnswerRow label="Teléfono" value={a.contacto2Telefono ?? '—'} />
+        <AnswerRow label="Correo" value={a.contacto2Correo ?? '—'} />
+        <AnswerRow label="Parentesco" value={a.contacto2Parentesco ? PARENTESCO_LABELS[a.contacto2Parentesco] : '—'} />
+      </div>
+    </div>
+  );
+}
+
+function AnswerRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1">
+      <span className="text-xs text-gray-500 shrink-0">{label}</span>
+      <span className="text-xs text-gray-800 font-medium text-right">{value}</span>
     </div>
   );
 }

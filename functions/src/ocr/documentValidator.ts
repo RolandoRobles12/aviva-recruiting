@@ -40,14 +40,70 @@ Validaciones requeridas:
 
 Datos a extraer: curp, nombre_completo.`,
 
-  rfc: `Analiza esta imagen y determina si es una constancia de RFC (Registro Federal de Contribuyentes) emitida por el SAT de México.
+  nss: `Analiza esta imagen y determina si es un documento que contiene el Número de Seguridad Social (NSS) del IMSS de México.
+
+Documentos válidos: constancia de NSS del IMSS, hoja rosa del IMSS, tarjeta de afiliación, documento IMSS con NSS visible, captura del portal IMSS digital.
 
 Validaciones requeridas:
-1. ¿Es un documento oficial del SAT? Busca el logo del SAT, texto "Servicio de Administración Tributaria" o "Registro Federal de Contribuyentes".
+1. ¿Es un documento oficial del IMSS o contiene un NSS claramente visible?
+2. ¿Se puede leer el NSS completo (11 dígitos)?
+3. ¿Se puede leer el nombre del titular?
+
+Datos a extraer: nss, nombre_completo.`,
+
+  acta_nacimiento: `Analiza esta imagen y determina si es un Acta de Nacimiento oficial de México.
+
+Validaciones requeridas:
+1. ¿Es un acta de nacimiento oficial? Busca sellos del Registro Civil, escudo nacional, texto "Acta de Nacimiento", CURP impreso, o firma del oficial del Registro Civil.
+2. ¿Se puede leer el nombre completo del titular?
+3. ¿El documento parece ser una copia certificada o digital oficial (no una copia simple)?
+
+Datos a extraer: nombre_completo, curp (si visible), fecha_nacimiento, lugar_nacimiento.`,
+
+  caratula_bancaria: `Analiza esta imagen y determina si es una carátula bancaria o estado de cuenta bancario de México.
+
+Documentos válidos: carátula de cuenta bancaria, estado de cuenta bancario, constancia de cuenta CLABE, captura de app bancaria que muestre datos de la cuenta.
+
+Validaciones requeridas:
+1. ¿Es un documento bancario que muestra datos de una cuenta? Busca logo de banco (BBVA, Banorte, Santander, HSBC, Scotiabank, Banamex/Citi, Banco Azteca, BanCoppel, etc.), número de cuenta o CLABE.
+2. ¿Se puede leer la CLABE interbancaria (18 dígitos) o número de cuenta?
+3. ¿Se puede leer el nombre del titular de la cuenta?
+
+Datos a extraer: nombre_completo, clabe, numero_cuenta, banco.`,
+
+  certificado_estudios: `Analiza esta imagen y determina si es un comprobante de estudios válido de México.
+
+Documentos válidos: títulos profesionales, certificados de estudios, constancias de estudios, cédulas profesionales, diplomas, certificados de bachillerato/preparatoria, constancias CENEVAL, documentos de la SEP, CONALEP, universidades, tecnológicos, etc.
+
+Validaciones requeridas:
+1. ¿Es un documento académico oficial? Busca logos de instituciones educativas, SEP, CENEVAL, o sellos oficiales.
+2. ¿Se puede leer el nombre del titular?
+3. ¿Se puede identificar el nivel de estudios o carrera?
+
+Datos a extraer: nombre_completo, institucion, nivel_estudios, carrera (si aplica).`,
+
+  constancia_fiscal: `Analiza esta imagen y determina si es una Constancia de Situación Fiscal emitida por el SAT de México.
+
+Validaciones requeridas:
+1. ¿Es un documento oficial del SAT? Busca el logo del SAT, texto "Servicio de Administración Tributaria", "Constancia de Situación Fiscal", o "Cédula de Identificación Fiscal".
 2. ¿Se puede leer el RFC con homoclave (12 o 13 caracteres alfanuméricos)?
 3. ¿Se puede leer el nombre o razón social?
+4. ¿Incluye el domicilio fiscal?
 
-Datos a extraer: rfc, nombre_completo.`,
+Datos a extraer: rfc, nombre_completo, domicilio_fiscal, regimen_fiscal.`,
+
+  carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
+
+Documentos válidos: carta de recomendación, constancia laboral, carta de experiencia, referencia laboral.
+
+Validaciones requeridas:
+1. ¿Es una carta o constancia laboral? Busca membrete de empresa, firma, nombre de quien emite, o texto que indique referencia/recomendación.
+2. ¿Se puede leer el nombre de la persona recomendada?
+3. ¿Se puede identificar la empresa o persona que emite la carta?
+
+Sé TOLERANTE: cartas personales con firma manuscrita, en papel simple, o sin membrete oficial son aceptables si contienen la información mínima.
+
+Datos a extraer: nombre_recomendado, empresa_emisora, puesto (si visible).`,
 
   comprobante_domicilio: `Analiza esta imagen y determina si es un comprobante de domicilio válido de México.
 
@@ -60,16 +116,38 @@ Validaciones requeridas:
 
 Datos a extraer: direccion (lo más completa posible), empresa_emisora.`,
 
-  comprobante_estudios: `Analiza esta imagen y determina si es un comprobante de estudios válido de México.
-
-Documentos válidos: títulos profesionales, certificados de estudios, constancias de estudios, cédulas profesionales, diplomas, certificados de bachillerato/preparatoria, constancias CENEVAL, documentos de la SEP, CONALEP, universidades, tecnológicos, etc.
+  foto_profesional: `Analiza esta imagen y determina si es una foto profesional o tipo credencial de una persona.
 
 Validaciones requeridas:
-1. ¿Es un documento académico oficial? Busca logos de instituciones educativas, SEP, CENEVAL, o sellos oficiales.
-2. ¿Se puede leer el nombre del titular?
-3. ¿Se puede identificar el nivel de estudios o carrera?
+1. ¿La imagen muestra el rostro de una persona de forma clara?
+2. ¿La persona aparece presentable (no es una foto casual como selfie en espejo, foto de fiesta, etc.)?
+3. ¿La imagen tiene calidad suficiente para uso profesional?
 
-Datos a extraer: nombre_completo, institucion, nivel_estudios, carrera (si aplica).`,
+Sé TOLERANTE: no requiere fondo blanco ni estudio profesional. Fotos de celular con buena iluminación, fondo neutro, y persona presentable son aceptables.
+
+Datos a extraer: descripcion (breve descripción de la foto).`,
+
+  aviso_retencion: `Analiza esta imagen y determina si es un Aviso de Retención del INFONAVIT de México.
+
+Documentos válidos: aviso de retención, aviso de suspensión de retención, constancia de crédito INFONAVIT, estado de cuenta INFONAVIT.
+
+Validaciones requeridas:
+1. ¿Es un documento del INFONAVIT? Busca el logo del INFONAVIT, texto "Instituto del Fondo Nacional de la Vivienda para los Trabajadores", "Aviso de Retención", o "INFONAVIT".
+2. ¿Se puede leer el NSS o número de crédito?
+3. ¿Se puede identificar el nombre del trabajador?
+
+Datos a extraer: nombre_completo, nss, numero_credito (si visible).`,
+
+  estado_cuenta_fonacot: `Analiza esta imagen y determina si es un estado de cuenta o documento de crédito FONACOT de México.
+
+Documentos válidos: estado de cuenta FONACOT, constancia de crédito FONACOT, contrato FONACOT, certificado de crédito.
+
+Validaciones requeridas:
+1. ¿Es un documento de FONACOT? Busca el logo de FONACOT, texto "Instituto del Fondo Nacional para el Consumo de los Trabajadores", "FONACOT", o datos del crédito.
+2. ¿Se puede leer el número de crédito o de contrato?
+3. ¿Se puede identificar el nombre del trabajador?
+
+Datos a extraer: nombre_completo, numero_credito, saldo (si visible).`,
 };
 
 const SYSTEM_PROMPT = `Eres un validador de documentos mexicanos. Tu trabajo es analizar imágenes de documentos y determinar si son válidos.
@@ -97,7 +175,7 @@ No incluyas texto fuera del JSON. Solo responde con el JSON.`;
  *
  * @param imageBuffer - The raw file bytes (JPEG, PNG, or first page of PDF rendered as image)
  * @param mediaType - MIME type of the image
- * @param documentType - Expected document type (ine, curp, rfc, etc.)
+ * @param documentType - Expected document type (ine, curp, nss, acta_nacimiento, etc.)
  */
 export async function validateDocument(
   imageBuffer: Buffer,

@@ -73,9 +73,16 @@ export function CandidateDocumentCard({ type, doc }: Props) {
         </p>
       )}
 
-      {/* Rejection reason (invalid) */}
-      {doc.status === 'invalid' && doc.rejectionReason && (
-        <p className="text-xs text-red-600 mt-1">{doc.rejectionReason}</p>
+      {/* Detected document type (invalid) */}
+      {doc.status === 'invalid' && doc.ocrResult?.documentTypeDetected &&
+        doc.ocrResult.documentTypeDetected !== 'parse_error' &&
+        doc.ocrResult.documentTypeDetected !== 'unknown' && (
+        <p className="text-xs text-orange-600 mt-1">
+          Detectado: <span className="font-medium">{doc.ocrResult.documentTypeDetected}</span>
+          {doc.ocrResult.confidence != null && (
+            <> · {Math.round(doc.ocrResult.confidence * 100)}%</>
+          )}
+        </p>
       )}
 
       {/* OCR validation errors detail */}
@@ -85,6 +92,8 @@ export function CandidateDocumentCard({ type, doc }: Props) {
             <li key={i} className="text-xs text-red-500 leading-tight">• {err}</li>
           ))}
         </ul>
+      ) : doc.status === 'invalid' && doc.rejectionReason ? (
+        <p className="text-xs text-red-600 mt-1">{doc.rejectionReason}</p>
       ) : null}
 
       {/* Review state hint */}

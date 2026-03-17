@@ -7,22 +7,16 @@ import { sendEmail } from '../email/gmailClient';
 import { ocrErrorTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { validateDocument } from './documentValidator';
+import { crossValidateNames } from './nameMatch';
+import { ALL_DOCUMENT_TYPES, DOCUMENT_LABELS } from '../utils/documentTypes';
 
-const DOCUMENT_LABELS: Record<string, string> = {
-  ine: 'INE / Identificación oficial',
-  curp: 'CURP',
-  rfc: 'RFC con homoclave',
-  comprobante_domicilio: 'Comprobante de domicilio',
-  comprobante_estudios: 'Comprobante de estudios',
-};
-
-const VALID_DOCUMENT_TYPES = Object.keys(DOCUMENT_LABELS);
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
 async function notifyOcrError(
   candidateId: string,
   documentType: string,
-  errors: string[]
+  errors: string[],
+  details?: { documentTypeDetected?: string; confidence?: number }
 ): Promise<void> {
   try {
     const candidate = await getCandidateById(candidateId);
@@ -39,7 +33,8 @@ async function notifyOcrError(
         formUrl,
       },
       documentLabel,
-      errors
+      errors,
+      details
     );
 
     const senderEmail = await getRecruiterEmail(candidate.createdBy as string);
@@ -144,7 +139,7 @@ export const onDocumentUploaded = onObjectFinalized(
 
     const [, candidateId, documentType] = match;
 
-    if (!VALID_DOCUMENT_TYPES.includes(documentType)) return;
+    if (!ALL_DOCUMENT_TYPES.includes(documentType)) return;
 
     try {
       // Download and prepare image for Claude
@@ -157,18 +152,40 @@ export const onDocumentUploaded = onObjectFinalized(
       // Validate with Claude Haiku
       const result = await validateDocument(buffer, mediaType, documentType);
 
+      // Cross-validate name against other valid documents
+      let nameErrors: string[] = [];
+      if (result.valid && result.extractedData.nombre_completo) {
+        const candidate = await getCandidateById(candidateId);
+        if (candidate) {
+          const existingDocs = (candidate.documents ?? {}) as Record<string, {
+            status: string;
+            ocrResult?: { extractedData?: Record<string, string> };
+          }>;
+          nameErrors = crossValidateNames(
+            documentType,
+            DOCUMENT_LABELS[documentType] ?? documentType,
+            result.extractedData.nombre_completo,
+            existingDocs,
+            DOCUMENT_LABELS,
+          );
+        }
+      }
+
+      const allErrors = [...result.errors, ...nameErrors];
+      const isValid = result.valid && nameErrors.length === 0;
+
       const ocrResult = {
         rawText: '',
         extractedData: result.extractedData,
         confidence: result.confidence,
-        validationPassed: result.valid,
-        validationErrors: result.errors,
+        validationPassed: isValid,
+        validationErrors: allErrors,
         documentTypeDetected: result.documentTypeDetected,
         processedAt: FieldValue.serverTimestamp(),
       };
 
-      const newStatus = result.valid ? 'valid' : 'invalid';
-      const rejectionReason = result.errors.length > 0 ? result.errors.join('. ') : undefined;
+      const newStatus = isValid ? 'valid' : 'invalid';
+      const rejectionReason = allErrors.length > 0 ? allErrors.join('. ') : undefined;
 
       await updateCandidateDocument(candidateId, documentType, {
         status: newStatus,
@@ -179,8 +196,11 @@ export const onDocumentUploaded = onObjectFinalized(
       await updateCandidateCompletion(candidateId);
 
       // Notify candidate by email when validation fails
-      if (!result.valid && result.errors.length > 0) {
-        await notifyOcrError(candidateId, documentType, result.errors);
+      if (!isValid && allErrors.length > 0) {
+        await notifyOcrError(candidateId, documentType, allErrors, {
+          documentTypeDetected: result.documentTypeDetected,
+          confidence: result.confidence,
+        });
       }
     } catch (err) {
       console.error(`Document validation error for ${candidateId}/${documentType}:`, err);
