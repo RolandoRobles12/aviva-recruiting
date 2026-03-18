@@ -374,7 +374,8 @@ export function inductionTemplate(c: {
             <ul style="margin:0;padding-left:20px;color:#6b7280;font-size:13px;line-height:2.2;">
               <li><strong>Correo corporativo:</strong> ${c.corporateEmail}</li>
               <li><strong>HubSpot:</strong> Se creó tu usuario con tu correo corporativo</li>
-              <li><strong>Slack:</strong> Revisa tu correo corporativo para la invitación</li>
+              <li><strong>Slack (principal):</strong> Recibirás una invitación al espacio principal de Aviva como miembro completo</li>
+              <li><strong>Slack (comunicación):</strong> Recibirás una invitación a un segundo espacio con acceso al canal de tu equipo</li>
             </ul>
           </div>
 
@@ -383,7 +384,7 @@ export function inductionTemplate(c: {
             <p style="color:#15803d;font-size:13px;font-weight:600;margin:0 0 12px;">Pasos de inducción:</p>
             <ol style="margin:0;padding-left:20px;color:#166534;font-size:13px;line-height:2.2;">
               <li>Inicia sesión en tu correo corporativo con las credenciales que te compartirá IT</li>
-              <li>Acepta la invitación de Slack y únete a los canales de tu equipo</li>
+              <li>Acepta <strong>ambas</strong> invitaciones de Slack que llegarán a tu correo corporativo</li>
               <li>Inicia sesión en HubSpot con tu correo corporativo</li>
               <li>Tu reclutador o líder de equipo te contactará para coordinar tu primer día</li>
             </ol>
