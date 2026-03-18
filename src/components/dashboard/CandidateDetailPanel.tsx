@@ -19,6 +19,7 @@ import {
   FolderOpen,
   FileSignature,
   ClipboardList,
+  Users,
 } from 'lucide-react';
 import { DOCUMENT_TYPES_REQUIRED, PARENTESCO_LABELS } from '../../types';
 import type { Candidate, DocumentType } from '../../types';
@@ -41,7 +42,7 @@ interface Props {
   onClose: () => void;
 }
 
-type TabId = 'info' | 'answers' | 'docs' | 'offer' | 'contract';
+type TabId = 'info' | 'answers' | 'docs' | 'offer' | 'contract' | 'accounts';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'info',     label: 'Info',        icon: <User size={14} /> },
@@ -49,6 +50,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'docs',     label: 'Documentos',  icon: <FolderOpen size={14} /> },
   { id: 'offer',    label: 'Carta Oferta', icon: <FileSignature size={14} /> },
   { id: 'contract', label: 'Contrato',    icon: <ClipboardList size={14} /> },
+  { id: 'accounts', label: 'Cuentas',     icon: <Users size={14} /> },
 ];
 
 export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
@@ -137,8 +139,6 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
     }
   };
 
-  const showProvisionUI = c.status === 'email_pending' || c.status === 'contract_signed';
-
   const createdAt = c.createdAt?.toDate?.();
   const updatedAt = c.updatedAt?.toDate?.();
 
@@ -222,6 +222,17 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             )}
             {tab === 'contract' && (
               <TabContract c={c} contractUrl={contractUrl} copied={copied} onCopy={copyToClipboard} />
+            )}
+            {tab === 'accounts' && (
+              <TabAccounts
+                c={c}
+                corpEmail={corpEmail}
+                setCorpEmail={setCorpEmail}
+                provisioning={provisioning}
+                provisionResult={provisionResult}
+                provisionError={provisionError}
+                onProvision={handleProvision}
+              />
             )}
           </div>
         </div>
@@ -356,66 +367,6 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               </div>
             )}
           </div>
-
-          {/* Manual account provisioning */}
-          {showProvisionUI && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-              <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
-                <Mail size={13} className="text-blue-500" />
-                Crear cuentas corporativas
-              </h4>
-              <p className="text-[11px] text-gray-400">
-                Ingresa el correo corporativo para crear las cuentas de HubSpot y Slack.
-              </p>
-              <input
-                type="email"
-                value={corpEmail}
-                onChange={(e) => setCorpEmail(e.target.value)}
-                placeholder="nombre@avivacredito.com"
-                disabled={provisioning}
-                className="w-full input-field text-xs py-2"
-              />
-              <button
-                onClick={handleProvision}
-                disabled={provisioning || !corpEmail.trim()}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
-              >
-                {provisioning ? (
-                  <>
-                    <RefreshCw size={12} className="animate-spin" />
-                    Creando cuentas...
-                  </>
-                ) : (
-                  <>
-                    <Send size={12} />
-                    Crear cuentas
-                  </>
-                )}
-              </button>
-              {provisionError && (
-                <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
-                  <XCircle size={12} className="shrink-0 mt-0.5" />
-                  <span>{provisionError}</span>
-                </div>
-              )}
-              {provisionResult && (
-                <div className="space-y-1.5">
-                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.hubspotCreated ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-                    {provisionResult.hubspotCreated ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-                    HubSpot: {provisionResult.hubspotCreated ? 'Creado' : 'Error'}
-                  </div>
-                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackPrimaryInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-                    {provisionResult.slackPrimaryInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-                    Slack (principal): {provisionResult.slackPrimaryInvited ? 'Invitado' : 'Error'}
-                  </div>
-                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackGuestInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-                    {provisionResult.slackGuestInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-                    Slack (comunicación): {provisionResult.slackGuestInvited ? 'Invitado' : 'Error'}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Timestamps */}
           <div className="text-[11px] text-gray-400 space-y-0.5 px-1">
@@ -776,6 +727,107 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB: Cuentas
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult, provisionError, onProvision }: {
+  c: Candidate;
+  corpEmail: string;
+  setCorpEmail: (v: string) => void;
+  provisioning: boolean;
+  provisionResult: ProvisionResult | null;
+  provisionError: string;
+  onProvision: () => void;
+}) {
+  return (
+    <div className="px-5 py-4 space-y-5">
+      {/* Contract status notice */}
+      {c.contractSignedAt ? (
+        <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+          <CheckCircle size={14} />
+          <span className="font-medium">
+            Contrato firmado el {format(c.contractSignedAt.toDate(), "d MMM yyyy", { locale: es })}
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+          <AlertTriangle size={14} />
+          <span>Contrato pendiente de firma — puedes crear las cuentas de todas formas.</span>
+        </div>
+      )}
+
+      {/* Corporate accounts that already exist */}
+      {c.corporateEmail && (
+        <Section title="Cuentas creadas">
+          <div className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
+            <Mail size={13} className="text-blue-500 shrink-0" />
+            <span className="font-mono">{c.corporateEmail}</span>
+          </div>
+        </Section>
+      )}
+
+      {/* Provisioning form */}
+      <Section title="Crear cuentas corporativas">
+        <p className="text-[11px] text-gray-400 mb-3">
+          Ingresa el correo corporativo para crear las cuentas de HubSpot y Slack.
+        </p>
+        <div className="space-y-2">
+          <input
+            type="email"
+            value={corpEmail}
+            onChange={(e) => setCorpEmail(e.target.value)}
+            placeholder="nombre@avivacredito.com"
+            disabled={provisioning}
+            className="w-full input-field text-xs py-2"
+          />
+          <button
+            onClick={onProvision}
+            disabled={provisioning || !corpEmail.trim()}
+            className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
+          >
+            {provisioning ? (
+              <>
+                <RefreshCw size={12} className="animate-spin" />
+                Creando cuentas...
+              </>
+            ) : (
+              <>
+                <Users size={12} />
+                Crear cuentas
+              </>
+            )}
+          </button>
+        </div>
+
+        {provisionError && (
+          <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2 mt-3">
+            <XCircle size={12} className="shrink-0 mt-0.5" />
+            <span>{provisionError}</span>
+          </div>
+        )}
+
+        {provisionResult && (
+          <div className="space-y-1.5 mt-3">
+            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.hubspotCreated ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+              {provisionResult.hubspotCreated ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+              HubSpot: {provisionResult.hubspotCreated ? 'Creado' : 'Error'}
+            </div>
+            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackPrimaryInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+              {provisionResult.slackPrimaryInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+              Slack (principal): {provisionResult.slackPrimaryInvited ? 'Invitado' : 'Error'}
+            </div>
+            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackGuestInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+              {provisionResult.slackGuestInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+              Slack (comunicación): {provisionResult.slackGuestInvited ? 'Invitado' : 'Error'}
+            </div>
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
