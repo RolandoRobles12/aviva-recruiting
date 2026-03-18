@@ -13,10 +13,16 @@ export async function updateCandidateDocument(
   documentType: string,
   updates: Record<string, unknown>
 ) {
-  await db.collection('candidates').doc(candidateId).update({
-    [`documents.${documentType}`]: updates,
+  // Use field-level dot notation to merge into the subdocument instead of
+  // replacing it entirely. This preserves existing fields like fileName,
+  // downloadUrl, storagePath, and uploadedAt set by the frontend.
+  const fieldUpdates: Record<string, unknown> = {
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+  for (const [key, value] of Object.entries(updates)) {
+    fieldUpdates[`documents.${documentType}.${key}`] = value;
+  }
+  await db.collection('candidates').doc(candidateId).update(fieldUpdates);
 }
 
 export async function updateCandidateCompletion(candidateId: string) {
