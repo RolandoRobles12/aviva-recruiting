@@ -2,7 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { checkTicketResolved } from './jiraService';
-import { createHubSpotContact } from './hubspotService';
+import { createHubSpotUser } from './hubspotService';
 import { inviteSlackDual } from './slackService';
 import { sendEmail } from '../email/gmailClient';
 import { inductionTemplate } from '../email/templates';
@@ -68,12 +68,10 @@ async function processTicket(doc: FirebaseFirestore.QueryDocumentSnapshot): Prom
 
   // Provision accounts in parallel
   const [hubspotResult, slackResult] = await Promise.allSettled([
-    createHubSpotContact({
+    createHubSpotUser({
       corporateEmail,
       firstName: candidate.firstName as string,
       lastName: candidate.lastName as string,
-      position: candidate.position as string,
-      personalEmail: candidate.email as string,
     }),
     inviteSlackDual({
       corporateEmail,

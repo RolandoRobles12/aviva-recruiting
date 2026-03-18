@@ -156,13 +156,15 @@ export async function analyzePdfTemplate(pdfBytes: Buffer): Promise<PdfAnalysisR
   // ── 2) Detect signature/initials annotations on each page ──────────────
   for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
     const page = pages[pageIdx];
-    const annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
-    if (!annots) continue;
+    const annotsRaw = page.node.lookup(PDFName.of('Annots'));
+    if (!annotsRaw || !(annotsRaw instanceof PDFArray)) continue;
+    const annots = annotsRaw;
 
     for (let i = 0; i < annots.size(); i++) {
       try {
-        const annotRef = annots.lookup(i, PDFDict);
-        if (!annotRef) continue;
+        const annotRaw = annots.lookup(i);
+        if (!annotRaw || !(annotRaw instanceof PDFDict)) continue;
+        const annotRef = annotRaw;
 
         const subtype = annotRef.lookup(PDFName.of('Subtype'));
         if (!subtype) continue;
