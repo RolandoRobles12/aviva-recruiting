@@ -6,8 +6,6 @@ const SLACK_BOT_TOKEN = defineString('SLACK_BOT_TOKEN');
 // ─── Secondary workspace: single-channel guest ─────────────────────────────
 const SLACK_GUEST_BOT_TOKEN = defineString('SLACK_GUEST_BOT_TOKEN', { default: '' });
 const SLACK_GUEST_CHANNEL_ID = defineString('SLACK_GUEST_CHANNEL_ID', { default: '' });
-// Optional: Team ID is required for Enterprise Grid admin.users.invite
-const SLACK_GUEST_TEAM_ID = defineString('SLACK_GUEST_TEAM_ID', { default: '' });
 
 const SLACK_API_BASE = 'https://slack.com/api';
 
@@ -29,24 +27,21 @@ async function slackInvite(params: {
   email: string;
   realName: string;
   channelIds?: string[];
-  teamId?: string;
   /** Make the user a single-channel guest (ultra_restricted) */
   singleChannelGuest?: boolean;
 }): Promise<SlackInviteResult> {
-  const { token, email, realName, channelIds, teamId, singleChannelGuest } = params;
+  const { token, email, realName, channelIds, singleChannelGuest } = params;
 
   if (!token) {
     return { ok: false, error: 'no_token_configured' };
   }
 
-  // ── 1) Try admin.users.invite (Enterprise Grid / Business+) ──────────────
+  // ── 1) Try admin.users.invite (Business+ / Enterprise Grid) ──────────────
   const body: Record<string, unknown> = {
     email,
     channel_ids: channelIds ?? [],
     real_name: realName,
   };
-
-  if (teamId) body.team_id = teamId;
 
   // Single-channel guest = ultra_restricted in Slack API
   if (singleChannelGuest) {
@@ -152,7 +147,6 @@ export async function inviteSlackGuest(params: {
 }): Promise<SlackInviteResult> {
   const guestToken = SLACK_GUEST_BOT_TOKEN.value();
   const guestChannelId = SLACK_GUEST_CHANNEL_ID.value();
-  const guestTeamId = SLACK_GUEST_TEAM_ID.value();
 
   if (!guestToken) {
     console.warn('[slack] SLACK_GUEST_BOT_TOKEN not configured, skipping guest workspace invite');
@@ -169,7 +163,6 @@ export async function inviteSlackGuest(params: {
     email: params.corporateEmail,
     realName: `${params.firstName} ${params.lastName}`,
     channelIds: [guestChannelId],
-    teamId: guestTeamId || undefined,
     singleChannelGuest: true,
   });
 }
