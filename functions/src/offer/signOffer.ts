@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { onRequest } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -291,8 +292,7 @@ export const signOffer = onRequest(
       }
 
       // ── Generate documents form token ─────────────────────────────────────────
-      const crypto = await import('crypto');
-      const formToken = crypto.randomBytes(32).toString('hex');
+      const formToken = randomBytes(32).toString('hex');
       const linkDurations = await getLinkDuration();
       const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
 
