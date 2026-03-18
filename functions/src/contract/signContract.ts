@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
+import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
+import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -58,7 +60,11 @@ export const signContract = onRequest(
       return;
     }
 
-    const { token, signatureBase64 } = req.body as { token?: string; signatureBase64?: string };
+    const { token, signatureBase64, initialsBase64 } = req.body as {
+      token?: string;
+      signatureBase64?: string;
+      initialsBase64?: string;
+    };
     if (!token || !signatureBase64) {
       res.status(400).json({ ok: false, error: 'token and signatureBase64 are required' });
       return;
@@ -104,11 +110,13 @@ export const signContract = onRequest(
       if (!allTemplates.empty) contractTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
     }
 
-    const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
     const firstNameVal = (candidate.firstName as string) || '';
     const lastNameVal  = (candidate.lastName  as string) || '';
+    const candidateFullName = `${firstNameVal} ${lastNameVal}`.trim();
+    const candidateInitials = extractInitials(candidateFullName);
+
     const vars: Record<string, string> = {
-      name: `${firstNameVal} ${lastNameVal}`.trim(),
+      name: candidateFullName,
       firstName: firstNameVal,
       lastName: lastNameVal,
       position: candidate.position as string,
@@ -119,7 +127,6 @@ export const signContract = onRequest(
       startDate: (candidate.viterbitStartDate as string) || 'a convenir',
       date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
-    const bodyText = stripHtml(interpolate(bodyHtml, vars));
 
     // Get signer info for evidence
     const signerIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
@@ -127,21 +134,64 @@ export const signContract = onRequest(
       || 'unknown';
     const signerUserAgent = (req.headers['user-agent'] as string) || 'unknown';
 
-    // Generate signed PDF + evidence
-    const { pdfBuffer, evidence } = await generateContractPdf({
-      candidateName: `${candidate.firstName} ${candidate.lastName}`,
-      position: candidate.position as string,
-      bodyText,
-      signatureBase64,
-      signedAt: now,
-      signerIp,
-      signerUserAgent,
-    });
+    const templateType = (contractTemplate?.templateType as string) || 'html';
+
+    let pdfBuffer: Buffer;
+    let evidence: import('./contractPdfGenerator').SigningEvidence;
+
+    if (templateType === 'pdf' && contractTemplate?.pdfStoragePath) {
+      // ── PDF-based template ──
+      const bucket = getStorage().bucket();
+      const [pdfTemplateBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
+
+      const signatureFields = (contractTemplate.signatureFields as PdfFieldPosition[] | undefined) ?? [];
+      const variableMappings = (contractTemplate.variableMappings as PdfVariableMapping[] | undefined) ?? [];
+      const initialsOnEveryPage = (contractTemplate.initialsOnEveryPage as boolean) ?? true;
+      const initialsPosition = contractTemplate.initialsPosition as
+        { x: number; y: number; width: number; height: number } | undefined;
+
+      const result = await generatePdfContract({
+        templatePdfBytes: Buffer.from(pdfTemplateBytes),
+        candidateName: candidateFullName,
+        candidateInitials,
+        position: candidate.position as string,
+        signatureBase64,
+        initialsBase64: initialsBase64 || undefined,
+        signedAt: now,
+        signerIp,
+        signerUserAgent,
+        variables: vars,
+        signatureFields,
+        variableMappings,
+        initialsOnEveryPage,
+        initialsPosition,
+      });
+      pdfBuffer = result.pdfBuffer;
+      evidence = result.evidence;
+    } else {
+      // ── HTML-based template (original flow) ──
+      const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
+      const bodyText = stripHtml(interpolate(bodyHtml, vars));
+
+      const result = await generateContractPdf({
+        candidateName: candidateFullName,
+        position: candidate.position as string,
+        bodyText,
+        signatureBase64,
+        signedAt: now,
+        signerIp,
+        signerUserAgent,
+        candidateInitials,
+        initialsBase64: initialsBase64 || undefined,
+      });
+      pdfBuffer = result.pdfBuffer;
+      evidence = result.evidence;
+    }
 
     // Generate evidence certificate PDF
     const evidencePdfBuffer = await generateEvidencePdf(
       evidence,
-      `${candidate.firstName} ${candidate.lastName}`,
+      candidateFullName,
       candidate.position as string,
     );
 
@@ -274,8 +324,20 @@ export const getContract = onRequest(
       date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
+    const templateType2 = (contractTemplate?.templateType as string) || 'html';
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
     const renderedHtml = interpolate(rawHtml, vars);
+
+    // For PDF templates, generate a signed URL so the candidate can view the PDF
+    let pdfPreviewUrl: string | undefined;
+    if (templateType2 === 'pdf' && contractTemplate?.pdfStoragePath) {
+      const bucket = getStorage().bucket();
+      const twentyFourHours = Date.now() + 24 * 60 * 60 * 1000;
+      const [url] = await bucket
+        .file(contractTemplate.pdfStoragePath as string)
+        .getSignedUrl({ action: 'read', expires: twentyFourHours });
+      pdfPreviewUrl = url;
+    }
 
     res.status(200).json({
       ok: true,
@@ -284,7 +346,10 @@ export const getContract = onRequest(
         position: candidate.position,
         salary: (candidate.viterbitSalary as string) || '',
         startDate: (candidate.viterbitStartDate as string) || 'a convenir',
+        templateType: templateType2,
         bodyHtml: renderedHtml,
+        pdfPreviewUrl,
+        pdfPageCount: (contractTemplate?.pdfPageCount as number) || undefined,
         expiresAt: expiresAt?.toISOString(),
       },
     });

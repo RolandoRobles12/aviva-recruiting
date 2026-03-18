@@ -9,7 +9,10 @@ interface ContractData {
   position: string;
   salary: string;
   startDate: string;
+  templateType: 'html' | 'pdf';
   bodyHtml: string;
+  pdfPreviewUrl?: string;
+  pdfPageCount?: number;
   expiresAt?: string;
 }
 
@@ -24,9 +27,13 @@ export function ContractPage() {
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [signatureEmpty, setSignatureEmpty] = useState(true);
+  const [initialsEmpty, setInitialsEmpty] = useState(true);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const padRef = useRef<SignaturePad | null>(null);
+  const signCanvasRef = useRef<HTMLCanvasElement>(null);
+  const signPadRef = useRef<SignaturePad | null>(null);
+  const initCanvasRef = useRef<HTMLCanvasElement>(null);
+  const initPadRef = useRef<SignaturePad | null>(null);
 
   // Load contract data
   useEffect(() => {
@@ -43,42 +50,91 @@ export function ContractPage() {
       .catch(() => setState('error'));
   }, [token]);
 
-  // Initialize signature pad once canvas is visible
+  // Initialize signature pads once canvas is visible
   useEffect(() => {
-    if (state !== 'ready' || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const pad = new SignaturePad(canvas, { penColor: '#1e293b' });
-    padRef.current = pad;
-    pad.addEventListener('endStroke', () => setSignatureEmpty(pad.isEmpty()));
+    if (state !== 'ready') return;
 
-    const resize = () => {
-      const ratio = Math.max(window.devicePixelRatio || 1, 1);
-      canvas.width = canvas.offsetWidth * ratio;
-      canvas.height = canvas.offsetHeight * ratio;
-      canvas.getContext('2d')?.scale(ratio, ratio);
-      pad.clear();
-      setSignatureEmpty(true);
-    };
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    // Signature pad
+    if (signCanvasRef.current) {
+      const canvas = signCanvasRef.current;
+      const pad = new SignaturePad(canvas, { penColor: '#1e293b' });
+      signPadRef.current = pad;
+      pad.addEventListener('endStroke', () => setSignatureEmpty(pad.isEmpty()));
+
+      const resizeSign = () => {
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        canvas.getContext('2d')?.scale(ratio, ratio);
+        pad.clear();
+        setSignatureEmpty(true);
+      };
+      resizeSign();
+      window.addEventListener('resize', resizeSign);
+
+      // Cleanup
+      const cleanup1 = () => window.removeEventListener('resize', resizeSign);
+
+      // Initials pad
+      if (initCanvasRef.current) {
+        const initCanvas = initCanvasRef.current;
+        const initPad = new SignaturePad(initCanvas, {
+          penColor: '#1e293b',
+          minWidth: 1,
+          maxWidth: 2.5,
+        });
+        initPadRef.current = initPad;
+        initPad.addEventListener('endStroke', () => setInitialsEmpty(initPad.isEmpty()));
+
+        const resizeInit = () => {
+          const ratio = Math.max(window.devicePixelRatio || 1, 1);
+          initCanvas.width = initCanvas.offsetWidth * ratio;
+          initCanvas.height = initCanvas.offsetHeight * ratio;
+          initCanvas.getContext('2d')?.scale(ratio, ratio);
+          initPad.clear();
+          setInitialsEmpty(true);
+        };
+        resizeInit();
+        window.addEventListener('resize', resizeInit);
+
+        return () => {
+          cleanup1();
+          window.removeEventListener('resize', resizeInit);
+        };
+      }
+
+      return cleanup1;
+    }
   }, [state]);
 
   const clearSignature = () => {
-    padRef.current?.clear();
+    signPadRef.current?.clear();
     setSignatureEmpty(true);
   };
 
+  const clearInitials = () => {
+    initPadRef.current?.clear();
+    setInitialsEmpty(true);
+  };
+
   const handleSubmit = async () => {
-    if (!token || !padRef.current || padRef.current.isEmpty()) return;
+    if (!token || !signPadRef.current || signPadRef.current.isEmpty()) return;
+    if (initialsEmpty) {
+      setErrorMsg('Por favor dibuja tus iniciales antes de firmar.');
+      return;
+    }
     setSubmitting(true);
     setErrorMsg('');
     try {
-      const signatureBase64 = padRef.current.toDataURL('image/png');
+      const signatureBase64 = signPadRef.current.toDataURL('image/png');
+      const initialsBase64 = initPadRef.current?.isEmpty()
+        ? undefined
+        : initPadRef.current?.toDataURL('image/png');
+
       const resp = await fetch(`${API_BASE}/signContract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, signatureBase64 }),
+        body: JSON.stringify({ token, signatureBase64, initialsBase64 }),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error ?? 'Error desconocido');
@@ -113,8 +169,8 @@ export function ContractPage() {
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">¡Contrato firmado!</h1>
           <p className="text-gray-500 text-sm mb-6">
-            Tu contrato ha sido firmado exitosamente. Se generó un certificado de firma electrónica
-            como evidencia criptográfica de tu firma.
+            Tu contrato ha sido firmado exitosamente con tus iniciales en cada hoja.
+            Se generó un certificado de firma electrónica como evidencia criptográfica.
           </p>
           <div className="space-y-3">
             {pdfUrl && (
@@ -155,6 +211,8 @@ export function ContractPage() {
     return <TerminalCard icon="x" title="Enlace no encontrado" message="No pudimos encontrar tu contrato. Verifica el enlace o contacta a tu reclutador." />;
   }
 
+  const isPdf = contract?.templateType === 'pdf';
+
   // ── Main contract view ─────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -194,34 +252,90 @@ export function ContractPage() {
           </div>
         </div>
 
-        {/* Body content */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Contrato</h2>
-          <div
-            className="prose prose-sm max-w-none text-gray-600"
-            dangerouslySetInnerHTML={{ __html: contract?.bodyHtml ?? '' }}
-          />
-        </div>
+        {/* Body content — PDF or HTML */}
+        {isPdf && contract?.pdfPreviewUrl ? (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">Contrato</h2>
+              <span className="text-xs text-gray-400">
+                {contract.pdfPageCount} página{(contract.pdfPageCount || 0) > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="p-2">
+              <iframe
+                src={contract.pdfPreviewUrl}
+                className="w-full rounded-lg"
+                style={{ height: '600px' }}
+                title="Contrato PDF"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">Contrato</h2>
+            <div
+              className="prose prose-sm max-w-none text-gray-600"
+              dangerouslySetInnerHTML={{ __html: contract?.bodyHtml ?? '' }}
+            />
+          </div>
+        )}
 
         {/* FES info */}
         <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5">
           <h3 className="text-sm font-semibold text-blue-900 mb-2">Firma Electrónica Simple (FES)</h3>
           <p className="text-xs text-blue-700 leading-relaxed">
             Al firmar este contrato, se generará evidencia criptográfica que incluye: hash SHA-256 del documento,
-            tu dirección IP, fecha y hora exacta, y un certificado de firma. Esta firma tiene validez legal
-            conforme a los artículos 89 a 94 del Código de Comercio de México y el artículo 1834 bis del
-            Código Civil Federal.
+            tu dirección IP, fecha y hora exacta, y un certificado de firma. Tus iniciales se colocarán en cada
+            hoja del contrato como evidencia adicional. Esta firma tiene validez legal conforme a los artículos
+            89 a 94 del Código de Comercio de México y el artículo 1834 bis del Código Civil Federal.
           </p>
+        </div>
+
+        {/* Initials */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Iniciales (siglas)</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Dibuja tus iniciales en el recuadro. Se colocarán en cada hoja del contrato como evidencia de lectura.
+          </p>
+          <div className="flex items-start gap-4">
+            <div className="flex-1">
+              <div
+                className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative"
+                style={{ height: 80 }}
+              >
+                <canvas
+                  ref={initCanvasRef}
+                  className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
+                />
+                {initialsEmpty && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <p className="text-gray-300 text-xs select-none">Tus iniciales aquí</p>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={clearInitials}
+                className="mt-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Borrar iniciales
+              </button>
+            </div>
+            <div className="w-32 shrink-0 bg-blue-50 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-blue-600 font-medium mb-1">Ejemplo</p>
+              <p className="text-2xl font-bold text-blue-700">JGR</p>
+              <p className="text-[10px] text-blue-500 mt-0.5">Juan García R.</p>
+            </div>
+          </div>
         </div>
 
         {/* Signature */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-1">Firma digital</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Dibuja tu firma en el recuadro de abajo para firmar este contrato de trabajo.
+            Dibuja tu firma completa en el recuadro de abajo para firmar este contrato de trabajo.
           </p>
           <div className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative" style={{ height: 160 }}>
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full touch-none cursor-crosshair" />
+            <canvas ref={signCanvasRef} className="absolute inset-0 w-full h-full touch-none cursor-crosshair" />
             {signatureEmpty && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <p className="text-gray-300 text-sm select-none">Firma aquí</p>
@@ -235,6 +349,20 @@ export function ContractPage() {
             Borrar firma
           </button>
 
+          {/* Terms acceptance */}
+          <label className="flex items-start gap-3 mt-5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 mt-0.5"
+            />
+            <span className="text-xs text-gray-600 leading-relaxed">
+              He leído y acepto los términos de este contrato de trabajo. Confirmo que mis iniciales y firma
+              digital tienen la misma validez que mi firma autógrafa conforme a la legislación mexicana.
+            </span>
+          </label>
+
           {errorMsg && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
               {errorMsg}
@@ -243,13 +371,13 @@ export function ContractPage() {
 
           <button
             onClick={handleSubmit}
-            disabled={submitting || signatureEmpty}
+            disabled={submitting || signatureEmpty || initialsEmpty || !acceptedTerms}
             className="mt-6 w-full bg-primary-600 text-white font-semibold py-3 rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {submitting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Procesando firma...
+                Procesando firma e iniciales...
               </>
             ) : (
               'Firmo este contrato de trabajo'
@@ -257,8 +385,8 @@ export function ContractPage() {
           </button>
 
           <p className="text-xs text-gray-400 text-center mt-3">
-            Al firmar, confirmas que has leído y aceptas los términos de este contrato de trabajo.
-            Se generará un certificado de evidencia criptográfica de tu firma.
+            Al firmar, tus iniciales se colocarán en cada hoja y se generará
+            un certificado de evidencia criptográfica SHA-256.
           </p>
         </div>
       </div>

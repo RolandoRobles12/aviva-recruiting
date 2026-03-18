@@ -195,11 +195,54 @@ export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'reject
 
 // ─── Contract Templates ──────────────────────────────────────────────────────
 
+export type ContractTemplateType = 'html' | 'pdf';
+
+/** A detected or manually-placed field on a PDF page (signature, initials, date, text). */
+export interface PdfFieldPosition {
+  id: string;
+  type: 'signature' | 'initials' | 'date' | 'text';
+  pageIndex: number; // 0-based
+  x: number;         // points from left
+  y: number;         // points from bottom (PDF coordinate system)
+  width: number;
+  height: number;
+  label?: string;
+  required: boolean;
+}
+
+/** Where to overlay a template variable on a PDF page. */
+export interface PdfVariableMapping {
+  variableName: string; // e.g. 'firstName', 'salary'
+  pageIndex: number;
+  x: number;
+  y: number;
+  fontSize: number;
+  fontWeight?: 'normal' | 'bold';
+}
+
 export interface ContractTemplate {
   id: string;
   name: string;
   positionKeywords: string[];
+  templateType: ContractTemplateType; // 'html' for rich-text, 'pdf' for uploaded PDF
+  // ── HTML template fields ──
   bodyHtml: string;  // HTML with {{variable}} placeholders
+  // ── PDF template fields ──
+  pdfUrl?: string;            // Download URL of the uploaded PDF
+  pdfStoragePath?: string;    // Firebase Storage path
+  pdfPageCount?: number;      // Number of pages in the PDF
+  pdfFileSize?: number;       // File size in bytes
+  signatureFields?: PdfFieldPosition[];     // Where signatures/initials go
+  variableMappings?: PdfVariableMapping[];  // Where to overlay variables
+  // ── Initials configuration ──
+  initialsOnEveryPage: boolean; // Place initials on every page
+  initialsPosition?: {          // Default position for initials
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  // ── Metadata ──
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
