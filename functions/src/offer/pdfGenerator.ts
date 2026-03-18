@@ -14,7 +14,7 @@ export function stripHtml(html: string): string {
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/li>/gi, '\n')
-    .replace(/<li>/gi, '• ')
+    .replace(/<li>/gi, '- ')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -84,20 +84,13 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
 
   // ── Body text (contains all sections: position, responsibilities, compensation) ─
   const bodyLines = wrapText(input.bodyText, fontRegular, 10, contentWidth);
-  for (const line of bodyLines) {
+  let currentPage = page;
+  for (let i = 0; i < bodyLines.length; i++) {
     if (y < 160) {
-      // Add a new page if we run out of space
-      const newPage = pdfDoc.addPage([595, 842]);
-      y = newPage.getSize().height - margin;
-      // Continue rendering on the new page
-      for (const remainingLine of bodyLines.slice(bodyLines.indexOf(line))) {
-        if (y < 160) break;
-        newPage.drawText(remainingLine, { x: margin, y, size: 10, font: fontRegular, color: dark });
-        y -= 14;
-      }
-      break;
+      currentPage = pdfDoc.addPage([595, 842]);
+      y = currentPage.getSize().height - margin;
     }
-    page.drawText(line, { x: margin, y, size: 10, font: fontRegular, color: dark });
+    currentPage.drawText(bodyLines[i], { x: margin, y, size: 10, font: fontRegular, color: dark });
     y -= 14;
   }
   y -= 10;
