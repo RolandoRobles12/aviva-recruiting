@@ -88,12 +88,12 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
     onDrop,
     accept: ACCEPTED_TYPES,
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 50 * 1024 * 1024, // 50MB
     disabled: uploading || document.status === 'valid',
     onDropRejected: (fileRejections) => {
       const err = fileRejections[0]?.errors[0];
       if (err?.code === 'file-too-large') {
-        setLocalError('El archivo es muy grande. Máximo 10 MB.');
+        setLocalError('El archivo es muy grande. Máximo 50 MB.');
       } else if (err?.code === 'file-invalid-type') {
         setLocalError('Formato no válido. Acepta JPG, PNG o PDF.');
       } else {
@@ -155,7 +155,7 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
               <p className="text-sm font-medium text-gray-700">
                 {isDragActive ? 'Suelta el archivo aquí' : 'Arrastra o haz clic para subir'}
               </p>
-              <p className="text-xs text-gray-400 mt-1">PDF, JPG o PNG · Máx. 10 MB</p>
+              <p className="text-xs text-gray-400 mt-1">PDF, JPG o PNG · Máx. 50 MB</p>
             </div>
           )}
         </div>

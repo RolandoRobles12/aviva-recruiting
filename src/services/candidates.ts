@@ -113,7 +113,9 @@ export async function updateCandidateDocumentStatus(
     [`documents.${documentType}`]: updates,
     updatedAt: serverTimestamp(),
   });
-  await recalculateCompletion(candidateId);
+  // Completion recalculation is handled exclusively by the backend storage trigger
+  // (onDocumentUploaded) after OCR validation. Calling it here from the client
+  // would create a race condition that overwrites the authoritative backend result.
 }
 
 export async function updateCandidateStatus(
@@ -185,8 +187,11 @@ async function recalculateCompletion(candidateId: string): Promise<void> {
   if (candidate.formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
 
   const totalDocs = requiredTypes.length;
+  // Only count documents with status 'valid' — matches backend logic in
+  // updateCandidateCompletion. Documents with status 'uploaded' or 'invalid'
+  // are not considered complete.
   const uploadedDocs = requiredTypes.filter(
-    (type) => candidate.documents[type]?.status !== 'pending'
+    (type) => candidate.documents[type]?.status === 'valid'
   ).length;
 
   // Also count form answers completion

@@ -41,11 +41,12 @@ service cloud.firestore {
       // Token verification happens in Cloud Functions / client query
       allow read: if resource.data.formToken != null;
 
-      // Candidates can update only their documents field (no auth, identified by token)
+      // Candidates can update their documents and questionnaire answers (no auth, identified by token).
+      // completionPercentage and status are managed exclusively by Cloud Functions (backend).
       allow update: if
         resource.data.formToken != null &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['documents', 'completionPercentage', 'status', 'updatedAt']);
+          .hasOnly(['documents', 'formAnswers', 'updatedAt']);
     }
 
     // ─── Email Logs ───────────────────────────────────────────────────────────
