@@ -9,6 +9,10 @@ export interface ContractPdfInput {
   signedAt: Date;
   signerIp: string;
   signerUserAgent: string;
+  /** Candidate initials text (e.g. "JGR") — placed on each page */
+  candidateInitials?: string;
+  /** Initials drawn as image (base64 PNG) — overrides text initials */
+  initialsBase64?: string;
 }
 
 export interface SigningEvidence {
@@ -116,6 +120,14 @@ export async function generateContractPdf(
 
   if (pages.length === 0) pages.push([]);
 
+  // Embed initials image if provided
+  let initialsImage: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null;
+  if (input.initialsBase64) {
+    const initBase64 = input.initialsBase64.replace(/^data:image\/png;base64,/, '');
+    initialsImage = await pdfDoc.embedPng(Buffer.from(initBase64, 'base64'));
+  }
+  const initialsText = input.candidateInitials || '';
+
   for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
     const page = pdfDoc.addPage([pageWidth, pageHeight]);
     let y = pageHeight - margin;
@@ -140,6 +152,43 @@ export async function generateContractPdf(
       if (y < 50) break;
       page.drawText(line, { x: margin, y, size: 10, font: fontRegular, color: dark });
       y -= 14;
+    }
+
+    // ── Initials on every page (bottom-right, above footer) ──
+    const initX = pageWidth - margin - 50;
+    const initY = 36;
+    const initW = 46;
+    const initH = 22;
+
+    if (initialsImage) {
+      const initDims = initialsImage.scale(
+        Math.min(initW / initialsImage.width, initH / initialsImage.height, 0.4)
+      );
+      page.drawImage(initialsImage, {
+        x: initX + (initW - initDims.width) / 2,
+        y: initY + (initH - initDims.height) / 2,
+        width: initDims.width,
+        height: initDims.height,
+      });
+    } else if (initialsText) {
+      const initFontSize = 10;
+      const tw = fontBold.widthOfTextAtSize(initialsText, initFontSize);
+      page.drawText(initialsText, {
+        x: initX + (initW - tw) / 2,
+        y: initY + (initH - initFontSize) / 2,
+        size: initFontSize,
+        font: fontBold,
+        color: dark,
+      });
+    }
+
+    // Thin border around initials area
+    if (initialsImage || initialsText) {
+      const borderColor = rgb(0.8, 0.82, 0.85);
+      page.drawLine({ start: { x: initX, y: initY }, end: { x: initX + initW, y: initY }, thickness: 0.3, color: borderColor });
+      page.drawLine({ start: { x: initX + initW, y: initY }, end: { x: initX + initW, y: initY + initH }, thickness: 0.3, color: borderColor });
+      page.drawLine({ start: { x: initX + initW, y: initY + initH }, end: { x: initX, y: initY + initH }, thickness: 0.3, color: borderColor });
+      page.drawLine({ start: { x: initX, y: initY + initH }, end: { x: initX, y: initY }, thickness: 0.3, color: borderColor });
     }
 
     // Signature block on last page

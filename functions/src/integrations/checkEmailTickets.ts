@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { checkTicketResolved } from './jiraService';
 import { createHubSpotContact } from './hubspotService';
-import { inviteSlackUser } from './slackService';
+import { inviteSlackDual } from './slackService';
 import { sendEmail } from '../email/gmailClient';
 import { inductionTemplate } from '../email/templates';
 
@@ -75,7 +75,7 @@ async function processTicket(doc: FirebaseFirestore.QueryDocumentSnapshot): Prom
       position: candidate.position as string,
       personalEmail: candidate.email as string,
     }),
-    inviteSlackUser({
+    inviteSlackDual({
       corporateEmail,
       firstName: candidate.firstName as string,
       lastName: candidate.lastName as string,
@@ -89,12 +89,30 @@ async function processTicket(doc: FirebaseFirestore.QueryDocumentSnapshot): Prom
     console.error(`[checkEmailTickets] Slack invitation failed for ${doc.id}:`, slackResult.reason);
   }
 
+  // Extract Slack results for both workspaces
+  const slackDual = slackResult.status === 'fulfilled' ? slackResult.value : null;
+  const slackPrimaryOk = slackDual?.primary.ok ?? false;
+  const slackGuestOk = slackDual?.guest.ok ?? false;
+
+  if (slackDual) {
+    if (!slackPrimaryOk) {
+      console.warn(`[checkEmailTickets] Slack primary workspace invite failed for ${doc.id}: ${slackDual.primary.error}`);
+    }
+    if (!slackGuestOk) {
+      console.warn(`[checkEmailTickets] Slack guest workspace invite failed for ${doc.id}: ${slackDual.guest.error}`);
+    }
+    if (slackPrimaryOk && slackGuestOk) {
+      console.info(`[checkEmailTickets] Slack: both workspaces invited for ${doc.id}`);
+    }
+  }
+
   // Update candidate regardless of HubSpot/Slack success
   await doc.ref.update({
     corporateEmail,
     status: 'email_ready',
     hubspotCreated: hubspotResult.status === 'fulfilled',
-    slackInvited: slackResult.status === 'fulfilled' && slackResult.value.ok,
+    slackInvited: slackPrimaryOk,
+    slackGuestInvited: slackGuestOk,
     emailProvisionedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
