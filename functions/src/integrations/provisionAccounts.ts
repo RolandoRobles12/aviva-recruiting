@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { createHubSpotContact } from './hubspotService';
+import { createHubSpotUser } from './hubspotService';
 import { inviteSlackDual } from './slackService';
 import { sendEmail } from '../email/gmailClient';
 import { inductionTemplate } from '../email/templates';
@@ -44,12 +44,10 @@ export const provisionAccountsManual = onCall(
 
     // Provision HubSpot + dual Slack in parallel
     const [hubspotResult, slackResult] = await Promise.allSettled([
-      createHubSpotContact({
+      createHubSpotUser({
         corporateEmail,
         firstName: candidate.firstName as string,
         lastName: candidate.lastName as string,
-        position: candidate.position as string,
-        personalEmail: candidate.email as string,
       }),
       inviteSlackDual({
         corporateEmail,

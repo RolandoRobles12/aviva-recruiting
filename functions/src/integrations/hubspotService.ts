@@ -5,76 +5,40 @@ const HUBSPOT_API_KEY = defineString('HUBSPOT_API_KEY');
 const HUBSPOT_API_BASE = 'https://api.hubapi.com';
 
 /**
- * Create a HubSpot contact for a new employee using their corporate email.
- * If the contact already exists, it updates the existing record.
+ * Create a HubSpot portal user for a new employee.
+ * If the user already exists (409), it's treated as success.
  */
-export async function createHubSpotContact(params: {
+export async function createHubSpotUser(params: {
   corporateEmail: string;
   firstName: string;
   lastName: string;
-  position: string;
-  personalEmail: string;
-}): Promise<{ contactId: string }> {
+}): Promise<{ userId: string }> {
   const apiKey = HUBSPOT_API_KEY.value();
 
-  const resp = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts`, {
+  const resp = await fetch(`${HUBSPOT_API_BASE}/settings/v3/users/`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      properties: {
-        email: params.corporateEmail,
-        firstname: params.firstName,
-        lastname: params.lastName,
-        jobtitle: params.position,
-        hs_additional_emails: params.personalEmail,
-      },
+      email: params.corporateEmail,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      sendWelcomeEmail: true,
     }),
   });
 
+  // Already exists — treat as success
   if (resp.status === 409) {
-    // Contact already exists — try to find and update
-    const existing = await findHubSpotContactByEmail(params.corporateEmail, apiKey);
-    if (existing) {
-      return { contactId: existing };
-    }
+    return { userId: 'existing' };
   }
 
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`HubSpot createContact failed: HTTP ${resp.status} — ${text}`);
+    throw new Error(`HubSpot createUser failed: HTTP ${resp.status} — ${text}`);
   }
 
   const data = (await resp.json()) as { id: string };
-  return { contactId: data.id };
-}
-
-async function findHubSpotContactByEmail(email: string, apiKey: string): Promise<string | null> {
-  const resp = await fetch(
-    `${HUBSPOT_API_BASE}/crm/v3/objects/contacts/search`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [{
-            propertyName: 'email',
-            operator: 'EQ',
-            value: email,
-          }],
-        }],
-        limit: 1,
-      }),
-    }
-  );
-
-  if (!resp.ok) return null;
-
-  const data = (await resp.json()) as { results: Array<{ id: string }> };
-  return data.results[0]?.id ?? null;
+  return { userId: data.id };
 }
