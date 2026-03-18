@@ -174,176 +174,191 @@ export const signOffer = onRequest(
     const { token, signatureBase64 } = req.body as { token?: string; signatureBase64?: string };
 
     if (!token || !signatureBase64) {
-      res.status(400).json({ ok: false, error: 'token and signatureBase64 are required' });
+      res.status(400).json({ ok: false, error: 'Se requiere el token y la firma.' });
       return;
     }
-
-    // ── Find candidate by offerToken ────────────────────────────────────────────
-    const snap = await db
-      .collection('candidates')
-      .where('offerToken', '==', token)
-      .limit(1)
-      .get();
-
-    if (snap.empty) {
-      res.status(404).json({ ok: false, error: 'Offer not found' });
-      return;
-    }
-
-    const candidateDoc = snap.docs[0];
-    const candidateId = candidateDoc.id;
-    const candidate = candidateDoc.data();
-
-    if (candidate.status !== 'offer_sent') {
-      res.status(409).json({ ok: false, error: 'Offer already signed or invalid status' });
-      return;
-    }
-
-    const now = new Date();
-    const expiresAt = candidate.offerExpiresAt?.toDate?.() as Date | undefined;
-    if (expiresAt && now > expiresAt) {
-      res.status(410).json({ ok: false, error: 'Offer link has expired' });
-      return;
-    }
-
-    // ── Fetch live job data from Viterbit API ──────────────────────────────────
-    const apiKey = VITERBIT_API_KEY.value();
-    const jobId = (candidate.viterbitJobId as string) || '';
-
-    const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
-
-    const firstNameVal = (candidate.firstName as string) || '';
-    const lastNameVal  = (candidate.lastName  as string) || '';
-    const positionVal  = jobInfo?.title || (candidate.position as string) || '';
-    const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
-    const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
-    const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
-    const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
-    const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
-
-    console.log('[signOffer] Template vars:', JSON.stringify({
-      name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, salary, startDate, hiringManager, company, departmentProfile,
-    }));
-
-    const vars: Record<string, string> = {
-      name:      `${firstNameVal} ${lastNameVal}`.trim(),
-      firstName: firstNameVal,
-      lastName:  lastNameVal,
-      position:  positionVal,
-      departmentProfile,
-      hiringManager,
-      company,
-      salary,
-      startDate,
-      date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
-    };
-    const bodyText = stripHtml(interpolate(DEFAULT_OFFER_BODY_HTML, vars));
-
-    // ── Generate PDF ────────────────────────────────────────────────────────────
-    const pdfBuffer = await generateOfferPdf({
-      candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
-      position: positionVal,
-      bodyText,
-      signatureBase64,
-      signedAt: now,
-    });
-
-    // ── Upload signature image & PDF to Storage ─────────────────────────────────
-    const bucket = getStorage().bucket();
-
-    const sigPath = `candidates/${candidateId}/offer_signature.png`;
-    const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
-    await bucket.file(sigPath).save(Buffer.from(sigBase64, 'base64'), {
-      metadata: { contentType: 'image/png' },
-    });
-    const [sigUrl] = await bucket.file(sigPath).getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000, // 10 years
-    });
-
-    const pdfPath = `candidates/${candidateId}/carta_oferta_firmada.pdf`;
-    await bucket.file(pdfPath).save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
-    const [pdfUrl] = await bucket.file(pdfPath).getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000,
-    });
-
-    // ── Move candidate in Viterbit to "Documentos" ──────────────────────────────
-    const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
-    const documentosStageId = stageIds?.documentos;
-    const candidatureId = candidate.viterbitCandidatureId as string | undefined;
-
-    if (apiKey && documentosStageId && candidatureId) {
-      try {
-        await moveToStage(candidatureId, documentosStageId, apiKey);
-      } catch (err) {
-        console.error('[signOffer] moveToStage documentos error:', err);
-        // Non-fatal: continue so candidate is not blocked
-      }
-    }
-
-    // ── Generate documents form token ───────────────────────────────────────────
-    const crypto = await import('crypto');
-    const formToken = crypto.randomBytes(32).toString('hex');
-    const linkDurations = await getLinkDuration();
-    const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
-
-    // ── Update candidate in Firestore ───────────────────────────────────────────
-    await candidateDoc.ref.update({
-      status: 'offer_signed',
-      offerSignedAt: now,
-      offerSignatureUrl: sigUrl,
-      offerPdfUrl: pdfUrl,
-      formToken,
-      formExpiresAt,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    // ── Send documents invitation email ─────────────────────────────────────────
-    const appUrl = APP_URL.value();
-    const formUrl = `${appUrl}/form/${formToken}`;
-    const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
-
-    const { subject, html } = invitationTemplate({
-      firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
-      position: candidate.position as string,
-      formUrl,
-      formExpiresAt: formExpiresAtStr,
-    });
 
     try {
-      const createdBy = candidate.createdBy as string;
-      const senderEmail = await getRecruiterEmail(createdBy);
-      await sendEmail({
-        to: candidate.email as string,
-        subject,
-        html,
-        senderEmail,
-        recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+      // ── Find candidate by offerToken ──────────────────────────────────────────
+      const snap = await db
+        .collection('candidates')
+        .where('offerToken', '==', token)
+        .limit(1)
+        .get();
+
+      if (snap.empty) {
+        res.status(404).json({ ok: false, error: 'No se encontró la carta oferta. Verifica tu enlace.' });
+        return;
+      }
+
+      const candidateDoc = snap.docs[0];
+      const candidateId = candidateDoc.id;
+      const candidate = candidateDoc.data();
+
+      if (candidate.status !== 'offer_sent') {
+        res.status(409).json({ ok: false, error: 'Esta carta oferta ya fue firmada.' });
+        return;
+      }
+
+      const now = new Date();
+      const expiresAt = candidate.offerExpiresAt?.toDate?.() as Date | undefined;
+      if (expiresAt && now > expiresAt) {
+        res.status(410).json({ ok: false, error: 'Este enlace ha expirado. Contacta a tu reclutador para uno nuevo.' });
+        return;
+      }
+
+      // ── Fetch live job data from Viterbit API ────────────────────────────────
+      const apiKey = VITERBIT_API_KEY.value();
+      const jobId = (candidate.viterbitJobId as string) || '';
+
+      const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
+
+      const firstNameVal = (candidate.firstName as string) || '';
+      const lastNameVal  = (candidate.lastName  as string) || '';
+      const positionVal  = jobInfo?.title || (candidate.position as string) || '';
+      const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
+      const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
+      const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
+      const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
+      const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
+
+      console.log('[signOffer] Template vars:', JSON.stringify({
+        name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, salary, startDate, hiringManager, company, departmentProfile,
+      }));
+
+      const vars: Record<string, string> = {
+        name:      `${firstNameVal} ${lastNameVal}`.trim(),
+        firstName: firstNameVal,
+        lastName:  lastNameVal,
+        position:  positionVal,
+        departmentProfile,
+        hiringManager,
+        company,
+        salary,
+        startDate,
+        date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
+      };
+      const bodyText = stripHtml(interpolate(DEFAULT_OFFER_BODY_HTML, vars));
+
+      // ── Generate PDF ──────────────────────────────────────────────────────────
+      let pdfBuffer: Buffer;
+      try {
+        pdfBuffer = await generateOfferPdf({
+          candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
+          position: positionVal,
+          bodyText,
+          signatureBase64,
+          signedAt: now,
+        });
+      } catch (pdfErr) {
+        console.error('[signOffer] PDF generation error:', pdfErr);
+        res.status(500).json({ ok: false, error: 'Error al generar el PDF. Intenta de nuevo en unos segundos.' });
+        return;
+      }
+
+      // ── Upload signature image & PDF to Storage ───────────────────────────────
+      const bucket = getStorage().bucket();
+
+      const sigPath = `candidates/${candidateId}/offer_signature.png`;
+      const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
+      await bucket.file(sigPath).save(Buffer.from(sigBase64, 'base64'), {
+        metadata: { contentType: 'image/png' },
       });
-      await db.collection('email_logs').add({
-        candidateId,
-        templateType: 'invitation',
-        sentTo: candidate.email,
-        sentAt: FieldValue.serverTimestamp(),
-        sentBy: 'sign_offer',
-        success: true,
+      const [sigUrl] = await bucket.file(sigPath).getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000, // 10 years
       });
-    } catch (emailErr) {
-      console.error('[signOffer] send invitation email error:', emailErr);
-      await db.collection('email_logs').add({
-        candidateId,
-        templateType: 'invitation',
-        sentTo: candidate.email,
-        sentAt: FieldValue.serverTimestamp(),
-        sentBy: 'sign_offer',
-        success: false,
-        error: String(emailErr),
+
+      const pdfPath = `candidates/${candidateId}/carta_oferta_firmada.pdf`;
+      await bucket.file(pdfPath).save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
+      const [pdfUrl] = await bucket.file(pdfPath).getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000,
+      });
+
+      // ── Move candidate in Viterbit to "Documentos" ────────────────────────────
+      const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
+      const documentosStageId = stageIds?.documentos;
+      const candidatureId = candidate.viterbitCandidatureId as string | undefined;
+
+      if (apiKey && documentosStageId && candidatureId) {
+        try {
+          await moveToStage(candidatureId, documentosStageId, apiKey);
+        } catch (err) {
+          console.error('[signOffer] moveToStage documentos error:', err);
+          // Non-fatal: continue so candidate is not blocked
+        }
+      }
+
+      // ── Generate documents form token ─────────────────────────────────────────
+      const crypto = await import('crypto');
+      const formToken = crypto.randomBytes(32).toString('hex');
+      const linkDurations = await getLinkDuration();
+      const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
+
+      // ── Update candidate in Firestore ─────────────────────────────────────────
+      await candidateDoc.ref.update({
+        status: 'offer_signed',
+        offerSignedAt: now,
+        offerSignatureUrl: sigUrl,
+        offerPdfUrl: pdfUrl,
+        formToken,
+        formExpiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // ── Send documents invitation email ───────────────────────────────────────
+      const appUrl = APP_URL.value();
+      const formUrl = `${appUrl}/form/${formToken}`;
+      const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+      const { subject, html } = invitationTemplate({
+        firstName: candidate.firstName as string,
+        lastName: candidate.lastName as string,
+        position: candidate.position as string,
+        formUrl,
+        formExpiresAt: formExpiresAtStr,
+      });
+
+      try {
+        const createdBy = candidate.createdBy as string;
+        const senderEmail = await getRecruiterEmail(createdBy);
+        await sendEmail({
+          to: candidate.email as string,
+          subject,
+          html,
+          senderEmail,
+          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+        });
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'invitation',
+          sentTo: candidate.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'sign_offer',
+          success: true,
+        });
+      } catch (emailErr) {
+        console.error('[signOffer] send invitation email error:', emailErr);
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'invitation',
+          sentTo: candidate.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'sign_offer',
+          success: false,
+          error: String(emailErr),
+        });
+      }
+
+      res.status(200).json({ ok: true, pdfUrl });
+    } catch (err) {
+      console.error('[signOffer] Unhandled error:', err);
+      res.status(500).json({
+        ok: false,
+        error: 'Ocurrió un error al procesar tu firma. Por favor intenta de nuevo. Si el problema persiste, contacta a tu reclutador.',
       });
     }
-
-    res.status(200).json({ ok: true, pdfUrl });
   }
 );
 
@@ -363,76 +378,84 @@ export const getOffer = onRequest(
       return;
     }
 
-    const snap = await db
-      .collection('candidates')
-      .where('offerToken', '==', token)
-      .limit(1)
-      .get();
+    try {
+      const snap = await db
+        .collection('candidates')
+        .where('offerToken', '==', token)
+        .limit(1)
+        .get();
 
-    if (snap.empty) {
-      res.status(404).json({ ok: false, error: 'Offer not found' });
-      return;
-    }
+      if (snap.empty) {
+        res.status(404).json({ ok: false, error: 'Offer not found' });
+        return;
+      }
 
-    const candidate = snap.docs[0].data();
+      const candidate = snap.docs[0].data();
 
-    if (candidate.status !== 'offer_sent') {
-      res.status(409).json({ ok: false, error: 'already_signed' });
-      return;
-    }
+      if (candidate.status !== 'offer_sent') {
+        res.status(409).json({ ok: false, error: 'already_signed' });
+        return;
+      }
 
-    const expiresAt = candidate.offerExpiresAt?.toDate?.() as Date | undefined;
-    if (expiresAt && new Date() > expiresAt) {
-      res.status(410).json({ ok: false, error: 'expired' });
-      return;
-    }
+      const expiresAt = candidate.offerExpiresAt?.toDate?.() as Date | undefined;
+      if (expiresAt && new Date() > expiresAt) {
+        res.status(410).json({ ok: false, error: 'expired' });
+        return;
+      }
 
-    // Fetch live job data from Viterbit API (don't rely on stored values)
-    const apiKey = VITERBIT_API_KEY.value();
-    const jobId = (candidate.viterbitJobId as string) || '';
+      // Fetch live job data from Viterbit API (don't rely on stored values)
+      const apiKey = VITERBIT_API_KEY.value();
+      const jobId = (candidate.viterbitJobId as string) || '';
 
-    const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
+      const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
 
-    // Candidate name comes from Firestore (set by webhook)
-    const firstNameVal = (candidate.firstName as string) || '';
-    const lastNameVal  = (candidate.lastName  as string) || '';
-    const positionVal  = jobInfo?.title || (candidate.position as string) || '';
-    const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
-    const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
-    const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
-    const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
-    const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
+      // Candidate name comes from Firestore (set by webhook)
+      const firstNameVal = (candidate.firstName as string) || '';
+      const lastNameVal  = (candidate.lastName  as string) || '';
+      const positionVal  = jobInfo?.title || (candidate.position as string) || '';
+      const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
+      const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
+      const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
+      const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
+      const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
 
-    console.log('[getOffer] Template vars:', JSON.stringify({
-      name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, offerSalary, offerStartDate,
-      hiringManager, company, departmentProfile, jobId,
-    }));
+      console.log('[getOffer] Template vars:', JSON.stringify({
+        name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, offerSalary, offerStartDate,
+        hiringManager, company, departmentProfile, jobId,
+      }));
 
-    const vars: Record<string, string> = {
-      name:      `${firstNameVal} ${lastNameVal}`.trim(),
-      firstName: firstNameVal,
-      lastName:  lastNameVal,
-      position:  positionVal,
-      departmentProfile,
-      hiringManager,
-      company,
-      salary:    offerSalary,
-      startDate: offerStartDate,
-      date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
-    };
-
-    const renderedHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
-
-    res.status(200).json({
-      ok: true,
-      offer: {
-        candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
-        position: positionVal,
-        salary: offerSalary,
+      const vars: Record<string, string> = {
+        name:      `${firstNameVal} ${lastNameVal}`.trim(),
+        firstName: firstNameVal,
+        lastName:  lastNameVal,
+        position:  positionVal,
+        departmentProfile,
+        hiringManager,
+        company,
+        salary:    offerSalary,
         startDate: offerStartDate,
-        bodyHtml: renderedHtml,
-        expiresAt: expiresAt?.toISOString(),
-      },
-    });
+        date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
+      };
+
+      const renderedHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
+
+      res.status(200).json({
+        ok: true,
+        offer: {
+          candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
+          position: positionVal,
+          salary: offerSalary,
+          startDate: offerStartDate,
+          bodyHtml: renderedHtml,
+          expiresAt: expiresAt?.toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('[getOffer] Unhandled error:', err);
+      res.status(500).json({
+        ok: false,
+        error: 'Error al cargar la carta oferta. Intenta recargar la página.',
+      });
+    }
   }
 );
