@@ -18,3 +18,17 @@ export const createCandidateAndInvite = httpsCallable<
   CreateCandidatePayload & { recruiterUid: string },
   { success: boolean; candidateId: string }
 >(functions, 'createCandidateAndInvite');
+
+export interface ProvisionResult {
+  success: boolean;
+  hubspotCreated: boolean;
+  slackPrimaryInvited: boolean;
+  slackGuestInvited: boolean;
+  hubspotError?: string;
+  slackError?: string;
+}
+
+export const provisionAccountsManual = httpsCallable<
+  { candidateId: string; corporateEmail: string },
+  ProvisionResult
+>(functions, 'provisionAccountsManual');

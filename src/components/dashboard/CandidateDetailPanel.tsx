@@ -27,7 +27,9 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { CandidateDocumentCard } from './CandidateDocumentCard';
 import {
   sendReminderEmail,
+  provisionAccountsManual,
 } from '../../services/functions';
+import type { ProvisionResult } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { sendInvitationEmail } from '../../services/functions';
@@ -57,11 +59,18 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [extendingToken, setExtendingToken] = useState(false);
   const [tokenExtended, setTokenExtended] = useState(false);
+  const [corpEmail, setCorpEmail] = useState('');
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
+  const [provisionError, setProvisionError] = useState('');
 
   // Reset tab/notes when candidate changes
   useEffect(() => {
     setNotes(c.notes ?? '');
     setTab('info');
+    setCorpEmail('');
+    setProvisionResult(null);
+    setProvisionError('');
   }, [c.id]);
 
   const formUrl = c.formToken ? `${window.location.origin}/form/${c.formToken}` : null;
@@ -111,6 +120,24 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
       setSavingNotes(false);
     }
   };
+
+  const handleProvision = async () => {
+    if (!corpEmail.trim()) return;
+    setProvisioning(true);
+    setProvisionError('');
+    setProvisionResult(null);
+    try {
+      const res = await provisionAccountsManual({ candidateId: c.id, corporateEmail: corpEmail.trim() });
+      setProvisionResult(res.data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      setProvisionError(msg);
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
+  const showProvisionUI = c.status === 'email_pending' || c.status === 'contract_signed';
 
   const createdAt = c.createdAt?.toDate?.();
   const updatedAt = c.updatedAt?.toDate?.();
@@ -329,6 +356,66 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               </div>
             )}
           </div>
+
+          {/* Manual account provisioning */}
+          {showProvisionUI && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <Mail size={13} className="text-blue-500" />
+                Crear cuentas corporativas
+              </h4>
+              <p className="text-[11px] text-gray-400">
+                Ingresa el correo corporativo para crear las cuentas de HubSpot y Slack.
+              </p>
+              <input
+                type="email"
+                value={corpEmail}
+                onChange={(e) => setCorpEmail(e.target.value)}
+                placeholder="nombre@avivacredito.com"
+                disabled={provisioning}
+                className="w-full input-field text-xs py-2"
+              />
+              <button
+                onClick={handleProvision}
+                disabled={provisioning || !corpEmail.trim()}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
+              >
+                {provisioning ? (
+                  <>
+                    <RefreshCw size={12} className="animate-spin" />
+                    Creando cuentas...
+                  </>
+                ) : (
+                  <>
+                    <Send size={12} />
+                    Crear cuentas
+                  </>
+                )}
+              </button>
+              {provisionError && (
+                <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
+                  <XCircle size={12} className="shrink-0 mt-0.5" />
+                  <span>{provisionError}</span>
+                </div>
+              )}
+              {provisionResult && (
+                <div className="space-y-1.5">
+                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.hubspotCreated ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                    {provisionResult.hubspotCreated ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                    HubSpot: {provisionResult.hubspotCreated ? 'Creado' : 'Error'}
+                  </div>
+                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackPrimaryInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                    {provisionResult.slackPrimaryInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                    Slack (principal): {provisionResult.slackPrimaryInvited ? 'Invitado' : 'Error'}
+                  </div>
+                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackGuestInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                    {provisionResult.slackGuestInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                    Slack (comunicación): {provisionResult.slackGuestInvited ? 'Invitado' : 'Error'}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Timestamps */}
           <div className="text-[11px] text-gray-400 space-y-0.5 px-1">

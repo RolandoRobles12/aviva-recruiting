@@ -8,3 +8,4 @@ export { signOffer, getOffer } from './offer/signOffer';
 export { signContract, getContract } from './contract/signContract';
 export { analyzePdfTemplateEndpoint as analyzePdfTemplate } from './contract/analyzePdf';
 export { checkEmailTickets } from './integrations/checkEmailTickets';
+export { provisionAccountsManual } from './integrations/provisionAccounts';
