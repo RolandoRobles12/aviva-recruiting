@@ -21,7 +21,7 @@ import {
   Users,
 } from 'lucide-react';
 import { PARENTESCO_LABELS } from '../../types';
-import type { Candidate, DocumentType } from '../../types';
+import type { Candidate } from '../../types';
 import { getCandidateDocTypes, computeCompletion } from '../../utils/candidateCompletion';
 import { useFormQuestions } from '../../hooks/useFormQuestions';
 import { StatusBadge } from '../ui/StatusBadge';
