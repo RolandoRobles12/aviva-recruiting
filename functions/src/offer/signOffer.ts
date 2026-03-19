@@ -245,15 +245,15 @@ export const signOffer = onRequest(
       const candidateFullName = storedFullName
         || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
 
-      const positionVal  = jobInfo?.title || (candidate.position as string) || '';
-      const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
-      const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
-      const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
+      const positionVal  = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
+      const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
+      const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'A convenir';
+      const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || 'Por definir';
       const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
 
       // Use departmentProfile only when it's a real name, not a raw database ID
       const rawDeptProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || '';
-      const departmentProfile = isRawId(rawDeptProfile) ? positionVal : (rawDeptProfile || positionVal);
+      const departmentProfile = (isRawId(rawDeptProfile) || !rawDeptProfile) ? positionVal : rawDeptProfile;
 
       console.log('[signOffer] Template vars:', JSON.stringify({
         name: candidateFullName, positionVal, salary, startDate, hiringManager, company, departmentProfile,
@@ -449,14 +449,14 @@ export const getOffer = onRequest(
       const candidateFullName2 = storedFullName2
         || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
 
-      const positionVal  = jobInfo?.title || (candidate.position as string) || '';
-      const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
-      const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
-      const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
+      const positionVal  = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
+      const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
+      const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'A convenir';
+      const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || 'Por definir';
       const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
 
       const rawDeptProfile2 = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || '';
-      const departmentProfile2 = isRawId(rawDeptProfile2) ? positionVal : (rawDeptProfile2 || positionVal);
+      const departmentProfile2 = (isRawId(rawDeptProfile2) || !rawDeptProfile2) ? positionVal : rawDeptProfile2;
 
       console.log('[getOffer] Template vars:', JSON.stringify({
         name: candidateFullName2, positionVal, offerSalary, offerStartDate,

@@ -291,33 +291,29 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
     }
 
     if (block.kind === 'h2') {
-      // Section heading: bold green 11pt, with top margin
-      st.y -= 6;
+      st.y -= 8;
       if (st.y < SIG_RESERVE) { st = newPage(pdfDoc, margin); }
+      // Left green accent bar
+      st.page.drawRectangle({ x: margin, y: st.y - 2, width: 3, height: 15, color: green });
       st.page.drawText(block.text, {
-        x: margin, y: st.y, size: 11, font: fBold, color: green,
+        x: margin + 9, y: st.y, size: 11, font: fBold, color: green,
       });
-      st.y -= LINE_H + 4;
+      st.y -= LINE_H + 6;
       continue;
     }
 
     if (block.kind === 'li') {
-      // Bullet: filled circle + text
       if (st.y < SIG_RESERVE) { st = newPage(pdfDoc, margin); }
-      const bulletX = margin + 2;
-      const textX   = margin + 14;
-      // Draw bullet circle
-      st.page.drawCircle({ x: bulletX + 2, y: st.y + 3.5, size: 2, color: dark });
-      // Layout the li text with reduced width
-      const liWidth = contentWidth - 14;
+      // Green dash bullet
+      st.page.drawText('-', { x: margin + 2, y: st.y, size: 10, font: fBold, color: green });
       const toks = segsToToks(block.segs, fReg, fBold, fObl, 10, dark, gray, green);
-      const lines = layoutToks(toks, liWidth);
+      const lines = layoutToks(toks, contentWidth - 14);
       for (let i = 0; i < lines.length; i++) {
         if (st.y < SIG_RESERVE) { st = newPage(pdfDoc, margin); }
         for (const w of lines[i]) {
           if (w.text) {
             st.page.drawText(w.text, {
-              x: textX + w.x, y: st.y, size: 10, font: w.font, color: w.color,
+              x: margin + 14 + w.x, y: st.y, size: 10, font: w.font, color: w.color,
             });
           }
         }

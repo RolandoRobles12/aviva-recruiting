@@ -5,6 +5,7 @@ export { getGmailAuthUrl, gmailOAuthCallback, disconnectGmail } from './email/gm
 export { onDocumentUploaded } from './ocr/triggerOcrValidation';
 export { viterbitWebhook } from './viterbit/webhookHandler';
 export { signOffer, getOffer } from './offer/signOffer';
+export { sendOfferEmail } from './offer/sendOfferEmail';
 export { signContract, getContract } from './contract/signContract';
 export { analyzePdfTemplateEndpoint as analyzePdfTemplate } from './contract/analyzePdf';
 export { checkEmailTickets } from './integrations/checkEmailTickets';
