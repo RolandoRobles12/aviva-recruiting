@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Mail, Bell, FileText, Settings, Link, Clock } from 'lucide-react';
+import { Mail, Bell, FileText, Settings, Link, Clock, HelpCircle } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmailTemplatesTab } from '../components/settings/EmailTemplatesTab';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { DocumentsTab } from '../components/settings/DocumentsTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { LinkDurationTab } from '../components/settings/LinkDurationTab';
+import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { useSettings } from '../hooks/useSettings';
 
-type Tab = 'gmail' | 'emails' | 'reminders' | 'links' | 'documents';
+type Tab = 'gmail' | 'emails' | 'reminders' | 'links' | 'documents' | 'questions';
 
 const TABS: { id: Tab; label: string; Icon: typeof Mail }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
@@ -16,6 +17,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Mail }[] = [
   { id: 'reminders', label: 'Recordatorios', Icon: Bell },
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
   { id: 'documents', label: 'Documentos', Icon: FileText },
+  { id: 'questions', label: 'Preguntas', Icon: HelpCircle },
 ];
 
 export function SettingsPage() {
@@ -102,6 +104,7 @@ export function SettingsPage() {
                   onSave={saveDocuments}
                 />
               )}
+              {activeTab === 'questions' && <QuestionsTab />}
             </>
           )}
         </div>

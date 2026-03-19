@@ -70,6 +70,7 @@ export const signContract = onRequest(
       return;
     }
 
+    try {
     // Find candidate by contractToken
     const snap = await db
       .collection('candidates')
@@ -125,6 +126,7 @@ export const signContract = onRequest(
       company: (candidate.viterbitCompany as string) || 'Aviva',
       salary: (candidate.viterbitSalary as string) || '',
       startDate: (candidate.viterbitStartDate as string) || 'a convenir',
+      benefits: (candidate.benefits as string) || '',
       date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
@@ -254,6 +256,13 @@ export const signContract = onRequest(
     });
 
     res.status(200).json({ ok: true, pdfUrl, evidenceUrl });
+    } catch (err) {
+      console.error('[signContract] Unhandled error:', err);
+      res.status(500).json({
+        ok: false,
+        error: 'Ocurrió un error al procesar tu firma. Por favor intenta de nuevo. Si el problema persiste, contacta a tu reclutador.',
+      });
+    }
   }
 );
 
@@ -321,6 +330,7 @@ export const getContract = onRequest(
       company: (candidate.viterbitCompany as string) || 'Aviva',
       salary: (candidate.viterbitSalary as string) || '',
       startDate: (candidate.viterbitStartDate as string) || 'a convenir',
+      benefits: (candidate.benefits as string) || '',
       date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 

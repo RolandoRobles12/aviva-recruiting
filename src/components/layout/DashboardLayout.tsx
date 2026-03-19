@@ -45,7 +45,7 @@ export function DashboardLayout({ children }: Props) {
             </NavLink>
             <NavLink to="/documents" className={navClass}>
               <FolderOpen size={18} className="shrink-0" />
-              <span className="hidden lg:block">Documentos</span>
+              <span className="hidden lg:block">Expedientes</span>
             </NavLink>
           </div>
 

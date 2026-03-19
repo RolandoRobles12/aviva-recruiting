@@ -68,6 +68,8 @@ export interface FormAnswers {
   contacto2Telefono?: string;
   contacto2Correo?: string;
   contacto2Parentesco?: Parentesco;
+  // Dynamic custom questions (keyed by FormQuestion.id)
+  customAnswers?: Record<string, string>;
 }
 
 export const PARENTESCO_LABELS: Record<Parentesco, string> = {
@@ -76,6 +78,20 @@ export const PARENTESCO_LABELS: Record<Parentesco, string> = {
   esposo: 'Esposo(a)',
   hijo: 'Hijo(a)',
 };
+
+// ─── Form Questions (configurable) ───────────────────────────────────────────
+
+export type QuestionType = 'text' | 'textarea' | 'yes_no' | 'radio' | 'select';
+
+export interface FormQuestion {
+  id: string;
+  label: string;
+  type: QuestionType;
+  options?: string[];   // for radio / select
+  required: boolean;
+  enabled: boolean;
+  order: number;
+}
 
 // ─── Candidate ────────────────────────────────────────────────────────────────
 

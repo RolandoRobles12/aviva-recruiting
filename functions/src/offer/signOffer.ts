@@ -110,6 +110,16 @@ async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<Vite
 
 // ─── Helper: interpolate template variables ────────────────────────────────────
 
+/** Returns true if a string looks like a raw database ID (MongoDB ObjectID or UUID) */
+function isRawId(str: string): boolean {
+  if (!str) return false;
+  // MongoDB ObjectID: exactly 24 hex chars
+  if (/^[0-9a-f]{24}$/i.test(str)) return true;
+  // UUID: 8-4-4-4-12 hex pattern
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) return true;
+  return false;
+}
+
 // Maps Viterbit ${variable} names (from Word templates) to system variable names.
 const VITERBIT_VAR_MAP: Record<string, string> = {
   name:                       'name',
@@ -230,21 +240,30 @@ export const signOffer = onRequest(
 
       const firstNameVal = (candidate.firstName as string) || '';
       const lastNameVal  = (candidate.lastName  as string) || '';
+      // If the name wasn't stored at webhook time, build it from the live job candidate name or email
+      const storedFullName = `${firstNameVal} ${lastNameVal}`.trim();
+      const candidateFullName = storedFullName
+        || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
+
       const positionVal  = jobInfo?.title || (candidate.position as string) || '';
       const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
       const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
       const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
       const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
-      const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
+
+      // Use departmentProfile only when it's a real name, not a raw database ID
+      const rawDeptProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || '';
+      const departmentProfile = isRawId(rawDeptProfile) ? positionVal : (rawDeptProfile || positionVal);
 
       console.log('[signOffer] Template vars:', JSON.stringify({
-        name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, salary, startDate, hiringManager, company, departmentProfile,
+        name: candidateFullName, positionVal, salary, startDate, hiringManager, company, departmentProfile,
+        rawDeptProfile,
       }));
 
       const vars: Record<string, string> = {
-        name:      `${firstNameVal} ${lastNameVal}`.trim(),
-        firstName: firstNameVal,
-        lastName:  lastNameVal,
+        name:      candidateFullName,
+        firstName: firstNameVal || candidateFullName.split(' ')[0],
+        lastName:  lastNameVal  || candidateFullName.split(' ').slice(1).join(' '),
         position:  positionVal,
         departmentProfile,
         hiringManager,
@@ -259,7 +278,7 @@ export const signOffer = onRequest(
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await generateOfferPdf({
-          candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
+          candidateName: candidateFullName,
           position: positionVal,
           bodyText,
           signatureBase64,
@@ -426,24 +445,30 @@ export const getOffer = onRequest(
       // Candidate name comes from Firestore (set by webhook)
       const firstNameVal = (candidate.firstName as string) || '';
       const lastNameVal  = (candidate.lastName  as string) || '';
+      const storedFullName2 = `${firstNameVal} ${lastNameVal}`.trim();
+      const candidateFullName2 = storedFullName2
+        || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
+
       const positionVal  = jobInfo?.title || (candidate.position as string) || '';
       const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || '';
       const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'a convenir';
       const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || '';
       const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva';
-      const departmentProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || positionVal;
+
+      const rawDeptProfile2 = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || '';
+      const departmentProfile2 = isRawId(rawDeptProfile2) ? positionVal : (rawDeptProfile2 || positionVal);
 
       console.log('[getOffer] Template vars:', JSON.stringify({
-        name: `${firstNameVal} ${lastNameVal}`.trim(), positionVal, offerSalary, offerStartDate,
-        hiringManager, company, departmentProfile, jobId,
+        name: candidateFullName2, positionVal, offerSalary, offerStartDate,
+        hiringManager, company, departmentProfile: departmentProfile2, rawDeptProfile: rawDeptProfile2, jobId,
       }));
 
       const vars: Record<string, string> = {
-        name:      `${firstNameVal} ${lastNameVal}`.trim(),
-        firstName: firstNameVal,
-        lastName:  lastNameVal,
+        name:      candidateFullName2,
+        firstName: firstNameVal || candidateFullName2.split(' ')[0],
+        lastName:  lastNameVal  || candidateFullName2.split(' ').slice(1).join(' '),
         position:  positionVal,
-        departmentProfile,
+        departmentProfile: departmentProfile2,
         hiringManager,
         company,
         salary:    offerSalary,
@@ -456,7 +481,7 @@ export const getOffer = onRequest(
       res.status(200).json({
         ok: true,
         offer: {
-          candidateName: `${firstNameVal} ${lastNameVal}`.trim(),
+          candidateName: candidateFullName2,
           position: positionVal,
           salary: offerSalary,
           startDate: offerStartDate,
