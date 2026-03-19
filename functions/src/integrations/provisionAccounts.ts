@@ -72,17 +72,20 @@ export const provisionAccountsManual = onCall(
       console.error(`[provisionManual] Slack failed for ${candidateId}:`, slackResult.reason);
     }
 
-    // Update candidate record
-    await docRef.update({
-      corporateEmail,
-      status: 'email_ready',
+    // Update candidate record — only persist corporateEmail if HubSpot succeeded
+    const firestoreUpdate: Record<string, unknown> = {
       hubspotCreated: hubspotOk,
       slackInvited: slackPrimaryOk,
       slackGuestInvited: slackGuestOk,
       emailProvisionedAt: FieldValue.serverTimestamp(),
       provisionedManuallyBy: request.auth.uid,
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    };
+    if (hubspotOk) {
+      firestoreUpdate.corporateEmail = corporateEmail;
+      firestoreUpdate.status = 'email_ready';
+    }
+    await docRef.update(firestoreUpdate);
 
     // Send induction email
     try {

@@ -9,10 +9,10 @@ import { sendEmail } from '../email/gmailClient';
 import { offerTemplate, contractTemplate } from '../email/templates';
 import { createEmailTicket } from '../integrations/jiraService';
 import { getLinkDuration } from '../utils/linkDuration';
+import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
-const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET', { default: '' });
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 // Comma-separated job IDs to filter. Leave empty to allow all.
 const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
@@ -24,7 +24,6 @@ const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contra
 const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correos' });
 const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducción' });
 
-const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -33,20 +32,9 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function verifyViterbitSignature(rawBody: Buffer, signature: string, secret: string): boolean {
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  // Strip optional "sha256=" prefix that some webhook providers include
-  const normalizedSignature = signature.startsWith('sha256=') ? signature.slice(7) : signature;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(normalizedSignature, 'hex'));
-  } catch {
-    return false;
-  }
-}
-
 function buildInitialDocuments() {
   return Object.fromEntries(
-    DOCUMENT_TYPES.map((type) => [type, { id: type, type, status: 'pending' }])
+    DOCUMENT_TYPES_REQUIRED.map((type) => [type, { id: type, type, status: 'pending' }])
   );
 }
 
@@ -800,102 +788,94 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    // Signature validation disabled — re-enable when VITERBIT_WEBHOOK_SECRET is synced
-    // const secret = VITERBIT_WEBHOOK_SECRET.value();
-    // const signature = (req.headers['x-viterbit-signature'] as string) ?? '';
-    // if (secret) {
-    //   const valid = signature ? verifyViterbitSignature(req.rawBody, signature, secret) : false;
-    //   if (!valid) {
-    //     res.status(401).json({ ok: false, error: 'Invalid signature' });
-    //     return;
-    //   }
-    // }
-
     const body = req.body as Record<string, unknown>;
 
-    // Always log raw payload for debugging
-    const logRef = await db.collection('viterbit_webhook_logs').add({
-      payload: body,
-      receivedAt: FieldValue.serverTimestamp(),
-    });
+    try {
+      // Always log raw payload for debugging
+      const logRef = await db.collection('viterbit_webhook_logs').add({
+        payload: body,
+        receivedAt: FieldValue.serverTimestamp(),
+      });
 
-    const parsed = parseViterbitPayload(body);
-    if (!parsed) {
-      await logRef.update({ status: 'ignored', reason: 'could not parse payload' });
-      res.status(200).json({ ok: true, action: 'ignored', reason: 'unparseable payload' });
-      return;
-    }
+      const parsed = parseViterbitPayload(body);
+      if (!parsed) {
+        await logRef.update({ status: 'ignored', reason: 'could not parse payload' });
+        res.status(200).json({ ok: true, action: 'ignored', reason: 'unparseable payload' });
+        return;
+      }
 
-    const { stageName, stageId, jobId } = parsed;
+      const { stageName, stageId, jobId } = parsed;
 
-    const apiKey = VITERBIT_API_KEY.value();
-    if (!apiKey) {
-      await logRef.update({ status: 'error', reason: 'VITERBIT_API_KEY not configured' });
-      res.status(500).json({ ok: false, error: 'Server misconfiguration: missing API key' });
-      return;
-    }
+      const apiKey = VITERBIT_API_KEY.value();
+      if (!apiKey) {
+        await logRef.update({ status: 'error', reason: 'VITERBIT_API_KEY not configured' });
+        res.status(500).json({ ok: false, error: 'Server misconfiguration: missing API key' });
+        return;
+      }
 
-    // Filter by allowed jobs if configured
-    const allowedJobs = HIRING_JOB_NAMES.value()
-      .split(',')
-      .map((j) => j.trim().toLowerCase())
-      .filter(Boolean);
-    if (allowedJobs.length > 0) {
-      const matchesById = allowedJobs.some((allowed) => jobId.toLowerCase() === allowed);
-      if (!matchesById) {
-        const jobTitle = (await fetchViterbitJob(jobId, apiKey)).title;
-        const matchesByName = allowedJobs.some((allowed) => jobTitle.toLowerCase().includes(allowed));
-        if (!matchesByName) {
-          await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" (${jobId}) not in allowed list` });
-          res.status(200).json({ ok: true, action: 'ignored', reason: `job "${jobId}" not configured` });
-          return;
+      // Filter by allowed jobs if configured
+      const allowedJobs = HIRING_JOB_NAMES.value()
+        .split(',')
+        .map((j) => j.trim().toLowerCase())
+        .filter(Boolean);
+      if (allowedJobs.length > 0) {
+        const matchesById = allowedJobs.some((allowed) => jobId.toLowerCase() === allowed);
+        if (!matchesById) {
+          const jobTitle = (await fetchViterbitJob(jobId, apiKey)).title;
+          const matchesByName = allowedJobs.some((allowed) => jobTitle.toLowerCase().includes(allowed));
+          if (!matchesByName) {
+            await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" (${jobId}) not in allowed list` });
+            res.status(200).json({ ok: true, action: 'ignored', reason: `job "${jobId}" not configured` });
+            return;
+          }
         }
       }
-    }
 
-    // Format A webhooks only carry stage_id without a name.
-    // Resolve the name by fetching the candidature (recommended flow per Viterbit docs).
-    let resolvedStageName = stageName;
-    if (!resolvedStageName && parsed.candidatureId) {
-      const resolved = await fetchViterbitCandidatureStage(parsed.candidatureId, apiKey);
-      if (resolved) {
-        resolvedStageName = resolved.stageName;
-        console.info(`[webhook] resolved stage name "${resolvedStageName}" from candidature ${parsed.candidatureId}`);
+      // Format A webhooks only carry stage_id without a name.
+      // Resolve the name by fetching the candidature (recommended flow per Viterbit docs).
+      let resolvedStageName = stageName;
+      if (!resolvedStageName && parsed.candidatureId) {
+        const resolved = await fetchViterbitCandidatureStage(parsed.candidatureId, apiKey);
+        if (resolved) {
+          resolvedStageName = resolved.stageName;
+          console.info(`[webhook] resolved stage name "${resolvedStageName}" from candidature ${parsed.candidatureId}`);
+        }
       }
-    }
 
-    // Identify which stage was reached (by name or by ID)
-    const stageNameLower = resolvedStageName.toLowerCase();
-    const stageIdLower = stageId.toLowerCase();
+      // Identify which stage was reached (by name or by ID)
+      const stageNameLower = resolvedStageName.toLowerCase();
+      const stageIdLower = stageId.toLowerCase();
 
-    const matches = (configName: string) => {
-      const cfg = configName.toLowerCase();
-      return stageNameLower.includes(cfg) || stageIdLower === cfg;
-    };
+      const matches = (configName: string) => {
+        const cfg = configName.toLowerCase();
+        return stageNameLower.includes(cfg) || stageIdLower === cfg;
+      };
 
-    if (matches(STAGE_APROBADO.value())) {
-      const result = await handleAprobado(parsed, apiKey, logRef);
-      res.status(200).json({ ok: true, ...result });
-    } else if (matches(STAGE_DOCUMENTOS.value())) {
-      const result = await handleDocumentos(parsed, apiKey, logRef);
-      res.status(200).json({ ok: true, ...result });
-    } else if (matches(STAGE_CONTRATO.value())) {
-      const result = await handleContrato(parsed, apiKey, logRef);
-      res.status(200).json({ ok: true, ...result });
-    } else if (matches(STAGE_CORREOS.value())) {
-      const result = await handleCorreos(parsed, apiKey, logRef);
-      res.status(200).json({ ok: true, ...result });
-    } else if (matches(STAGE_INDUCCION.value()) || matches('induccion')) {
-      const result = await handleInduccion(parsed, apiKey, logRef);
-      res.status(200).json({ ok: true, ...result });
-    } else {
-      await logRef.update({
-        status: 'ignored',
-        reason: `stage "${resolvedStageName}" (${stageId}) not handled`,
-      });
-      res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${resolvedStageName}" skipped` });
+      if (matches(STAGE_APROBADO.value())) {
+        const result = await handleAprobado(parsed, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+      } else if (matches(STAGE_DOCUMENTOS.value())) {
+        const result = await handleDocumentos(parsed, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+      } else if (matches(STAGE_CONTRATO.value())) {
+        const result = await handleContrato(parsed, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+      } else if (matches(STAGE_CORREOS.value())) {
+        const result = await handleCorreos(parsed, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion')) {
+        const result = await handleInduccion(parsed, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+      } else {
+        await logRef.update({
+          status: 'ignored',
+          reason: `stage "${resolvedStageName}" (${stageId}) not handled`,
+        });
+        res.status(200).json({ ok: true, action: 'ignored', reason: `stage "${resolvedStageName}" skipped` });
+      }
+    } catch (err) {
+      console.error('[viterbitWebhook] Unhandled error:', err);
+      res.status(200).json({ ok: false, error: 'Internal error', detail: String(err) });
     }
   }
 );
-
-// redeploy 2026-03-19 20:35

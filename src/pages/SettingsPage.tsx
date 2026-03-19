@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, FileText, Settings, Link, Clock, HelpCircle } from 'lucide-react';
+import { Bell, FileText, Settings, Link, Clock, HelpCircle, Wrench } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { DocumentsTab } from '../components/settings/DocumentsTab';
@@ -7,8 +7,9 @@ import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { LinkDurationTab } from '../components/settings/LinkDurationTab';
 import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { useSettings } from '../hooks/useSettings';
+import { backfillCandidateDocuments } from '../services/functions';
 
-type Tab = 'gmail' | 'reminders' | 'links' | 'documents' | 'questions';
+type Tab = 'gmail' | 'reminders' | 'links' | 'documents' | 'questions' | 'admin';
 
 const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
@@ -16,7 +17,50 @@ const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
   { id: 'documents', label: 'Documentos', Icon: FileText },
   { id: 'questions', label: 'Preguntas', Icon: HelpCircle },
+  { id: 'admin', label: 'Admin', Icon: Wrench },
 ];
+
+function AdminTab() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleBackfill = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await backfillCandidateDocuments({});
+      setResult(res.data.message);
+    } catch (err) {
+      setResult(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <h3 className="text-sm font-semibold text-gray-800">Mantenimiento</h3>
+      <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+        <div>
+          <p className="text-sm font-medium text-gray-700">Completar documentos faltantes</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Agrega los tipos de documento que falten en candidatos existentes sin sobreescribir los actuales.
+          </p>
+        </div>
+        <button
+          onClick={handleBackfill}
+          disabled={running}
+          className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
+        >
+          {running ? 'Procesando...' : 'Ejecutar backfill'}
+        </button>
+        {result && (
+          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{result}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('gmail');
@@ -93,6 +137,7 @@ export function SettingsPage() {
                 />
               )}
               {activeTab === 'questions' && <QuestionsTab />}
+              {activeTab === 'admin' && <AdminTab />}
             </>
           )}
         </div>
