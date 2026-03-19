@@ -35,8 +35,10 @@ function generateToken(): string {
 
 function verifyViterbitSignature(rawBody: Buffer, signature: string, secret: string): boolean {
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  // Strip optional "sha256=" prefix that some webhook providers include
+  const normalizedSignature = signature.startsWith('sha256=') ? signature.slice(7) : signature;
   try {
-    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'));
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(normalizedSignature, 'hex'));
   } catch {
     return false;
   }
