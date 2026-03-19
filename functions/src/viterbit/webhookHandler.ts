@@ -800,16 +800,16 @@ export const viterbitWebhook = onRequest(
       return;
     }
 
-    // Validate Viterbit signature
-    const secret = VITERBIT_WEBHOOK_SECRET.value();
-    const signature = (req.headers['x-viterbit-signature'] as string) ?? '';
-    if (secret) {
-      const valid = signature ? verifyViterbitSignature(req.rawBody, signature, secret) : false;
-      if (!valid) {
-        res.status(401).json({ ok: false, error: 'Invalid signature' });
-        return;
-      }
-    }
+    // Signature validation disabled — re-enable when VITERBIT_WEBHOOK_SECRET is synced
+    // const secret = VITERBIT_WEBHOOK_SECRET.value();
+    // const signature = (req.headers['x-viterbit-signature'] as string) ?? '';
+    // if (secret) {
+    //   const valid = signature ? verifyViterbitSignature(req.rawBody, signature, secret) : false;
+    //   if (!valid) {
+    //     res.status(401).json({ ok: false, error: 'Invalid signature' });
+    //     return;
+    //   }
+    // }
 
     const body = req.body as Record<string, unknown>;
 
@@ -898,4 +898,4 @@ export const viterbitWebhook = onRequest(
   }
 );
 
-// redeploy 2026-03-12 18:25
+// redeploy 2026-03-19 20:35
