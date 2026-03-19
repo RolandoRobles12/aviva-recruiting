@@ -31,14 +31,14 @@ const TEMPLATE_META: Record<TemplateKey, {
     title: 'Correo de carta oferta',
     headerText: 'Tu Carta Oferta está lista',
     ctaText: 'Ver mi carta oferta →',
-    headerColor: '#3b82f6',
+    headerColor: '#16b877',
     footerNote: '* El enlace para revisar y firmar la carta oferta se agrega automáticamente',
   },
   contract: {
     title: 'Correo de contrato',
     headerText: 'Tu Contrato está listo',
     ctaText: 'Revisar y firmar contrato →',
-    headerColor: '#6366f1',
+    headerColor: '#16b877',
     footerNote: '* El enlace para revisar y firmar el contrato se agrega automáticamente',
   },
 };
