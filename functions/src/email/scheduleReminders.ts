@@ -1,8 +1,10 @@
 import * as functions from 'firebase-functions/v1';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { sendEmail } from './gmailClient';
-import { reminderTemplate } from './templates';
+import { reminderTemplate, offerTemplate } from './templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { DOCUMENT_TYPES_REQUIRED, DOCUMENT_LABELS } from '../utils/documentTypes';
 
@@ -162,6 +164,89 @@ export const scheduleReminders = functions
       }
     }
 
-    console.log(`Reminder scheduler done — sent: ${sent}, skipped: ${skipped}`);
+    console.log(`Document reminder scheduler done — sent: ${sent}, skipped: ${skipped}`);
+
+    // ── Offer letter reminders (offer_sent candidates who haven't signed) ─────
+    const offerSnap = await db
+      .collection('candidates')
+      .where('status', '==', 'offer_sent')
+      .get();
+
+    let offerSent = 0;
+
+    for (const docSnap of offerSnap.docs) {
+      const candidate = { id: docSnap.id, ...docSnap.data() } as Record<string, unknown> & { id: string };
+
+      const reminderCount = (candidate.reminderCount as number) ?? 0;
+      if (reminderCount >= MAX_REMINDERS) continue;
+
+      const lastReminderSentAt = candidate.lastReminderSentAt as Timestamp | undefined;
+      if (lastReminderSentAt) {
+        const lastDate = lastReminderSentAt.toDate?.() ?? new Date(0);
+        if (lastDate > cutoff) continue;
+      }
+
+      const offerToken = candidate.offerToken as string | undefined;
+      if (!offerToken) continue;
+
+      // Skip expired offers
+      const offerExpiresAt = (candidate.offerExpiresAt as Timestamp | undefined)?.toDate?.();
+      if (offerExpiresAt && new Date() > offerExpiresAt) continue;
+
+      const offerUrl = `${appUrl}/offer/${offerToken}`;
+      const offerExpiresAtStr = offerExpiresAt
+        ? format(offerExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es })
+        : '—';
+
+      const { subject, html } = offerTemplate({
+        firstName: candidate.firstName as string,
+        lastName: candidate.lastName as string,
+        position: candidate.position as string,
+        offerUrl,
+        offerExpiresAt: offerExpiresAtStr,
+      });
+
+      try {
+        const createdBy = candidate.createdBy as string;
+        const senderEmail = await getRecruiterEmail(createdBy);
+        await sendEmail({
+          to: candidate.email as string,
+          subject,
+          html,
+          senderEmail,
+          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+        });
+
+        await docSnap.ref.update({
+          lastReminderSentAt: FieldValue.serverTimestamp(),
+          reminderCount: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        await db.collection('email_logs').add({
+          candidateId: candidate.id,
+          templateType: 'offer_reminder',
+          sentTo: candidate.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'scheduler',
+          success: true,
+        });
+
+        offerSent++;
+      } catch (err) {
+        console.error(`Offer reminder failed for candidate ${candidate.id}:`, err);
+        await db.collection('email_logs').add({
+          candidateId: candidate.id,
+          templateType: 'offer_reminder',
+          sentTo: candidate.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'scheduler',
+          success: false,
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    console.log(`Offer reminder scheduler done — sent: ${offerSent}`);
     return null;
   });
