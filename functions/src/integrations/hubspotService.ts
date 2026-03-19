@@ -26,6 +26,7 @@ export async function createHubSpotUser(params: {
       firstName: params.firstName,
       lastName: params.lastName,
       sendWelcomeEmail: true,
+      primaryTeamId: '11727817',
     }),
   });
 
