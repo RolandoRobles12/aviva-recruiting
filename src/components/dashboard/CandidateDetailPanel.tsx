@@ -33,7 +33,7 @@ import {
   sendOfferEmail,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
-import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markOfferSignedManually, markContractSignedManually } from '../../services/candidates';
+import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { sendInvitationEmail } from '../../services/functions';
 import { format } from 'date-fns';
@@ -558,12 +558,6 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
   const [sendingOffer, setSendingOffer] = useState(false);
   const [offerSent, setOfferSent] = useState(false);
   const [offerSendError, setOfferSendError] = useState('');
-  const [markingOffer, setMarkingOffer] = useState(false);
-
-  async function handleMarkOfferSigned() {
-    setMarkingOffer(true);
-    try { await markOfferSignedManually(c.id); } finally { setMarkingOffer(false); }
-  }
 
   async function handleResendOffer() {
     setSendingOffer(true);
@@ -651,21 +645,6 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
             </Section>
           )}
 
-          {/* Manual demo sign — only when status is offer_sent and not yet signed */}
-          {c.status === 'offer_sent' && !c.offerSignedAt && (
-            <Section title="Demo">
-              <button
-                onClick={handleMarkOfferSigned}
-                disabled={markingOffer}
-                className="flex items-center gap-2 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60"
-              >
-                {markingOffer ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                {markingOffer ? 'Marcando...' : 'Marcar como firmada (demo)'}
-              </button>
-              <p className="text-[10px] text-gray-400 mt-1">Solo para pruebas — no guarda firma real.</p>
-            </Section>
-          )}
-
           {/* Resend offer email — only when not yet signed */}
           {offerUrl && !c.offerSignedAt && (
             <Section title="Correo de carta oferta">
@@ -704,13 +683,6 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
   copied: boolean;
   onCopy: (text: string) => void;
 }) {
-  const [markingContract, setMarkingContract] = useState(false);
-
-  async function handleMarkContractSigned() {
-    setMarkingContract(true);
-    try { await markContractSignedManually(c.id); } finally { setMarkingContract(false); }
-  }
-
   return (
     <div className="px-5 py-4 space-y-5">
       {!contractUrl ? (
@@ -797,20 +769,6 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
             </Section>
           )}
 
-          {/* Manual demo sign — only when not yet signed */}
-          {c.status === 'contract_sent' && !c.contractSignedAt && (
-            <Section title="Demo">
-              <button
-                onClick={handleMarkContractSigned}
-                disabled={markingContract}
-                className="flex items-center gap-2 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60"
-              >
-                {markingContract ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                {markingContract ? 'Marcando...' : 'Marcar como firmado (demo)'}
-              </button>
-              <p className="text-[10px] text-gray-400 mt-1">Solo para pruebas — no guarda firma real.</p>
-            </Section>
-          )}
         </>
       )}
     </div>

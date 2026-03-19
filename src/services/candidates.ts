@@ -177,26 +177,6 @@ export async function markDocumentAsValid(
   });
 }
 
-export async function markOfferSignedManually(candidateId: string): Promise<void> {
-  const newToken = generateToken();
-  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
-  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
-    status: 'offer_signed',
-    offerSignedAt: Timestamp.now(),
-    formToken: newToken,
-    formExpiresAt: expiresAt,
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function markContractSignedManually(candidateId: string): Promise<void> {
-  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
-    status: 'contract_signed',
-    contractSignedAt: Timestamp.now(),
-    updatedAt: serverTimestamp(),
-  });
-}
-
 export async function extendFormToken(candidateId: string, formDays = 7): Promise<string> {
   const newToken = generateToken();
   const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + formDays * 24 * 60 * 60 * 1000));
