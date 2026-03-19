@@ -43,23 +43,16 @@ interface ViterbitJobLive {
 async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<ViterbitJobLive> {
   const empty: ViterbitJobLive = { title: '', salary: '', hiringManager: '', startDate: '', company: '', departmentProfile: '' };
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}`, {
-      headers: { accept: 'application/json', 'X-API-Key': apiKey },
-    });
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=custom_field_values&includes[]=department_profile`,
+      { headers: { accept: 'application/json', 'X-API-Key': apiKey } },
+    );
     if (!resp.ok) {
       console.error(`[signOffer] fetchViterbitJobLive HTTP ${resp.status} for job ${jobId}`);
       return empty;
     }
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
-
-    // Log the full response so we can debug what fields Viterbit returns
-    console.log('[signOffer] Viterbit job API response keys:', Object.keys(data));
-    console.log('[signOffer] Viterbit job custom_fields:', JSON.stringify(data.custom_fields));
-    console.log('[signOffer] Viterbit job salary_min:', JSON.stringify(data.salary_min));
-    console.log('[signOffer] Viterbit job salary_max:', JSON.stringify(data.salary_max));
-    console.log('[signOffer] Viterbit job department_profile_id:', data.department_profile_id);
-    console.log('[signOffer] Viterbit job title:', data.title);
 
     // Salary: use salary_min only (as per business requirement)
     const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
@@ -69,19 +62,35 @@ async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<Vite
       salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`;
     }
 
-    const custom = (data.custom_fields as Record<string, unknown>) ?? {};
+    // Viterbit returns custom fields under custom_field_values (requires includes[]=custom_field_values)
+    const custom = (data.custom_field_values as Record<string, unknown>)
+      ?? (data.custom_fields as Record<string, unknown>)
+      ?? {};
     const getCustom = (key: string): string => {
-      const val = (custom[key] as string) ?? (data[key] as string) ?? '';
-      return typeof val === 'string' ? val : String(val || '');
+      const val = custom[key];
+      if (val && typeof val === 'object' && 'value' in val) return String((val as Record<string, unknown>).value ?? '');
+      return typeof val === 'string' ? val : String((data[key] as string) ?? '');
     };
+
+    // department_profile comes as object when includes[]=department_profile is used
+    const deptProfileObj = data.department_profile as Record<string, unknown> | undefined;
+    const departmentProfile =
+      (deptProfileObj?.name as string) ||
+      (deptProfileObj?.title as string) ||
+      getCustom('job_department_profile') ||
+      getCustom('department_profile') ||
+      '';
+
+    console.log('[signOffer] custom_field_values:', JSON.stringify(custom));
+    console.log('[signOffer] department_profile:', JSON.stringify(deptProfileObj));
 
     const result: ViterbitJobLive = {
       title: (data.title as string) ?? (data.name as string) ?? '',
       salary,
-      hiringManager:     getCustom('hiring_manager') || getCustom('custom_job_hiring_manager') || '',
-      startDate:         getCustom('start_date') || getCustom('hired_start_date_job') || '',
-      company:           getCustom('company') || getCustom('custom_job_empresa') || (data.external_id as string) || 'Aviva',
-      departmentProfile: (data.department_profile_id as string) ?? getCustom('department_profile') ?? getCustom('job_department_profile') ?? '',
+      hiringManager:  getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '',
+      startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',
+      company:        getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || 'Aviva',
+      departmentProfile,
     };
 
     console.log('[signOffer] Parsed job info:', JSON.stringify(result));
