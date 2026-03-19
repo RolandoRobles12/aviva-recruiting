@@ -11,6 +11,7 @@ import { OfferTemplatesPage } from './pages/OfferTemplatesPage';
 import { ContractTemplatesPage } from './pages/ContractTemplatesPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { GmailCallbackPage } from './pages/GmailCallbackPage';
+import { EmailTemplatesPage } from './pages/EmailTemplatesPage';
 
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -89,6 +90,16 @@ export default function App() {
           element={
             <PrivateRoute>
               <ContractTemplatesPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Private: email templates */}
+        <Route
+          path="/email-templates"
+          element={
+            <PrivateRoute>
+              <EmailTemplatesPage />
             </PrivateRoute>
           }
         />

@@ -20,6 +20,16 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplatesSettings = {
     bodyText:
       'Notamos que aún tienes documentos pendientes por subir. Para no retrasar tu proceso de ingreso, te pedimos que los completes lo antes posible.',
   },
+  offer: {
+    subject: 'Aviva | Tu Carta Oferta está lista — {position}',
+    bodyText:
+      'Nos complace informarte que hemos preparado tu carta oferta. Por favor revísala y fírmala a través del enlace a continuación para continuar con tu proceso de ingreso.',
+  },
+  contract: {
+    subject: 'Aviva | Tu Contrato está listo para firmar — {position}',
+    bodyText:
+      'Nos da gusto que estés avanzando en tu proceso de contratación. Tu contrato está listo para ser revisado y firmado. Accede a través del enlace a continuación.',
+  },
 };
 
 export async function getReminderSettings(): Promise<ReminderSettings> {
@@ -39,6 +49,8 @@ export async function getEmailTemplates(): Promise<EmailTemplatesSettings> {
   return {
     invitation: { ...DEFAULT_EMAIL_TEMPLATES.invitation, ...data.invitation },
     reminder: { ...DEFAULT_EMAIL_TEMPLATES.reminder, ...data.reminder },
+    offer: { ...DEFAULT_EMAIL_TEMPLATES.offer, ...data.offer },
+    contract: { ...DEFAULT_EMAIL_TEMPLATES.contract, ...data.contract },
   };
 }
 

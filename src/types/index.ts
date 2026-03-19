@@ -314,6 +314,8 @@ export interface EmailTemplateSettings {
 export interface EmailTemplatesSettings {
   invitation: EmailTemplateSettings;
   reminder: EmailTemplateSettings;
+  offer: EmailTemplateSettings;
+  contract: EmailTemplateSettings;
 }
 
 export interface ReminderSettings {

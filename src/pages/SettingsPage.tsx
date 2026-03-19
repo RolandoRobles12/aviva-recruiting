@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Mail, Bell, FileText, Settings, Link, Clock, HelpCircle } from 'lucide-react';
+import { Bell, FileText, Settings, Link, Clock, HelpCircle } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { EmailTemplatesTab } from '../components/settings/EmailTemplatesTab';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { DocumentsTab } from '../components/settings/DocumentsTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
@@ -9,11 +8,10 @@ import { LinkDurationTab } from '../components/settings/LinkDurationTab';
 import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { useSettings } from '../hooks/useSettings';
 
-type Tab = 'gmail' | 'emails' | 'reminders' | 'links' | 'documents' | 'questions';
+type Tab = 'gmail' | 'reminders' | 'links' | 'documents' | 'questions';
 
-const TABS: { id: Tab; label: string; Icon: typeof Mail }[] = [
+const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
-  { id: 'emails', label: 'Plantillas de correo', Icon: Mail },
   { id: 'reminders', label: 'Recordatorios', Icon: Bell },
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
   { id: 'documents', label: 'Documentos', Icon: FileText },
@@ -24,14 +22,12 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('gmail');
   const {
     reminderSettings,
-    emailTemplates,
     documentSettings,
     linkDuration,
     loading,
     saving,
     savedKey,
     saveReminders,
-    saveEmailTemplates,
     saveDocuments,
     saveLinkDuration,
   } = useSettings();
@@ -72,14 +68,6 @@ export function SettingsPage() {
           ) : (
             <>
               {activeTab === 'gmail' && <GmailConnectionTab />}
-              {activeTab === 'emails' && (
-                <EmailTemplatesTab
-                  templates={emailTemplates}
-                  saving={saving}
-                  saved={savedKey === 'emails'}
-                  onSave={saveEmailTemplates}
-                />
-              )}
               {activeTab === 'reminders' && (
                 <RemindersTab
                   settings={reminderSettings}
