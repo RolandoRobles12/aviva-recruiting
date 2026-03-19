@@ -53,7 +53,7 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
 // ─── Sign Contract ────────────────────────────────────────────────────────────
 
 export const signContract = onRequest(
-  { region: 'us-central1', cors: true },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300 },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -199,25 +199,29 @@ export const signContract = onRequest(
 
     // Upload to Storage
     const bucket = getStorage().bucket();
-    const tenYears = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
-
     // Signature image
     const sigPath = `candidates/${candidateId}/contract_signature.png`;
     const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
-    await bucket.file(sigPath).save(Buffer.from(sigBase64, 'base64'), {
+    const sigFile = bucket.file(sigPath);
+    await sigFile.save(Buffer.from(sigBase64, 'base64'), {
       metadata: { contentType: 'image/png' },
     });
-    const [sigUrl] = await bucket.file(sigPath).getSignedUrl({ action: 'read', expires: tenYears });
+    await sigFile.makePublic();
+    const sigUrl = sigFile.publicUrl();
 
     // Signed contract PDF
     const pdfPath = `candidates/${candidateId}/contrato_firmado.pdf`;
-    await bucket.file(pdfPath).save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
-    const [pdfUrl] = await bucket.file(pdfPath).getSignedUrl({ action: 'read', expires: tenYears });
+    const pdfFile = bucket.file(pdfPath);
+    await pdfFile.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
+    await pdfFile.makePublic();
+    const pdfUrl = pdfFile.publicUrl();
 
     // Evidence certificate PDF
     const evidencePath = `candidates/${candidateId}/certificado_firma.pdf`;
-    await bucket.file(evidencePath).save(evidencePdfBuffer, { metadata: { contentType: 'application/pdf' } });
-    const [evidenceUrl] = await bucket.file(evidencePath).getSignedUrl({ action: 'read', expires: tenYears });
+    const evidenceFile = bucket.file(evidencePath);
+    await evidenceFile.save(evidencePdfBuffer, { metadata: { contentType: 'application/pdf' } });
+    await evidenceFile.makePublic();
+    const evidenceUrl = evidenceFile.publicUrl();
 
     // Move in Viterbit to "Correos" stage
     const apiKey = VITERBIT_API_KEY.value();
@@ -269,7 +273,7 @@ export const signContract = onRequest(
 // ─── Get Contract ─────────────────────────────────────────────────────────────
 
 export const getContract = onRequest(
-  { region: 'us-central1', cors: true },
+  { region: 'us-central1', cors: true, invoker: 'public' },
   async (req, res) => {
     if (req.method !== 'GET') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -338,15 +342,13 @@ export const getContract = onRequest(
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
     const renderedHtml = interpolate(rawHtml, vars);
 
-    // For PDF templates, generate a signed URL so the candidate can view the PDF
+    // For PDF templates, generate a public URL so the candidate can view the PDF
     let pdfPreviewUrl: string | undefined;
     if (templateType2 === 'pdf' && contractTemplate?.pdfStoragePath) {
       const bucket = getStorage().bucket();
-      const twentyFourHours = Date.now() + 24 * 60 * 60 * 1000;
-      const [url] = await bucket
-        .file(contractTemplate.pdfStoragePath as string)
-        .getSignedUrl({ action: 'read', expires: twentyFourHours });
-      pdfPreviewUrl = url;
+      const templateFile = bucket.file(contractTemplate.pdfStoragePath as string);
+      await templateFile.makePublic();
+      pdfPreviewUrl = templateFile.publicUrl();
     }
 
     res.status(200).json({
