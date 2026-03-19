@@ -428,6 +428,7 @@ async function handleAprobado(
     documents: buildInitialDocuments(),
     completionPercentage: 0,
     reminderCount: 0,
+    offerEmailSent: true,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy: 'viterbit_webhook',

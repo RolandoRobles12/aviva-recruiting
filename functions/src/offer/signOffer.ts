@@ -110,16 +110,6 @@ async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<Vite
 
 // ─── Helper: interpolate template variables ────────────────────────────────────
 
-/** Returns true if a string looks like a raw database ID (MongoDB ObjectID or UUID) */
-function isRawId(str: string): boolean {
-  if (!str) return false;
-  // MongoDB ObjectID: exactly 24 hex chars
-  if (/^[0-9a-f]{24}$/i.test(str)) return true;
-  // UUID: 8-4-4-4-12 hex pattern
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) return true;
-  return false;
-}
-
 // Maps Viterbit ${variable} names (from Word templates) to system variable names.
 const VITERBIT_VAR_MAP: Record<string, string> = {
   name:                       'name',
@@ -248,26 +238,15 @@ export const signOffer = onRequest(
       const positionVal  = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
       const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
       const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'A convenir';
-      const hiringManager = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || 'Alonso Vargas Díaz';
-      const company      = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva Financial, S.A. de C.V., SOFOM, ENR';
-
-      // Use departmentProfile only when it's a real name, not a raw database ID
-      const rawDeptProfile = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || '';
-      const departmentProfile = (isRawId(rawDeptProfile) || !rawDeptProfile) ? 'Promotor/a Aviva tu Compra' : rawDeptProfile;
-
-      console.log('[signOffer] Template vars:', JSON.stringify({
-        name: candidateFullName, positionVal, salary, startDate, hiringManager, company, departmentProfile,
-        rawDeptProfile,
-      }));
 
       const vars: Record<string, string> = {
         name:      candidateFullName,
         firstName: firstNameVal || candidateFullName.split(' ')[0],
         lastName:  lastNameVal  || candidateFullName.split(' ').slice(1).join(' '),
         position:  positionVal,
-        departmentProfile,
-        hiringManager,
-        company,
+        departmentProfile: 'Promotor/a Aviva tu Compra',
+        hiringManager:     'Alonso Vargas Díaz',
+        company:           'Aviva Financial, S.A. de C.V., SOFOM, ENR',
         salary,
         startDate,
         date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
@@ -449,28 +428,18 @@ export const getOffer = onRequest(
       const candidateFullName2 = storedFullName2
         || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
 
-      const positionVal  = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
-      const offerSalary  = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
+      const positionVal    = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
+      const offerSalary    = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
       const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'A convenir';
-      const hiringManager  = jobInfo?.hiringManager || (candidate.viterbitHiringManager as string) || 'Alonso Vargas Díaz';
-      const company        = jobInfo?.company || (candidate.viterbitCompany as string) || 'Aviva Financial, S.A. de C.V., SOFOM, ENR';
-
-      const rawDeptProfile2 = jobInfo?.departmentProfile || (candidate.viterbitDepartmentProfile as string) || '';
-      const departmentProfile2 = (isRawId(rawDeptProfile2) || !rawDeptProfile2) ? 'Promotor/a Aviva tu Compra' : rawDeptProfile2;
-
-      console.log('[getOffer] Template vars:', JSON.stringify({
-        name: candidateFullName2, positionVal, offerSalary, offerStartDate,
-        hiringManager, company, departmentProfile: departmentProfile2, rawDeptProfile: rawDeptProfile2, jobId,
-      }));
 
       const vars: Record<string, string> = {
         name:      candidateFullName2,
         firstName: firstNameVal || candidateFullName2.split(' ')[0],
         lastName:  lastNameVal  || candidateFullName2.split(' ').slice(1).join(' '),
         position:  positionVal,
-        departmentProfile: departmentProfile2,
-        hiringManager,
-        company,
+        departmentProfile: 'Promotor/a Aviva tu Compra',
+        hiringManager:     'Alonso Vargas Díaz',
+        company:           'Aviva Financial, S.A. de C.V., SOFOM, ENR',
         salary:    offerSalary,
         startDate: offerStartDate,
         date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
