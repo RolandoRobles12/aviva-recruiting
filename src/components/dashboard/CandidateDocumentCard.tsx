@@ -1,15 +1,12 @@
-import { useState } from 'react';
-import { Eye, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Eye, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { CandidateDocument, DocumentType } from '../../types';
 import { DOCUMENT_CONFIG } from '../../types';
-import { markDocumentAsValid } from '../../services/candidates';
 
 interface Props {
   type: DocumentType;
   doc: CandidateDocument;
-  candidateId?: string;
 }
 
 const STATUS_STYLES: Record<CandidateDocument['status'], { border: string; bg: string; icon: React.ReactNode }> = {
@@ -28,21 +25,10 @@ const STATUS_LABEL: Record<CandidateDocument['status'], string> = {
   review:   'Revisión manual',
 };
 
-export function CandidateDocumentCard({ type, doc, candidateId }: Props) {
+export function CandidateDocumentCard({ type, doc }: Props) {
   const config = DOCUMENT_CONFIG[type];
   const style = STATUS_STYLES[doc.status];
   const uploadedAt = doc.uploadedAt?.toDate?.();
-  const [marking, setMarking] = useState(false);
-
-  async function handleMarkValid() {
-    if (!candidateId || marking) return;
-    setMarking(true);
-    try {
-      await markDocumentAsValid(candidateId, type);
-    } finally {
-      setMarking(false);
-    }
-  }
 
   return (
     <div className={`rounded-lg border ${style.border} ${style.bg} px-3 py-2.5`}>
@@ -115,17 +101,6 @@ export function CandidateDocumentCard({ type, doc, candidateId }: Props) {
         <p className="text-xs text-yellow-700 mt-1">OCR no disponible — revisar manualmente</p>
       )}
 
-      {/* Manual validation button — shown when candidateId provided and not already valid */}
-      {candidateId && doc.status !== 'valid' && (
-        <button
-          onClick={handleMarkValid}
-          disabled={marking}
-          className="mt-2 flex items-center gap-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 rounded px-2 py-1 transition-colors disabled:opacity-50"
-        >
-          <ShieldCheck size={12} />
-          {marking ? 'Marcando…' : 'Marcar válido'}
-        </button>
-      )}
     </div>
   );
 }

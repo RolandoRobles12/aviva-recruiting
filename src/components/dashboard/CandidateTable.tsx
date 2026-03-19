@@ -6,6 +6,7 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { EmptyState } from '../ui/EmptyState';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { computeCompletion } from '../../utils/candidateCompletion';
 
 // Pipeline stages matching Viterbit: Documentos → Contrato → Correos → Inducción
 // Each filter groups related sub-statuses together
@@ -135,7 +136,7 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
                     {/* Documents progress */}
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <div className="w-32">
-                        <ProgressBar percentage={c.completionPercentage} size="sm" />
+                        <ProgressBar percentage={computeCompletion(c)} size="sm" />
                       </div>
                     </td>
 
