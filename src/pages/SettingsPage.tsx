@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Mail, Bell, FileText, Settings, Link, Clock } from 'lucide-react';
+import { Mail, Bell, FileText, Settings, Link, Clock, PenTool } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmailTemplatesTab } from '../components/settings/EmailTemplatesTab';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { DocumentsTab } from '../components/settings/DocumentsTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { LinkDurationTab } from '../components/settings/LinkDurationTab';
+import { EmployerSignatureTab } from '../components/settings/EmployerSignatureTab';
 import { useSettings } from '../hooks/useSettings';
 
-type Tab = 'gmail' | 'emails' | 'reminders' | 'links' | 'documents';
+type Tab = 'gmail' | 'emails' | 'reminders' | 'links' | 'documents' | 'employer';
 
 const TABS: { id: Tab; label: string; Icon: typeof Mail }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
@@ -16,6 +17,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Mail }[] = [
   { id: 'reminders', label: 'Recordatorios', Icon: Bell },
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
   { id: 'documents', label: 'Documentos', Icon: FileText },
+  { id: 'employer', label: 'Firma del Apoderado', Icon: PenTool },
 ];
 
 export function SettingsPage() {
@@ -25,6 +27,7 @@ export function SettingsPage() {
     emailTemplates,
     documentSettings,
     linkDuration,
+    employerSignature,
     loading,
     saving,
     savedKey,
@@ -32,6 +35,7 @@ export function SettingsPage() {
     saveEmailTemplates,
     saveDocuments,
     saveLinkDuration,
+    saveEmployerSignature,
   } = useSettings();
 
   return (
@@ -100,6 +104,14 @@ export function SettingsPage() {
                   saving={saving}
                   saved={savedKey === 'documents'}
                   onSave={saveDocuments}
+                />
+              )}
+              {activeTab === 'employer' && (
+                <EmployerSignatureTab
+                  settings={employerSignature}
+                  saving={saving}
+                  saved={savedKey === 'employer'}
+                  onSave={saveEmployerSignature}
                 />
               )}
             </>

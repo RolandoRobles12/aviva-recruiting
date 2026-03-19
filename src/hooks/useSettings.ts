@@ -8,11 +8,13 @@ import {
   saveDocumentSettings,
   getLinkDurationSettings,
   saveLinkDurationSettings,
+  getEmployerSignatureSettings,
+  saveEmployerSignatureSettings,
   DEFAULT_REMINDER_SETTINGS,
   DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_LINK_DURATION,
 } from '../services/settings';
-import type { ReminderSettings, EmailTemplatesSettings, DocumentSettings, LinkDurationSettings } from '../types';
+import type { ReminderSettings, EmailTemplatesSettings, DocumentSettings, LinkDurationSettings, EmployerSignatureSettings } from '../types';
 import { DOCUMENT_CONFIG } from '../types';
 
 export function useSettings() {
@@ -20,17 +22,19 @@ export function useSettings() {
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplatesSettings>(DEFAULT_EMAIL_TEMPLATES);
   const [documentSettings, setDocumentSettings] = useState<DocumentSettings>(DOCUMENT_CONFIG as DocumentSettings);
   const [linkDuration, setLinkDuration] = useState<LinkDurationSettings>(DEFAULT_LINK_DURATION);
+  const [employerSignature, setEmployerSignature] = useState<EmployerSignatureSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getReminderSettings(), getEmailTemplates(), getDocumentSettings(), getLinkDurationSettings()])
-      .then(([reminders, emails, documents, links]) => {
+    Promise.all([getReminderSettings(), getEmailTemplates(), getDocumentSettings(), getLinkDurationSettings(), getEmployerSignatureSettings()])
+      .then(([reminders, emails, documents, links, employer]) => {
         setReminderSettings(reminders);
         setEmailTemplates(emails);
         setDocumentSettings(documents);
         setLinkDuration(links);
+        setEmployerSignature(employer);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -84,11 +88,23 @@ export function useSettings() {
     }
   };
 
+  const handleSaveEmployerSignature = async (settings: EmployerSignatureSettings) => {
+    setSaving(true);
+    try {
+      await saveEmployerSignatureSettings(settings);
+      setEmployerSignature(settings);
+      showSaved('employer');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return {
     reminderSettings,
     emailTemplates,
     documentSettings,
     linkDuration,
+    employerSignature,
     loading,
     saving,
     savedKey,
@@ -96,5 +112,6 @@ export function useSettings() {
     saveEmailTemplates: handleSaveEmailTemplates,
     saveDocuments: handleSaveDocuments,
     saveLinkDuration: handleSaveLinkDuration,
+    saveEmployerSignature: handleSaveEmployerSignature,
   };
 }

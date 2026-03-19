@@ -189,6 +189,21 @@ export interface RecruiterProfile {
   gmailConnected?: boolean;
 }
 
+// ─── Employer Signature ──────────────────────────────────────────────────────
+
+export interface EmployerSignatureSettings {
+  /** Name of the legal representative (apoderado legal) */
+  signerName: string;
+  /** Title / role (e.g. "Representante Legal") */
+  signerTitle: string;
+  /** Signature image as base64 PNG (data:image/png;base64,...) */
+  signatureBase64: string;
+  /** Firebase Storage path for the signature image */
+  signatureStoragePath?: string;
+  /** Download URL for the stored signature */
+  signatureUrl?: string;
+}
+
 // ─── Email ────────────────────────────────────────────────────────────────────
 
 export type EmailTemplateType = 'invitation' | 'reminder' | 'approved' | 'rejected' | 'ocr_error' | 'offer' | 'onboarding' | 'contract' | 'induction';

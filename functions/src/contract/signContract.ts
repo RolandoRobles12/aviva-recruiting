@@ -136,6 +136,13 @@ export const signContract = onRequest(
 
     const templateType = (contractTemplate?.templateType as string) || 'html';
 
+    // Fetch employer (apoderado legal) signature from settings
+    const employerSigSnap = await db.collection('settings').doc('employerSignature').get();
+    const employerSigData = employerSigSnap.exists ? employerSigSnap.data() : null;
+    const employerSignatureBase64 = (employerSigData?.signatureBase64 as string) || undefined;
+    const employerName = (employerSigData?.signerName as string) || undefined;
+    const employerTitle = (employerSigData?.signerTitle as string) || undefined;
+
     let pdfBuffer: Buffer;
     let evidence: import('./contractPdfGenerator').SigningEvidence;
 
@@ -165,6 +172,9 @@ export const signContract = onRequest(
         variableMappings,
         initialsOnEveryPage,
         initialsPosition,
+        employerSignatureBase64,
+        employerName,
+        employerTitle,
       });
       pdfBuffer = result.pdfBuffer;
       evidence = result.evidence;
@@ -183,6 +193,9 @@ export const signContract = onRequest(
         signerUserAgent,
         candidateInitials,
         initialsBase64: initialsBase64 || undefined,
+        employerSignatureBase64,
+        employerName,
+        employerTitle,
       });
       pdfBuffer = result.pdfBuffer;
       evidence = result.evidence;

@@ -71,6 +71,12 @@ export interface PdfContractInput {
   initialsOnEveryPage: boolean;
   /** Default initials position (used when initialsOnEveryPage is true) */
   initialsPosition?: { x: number; y: number; width: number; height: number };
+  /** Employer (apoderado legal) signature as base64 PNG */
+  employerSignatureBase64?: string;
+  /** Employer name */
+  employerName?: string;
+  /** Employer title */
+  employerTitle?: string;
 }
 
 export interface SigningEvidence {
@@ -373,6 +379,54 @@ export async function generatePdfContract(
       font: fontRegular,
       color: gray,
     });
+  }
+
+  // ── 2b) Place employer signature on fields labelled "Patrón" or second sig field ─
+  if (input.employerSignatureBase64) {
+    const empBase64 = input.employerSignatureBase64.replace(/^data:image\/png;base64,/, '');
+    const empImageBytes = Buffer.from(empBase64, 'base64');
+    const empImage = await pdfDoc.embedPng(empImageBytes);
+
+    // Find employer-specific signature fields, or use second signature field on last page
+    const employerFields = sigFields.filter((f) =>
+      f.label?.toLowerCase().includes('patrón') ||
+      f.label?.toLowerCase().includes('patron') ||
+      f.label?.toLowerCase().includes('empresa') ||
+      f.label?.toLowerCase().includes('employer')
+    );
+
+    // If no explicit employer field, use the second signature field (if any)
+    const fieldsToUse = employerFields.length > 0
+      ? employerFields
+      : sigFields.length > 1 ? [sigFields[1]] : [];
+
+    for (const field of fieldsToUse) {
+      const pageIndex = Math.min(field.pageIndex, pages.length - 1);
+      const page = pages[pageIndex];
+
+      const empDims = empImage.scale(
+        Math.min(field.width / empImage.width, field.height / empImage.height, 0.5)
+      );
+
+      page.drawImage(empImage, {
+        x: field.x,
+        y: field.y + (field.height - empDims.height) / 2,
+        width: empDims.width,
+        height: empDims.height,
+      });
+
+      page.drawLine({
+        start: { x: field.x, y: field.y },
+        end: { x: field.x + field.width, y: field.y },
+        thickness: 0.5,
+        color: dark,
+      });
+
+      const empName = input.employerName || 'La Empresa';
+      const empTitle = input.employerTitle || 'Representante Legal';
+      page.drawText(empName, { x: field.x, y: field.y - 12, size: 8, font: fontBold, color: dark });
+      page.drawText(empTitle, { x: field.x, y: field.y - 22, size: 7, font: fontRegular, color: gray });
+    }
   }
 
   // ── 3) Place initials on every page ──────────────────────────────────────

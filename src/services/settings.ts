@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { EmailTemplatesSettings, ReminderSettings, DocumentSettings, LinkDurationSettings } from '../types';
+import type { EmailTemplatesSettings, ReminderSettings, DocumentSettings, LinkDurationSettings, EmployerSignatureSettings } from '../types';
 import { DOCUMENT_CONFIG } from '../types';
 
 export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
@@ -72,4 +72,16 @@ export async function getLinkDurationSettings(): Promise<LinkDurationSettings> {
 
 export async function saveLinkDurationSettings(settings: LinkDurationSettings): Promise<void> {
   await setDoc(doc(db, 'settings', 'linkDuration'), settings);
+}
+
+// ─── Employer Signature Settings ─────────────────────────────────────────────
+
+export async function getEmployerSignatureSettings(): Promise<EmployerSignatureSettings | null> {
+  const snap = await getDoc(doc(db, 'settings', 'employerSignature'));
+  if (!snap.exists()) return null;
+  return snap.data() as EmployerSignatureSettings;
+}
+
+export async function saveEmployerSignatureSettings(settings: EmployerSignatureSettings): Promise<void> {
+  await setDoc(doc(db, 'settings', 'employerSignature'), settings);
 }
