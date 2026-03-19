@@ -29,7 +29,7 @@ export interface ProvisionResult {
 }
 
 export const provisionAccountsManual = httpsCallable<
-  { candidateId: string; corporateEmail: string },
+  { candidateId: string; corporateEmail: string; skipSlack?: boolean },
   ProvisionResult
 >(functions, 'provisionAccountsManual');
 

@@ -67,6 +67,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [provisioning, setProvisioning] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
   const [provisionError, setProvisionError] = useState('');
+  const [includeSlack, setIncludeSlack] = useState(false);
 
   // Reset tab/notes when candidate changes
   useEffect(() => {
@@ -75,6 +76,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
     setCorpEmail('');
     setProvisionResult(null);
     setProvisionError('');
+    setIncludeSlack(false);
   }, [c.id]);
 
   const formUrl = c.formToken ? `${window.location.origin}/form/${c.formToken}` : null;
@@ -131,7 +133,11 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
     setProvisionError('');
     setProvisionResult(null);
     try {
-      const res = await provisionAccountsManual({ candidateId: c.id, corporateEmail: corpEmail.trim() });
+      const res = await provisionAccountsManual({
+        candidateId: c.id,
+        corporateEmail: corpEmail.trim(),
+        skipSlack: !includeSlack,
+      });
       setProvisionResult(res.data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
@@ -234,6 +240,8 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                 provisionResult={provisionResult}
                 provisionError={provisionError}
                 onProvision={handleProvision}
+                includeSlack={includeSlack}
+                setIncludeSlack={setIncludeSlack}
               />
             )}
           </div>
@@ -774,7 +782,7 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
    TAB: Cuentas
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult, provisionError, onProvision }: {
+function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult, provisionError, onProvision, includeSlack, setIncludeSlack }: {
   c: Candidate;
   corpEmail: string;
   setCorpEmail: (v: string) => void;
@@ -782,6 +790,8 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
   provisionResult: ProvisionResult | null;
   provisionError: string;
   onProvision: () => void;
+  includeSlack: boolean;
+  setIncludeSlack: (v: boolean) => void;
 }) {
   return (
     <div className="px-5 py-4 space-y-5">
@@ -813,7 +823,7 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
       {/* Provisioning form */}
       <Section title="Crear cuentas corporativas">
         <p className="text-[11px] text-gray-400 mb-3">
-          Ingresa el correo corporativo para crear las cuentas de HubSpot y Slack.
+          Ingresa el correo corporativo para crear las cuentas.
         </p>
         <div className="space-y-2">
           <input
@@ -824,6 +834,16 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
             disabled={provisioning}
             className="w-full input-field text-xs py-2"
           />
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeSlack}
+              onChange={(e) => setIncludeSlack(e.target.checked)}
+              disabled={provisioning}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-xs text-gray-600">Crear también cuentas de Slack</span>
+          </label>
           <button
             onClick={onProvision}
             disabled={provisioning || !corpEmail.trim()}
@@ -852,18 +872,30 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
 
         {provisionResult && (
           <div className="space-y-1.5 mt-3">
-            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.hubspotCreated ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-              {provisionResult.hubspotCreated ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-              HubSpot: {provisionResult.hubspotCreated ? 'Creado' : 'Error'}
+            <div className={`space-y-0.5 px-2.5 py-1.5 rounded-lg ${provisionResult.hubspotCreated ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+              <div className="flex items-center gap-1.5 text-xs">
+                {provisionResult.hubspotCreated ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                HubSpot: {provisionResult.hubspotCreated ? 'Creado' : 'Error'}
+              </div>
+              {!provisionResult.hubspotCreated && provisionResult.hubspotError && (
+                <p className="text-[10px] pl-4 opacity-80">{provisionResult.hubspotError}</p>
+              )}
             </div>
-            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackPrimaryInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-              {provisionResult.slackPrimaryInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-              Slack (principal): {provisionResult.slackPrimaryInvited ? 'Invitado' : 'Error'}
-            </div>
-            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackGuestInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-              {provisionResult.slackGuestInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-              Slack (comunicación): {provisionResult.slackGuestInvited ? 'Invitado' : 'Error'}
-            </div>
+            {includeSlack && (
+              <>
+                <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackPrimaryInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                  {provisionResult.slackPrimaryInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                  Slack (principal): {provisionResult.slackPrimaryInvited ? 'Invitado' : 'Error'}
+                </div>
+                <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${provisionResult.slackGuestInvited ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                  {provisionResult.slackGuestInvited ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                  Slack (comunicación): {provisionResult.slackGuestInvited ? 'Invitado' : 'Error'}
+                </div>
+                {!provisionResult.slackPrimaryInvited && provisionResult.slackError && (
+                  <p className="text-[10px] text-amber-700 pl-2 opacity-80">{provisionResult.slackError}</p>
+                )}
+              </>
+            )}
           </div>
         )}
       </Section>
