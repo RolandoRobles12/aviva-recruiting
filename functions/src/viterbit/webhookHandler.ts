@@ -12,7 +12,7 @@ import { getLinkDuration } from '../utils/linkDuration';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
-const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET', { default: '' });
+// const VITERBIT_WEBHOOK_SECRET = defineString('VITERBIT_WEBHOOK_SECRET', { default: '' });
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 // Comma-separated job IDs to filter. Leave empty to allow all.
 const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
@@ -33,16 +33,15 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function verifyViterbitSignature(rawBody: Buffer, signature: string, secret: string): boolean {
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  // Strip optional "sha256=" prefix that some webhook providers include
-  const normalizedSignature = signature.startsWith('sha256=') ? signature.slice(7) : signature;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(normalizedSignature, 'hex'));
-  } catch {
-    return false;
-  }
-}
+// function verifyViterbitSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+//   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+//   const normalizedSignature = signature.startsWith('sha256=') ? signature.slice(7) : signature;
+//   try {
+//     return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(normalizedSignature, 'hex'));
+//   } catch {
+//     return false;
+//   }
+// }
 
 function buildInitialDocuments() {
   return Object.fromEntries(
