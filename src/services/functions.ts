@@ -37,3 +37,8 @@ export const sendOfferEmail = httpsCallable<
   { candidateId: string },
   { success: boolean }
 >(functions, 'sendOfferEmail');
+
+export const backfillCandidateDocuments = httpsCallable<
+  Record<string, never>,
+  { updated: number; message: string }
+>(functions, 'backfillCandidateDocuments');

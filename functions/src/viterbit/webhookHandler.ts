@@ -9,6 +9,7 @@ import { sendEmail } from '../email/gmailClient';
 import { offerTemplate, contractTemplate } from '../email/templates';
 import { createEmailTicket } from '../integrations/jiraService';
 import { getLinkDuration } from '../utils/linkDuration';
+import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -23,7 +24,6 @@ const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contra
 const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correos' });
 const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducción' });
 
-const DOCUMENT_TYPES = ['ine', 'curp', 'rfc', 'comprobante_domicilio', 'comprobante_estudios'];
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ function generateToken(): string {
 
 function buildInitialDocuments() {
   return Object.fromEntries(
-    DOCUMENT_TYPES.map((type) => [type, { id: type, type, status: 'pending' }])
+    DOCUMENT_TYPES_REQUIRED.map((type) => [type, { id: type, type, status: 'pending' }])
   );
 }
 
