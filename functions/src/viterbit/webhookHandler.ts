@@ -146,7 +146,7 @@ interface ViterbitJobInfo {
  */
 async function fetchViterbitJob(jobId: string, apiKey: string): Promise<ViterbitJobInfo> {
   const empty: ViterbitJobInfo = {
-    title: jobId, stages: [],
+    title: '', stages: [],
     salary: '', startDate: '', hiringManager: '', company: '', departmentProfile: '',
   };
   try {
@@ -184,7 +184,10 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     };
 
     // department_profile comes as object when includes[]=department_profile is used
-    const deptProfileObj = data.department_profile as Record<string, unknown> | undefined;
+    const deptProfileRaw = data.department_profile;
+    const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
+      ? deptProfileRaw as Record<string, unknown>
+      : undefined;
     const departmentProfile =
       (deptProfileObj?.name as string) ||
       (deptProfileObj?.title as string) ||
@@ -192,8 +195,12 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
       getCustom('department_profile') ||
       '';
 
+    const title = (data.title as string) || (data.name as string) || '';
+    console.log('[viterbit] fetchViterbitJob keys:', Object.keys(data).join(', '));
+    console.log('[viterbit] fetchViterbitJob title:', JSON.stringify(title), '| department_profile:', JSON.stringify(deptProfileRaw));
+
     return {
-      title: (data.title as string) ?? (data.name as string) ?? jobId,
+      title,
       stages: (data.stages as ViterbitStage[]) ?? [],
       salary,
       startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',

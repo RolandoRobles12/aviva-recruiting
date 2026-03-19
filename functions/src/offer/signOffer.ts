@@ -73,7 +73,10 @@ async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<Vite
     };
 
     // department_profile comes as object when includes[]=department_profile is used
-    const deptProfileObj = data.department_profile as Record<string, unknown> | undefined;
+    const deptProfileRaw = data.department_profile;
+    const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
+      ? deptProfileRaw as Record<string, unknown>
+      : undefined;
     const departmentProfile =
       (deptProfileObj?.name as string) ||
       (deptProfileObj?.title as string) ||
@@ -81,11 +84,14 @@ async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<Vite
       getCustom('department_profile') ||
       '';
 
+    const title = (data.title as string) || (data.name as string) || '';
     console.log('[signOffer] custom_field_values:', JSON.stringify(custom));
-    console.log('[signOffer] department_profile:', JSON.stringify(deptProfileObj));
+    console.log('[signOffer] department_profile raw:', JSON.stringify(deptProfileRaw));
+    console.log('[signOffer] job data keys:', Object.keys(data).join(', '));
+    console.log('[signOffer] title:', JSON.stringify(title));
 
     const result: ViterbitJobLive = {
-      title: (data.title as string) ?? (data.name as string) ?? '',
+      title,
       salary,
       hiringManager:  getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '',
       startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',
