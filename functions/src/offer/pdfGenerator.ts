@@ -73,8 +73,10 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
   y = height - 96;
 
   // ── Candidate info ───────────────────────────────────────────────────────────
-  page.drawText(input.candidateName, { x: margin, y, size: 15, font: fontBold, color: dark });
-  y -= 18;
+  if (input.candidateName) {
+    page.drawText(input.candidateName, { x: margin, y, size: 15, font: fontBold, color: dark });
+    y -= 18;
+  }
   page.drawText(input.position, { x: margin, y, size: 11, font: fontRegular, color: gray });
   y -= 28;
 
@@ -82,47 +84,87 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
   page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.5, color: rgb(0.88, 0.9, 0.93) });
   y -= 18;
 
-  // ── Body text (contains all sections: position, responsibilities, compensation) ─
+  // ── Body text ────────────────────────────────────────────────────────────────
+  // Reserve 140px at the bottom for the signature block.
+  const SIG_RESERVE = 140;
+
   const bodyLines = wrapText(input.bodyText, fontRegular, 10, contentWidth);
   let currentPage = page;
-  for (let i = 0; i < bodyLines.length; i++) {
-    if (y < 160) {
+
+  for (const line of bodyLines) {
+    if (y < SIG_RESERVE) {
+      // Start a new page — no header bar on continuation pages
       currentPage = pdfDoc.addPage([595, 842]);
       y = currentPage.getSize().height - margin;
     }
-    currentPage.drawText(bodyLines[i], { x: margin, y, size: 10, font: fontRegular, color: dark });
+    currentPage.drawText(line, { x: margin, y, size: 10, font: fontRegular, color: dark });
     y -= 14;
   }
-  y -= 10;
 
-  // ── Signature section ────────────────────────────────────────────────────────
-  const sigAreaTop = 155;
-  page.drawLine({ start: { x: margin, y: sigAreaTop + 60 }, end: { x: width - margin, y: sigAreaTop + 60 }, thickness: 0.5, color: rgb(0.88, 0.9, 0.93) });
+  // ── Signature section — always on the LAST page (currentPage) ──────────────
+
+  // Ensure there's room; if not, open a new page
+  if (y < SIG_RESERVE) {
+    currentPage = pdfDoc.addPage([595, 842]);
+    y = currentPage.getSize().height - margin;
+  }
+
+  y -= 20; // gap before signature
+
+  // Horizontal rule above signature
+  currentPage.drawLine({
+    start: { x: margin, y },
+    end: { x: width - margin, y },
+    thickness: 0.5,
+    color: rgb(0.88, 0.9, 0.93),
+  });
+  y -= 8;
 
   // Embed signature image
   const base64Data = input.signatureBase64.replace(/^data:image\/png;base64,/, '');
   const sigImageBytes = Buffer.from(base64Data, 'base64');
   const sigImage = await pdfDoc.embedPng(sigImageBytes);
   const sigDims = sigImage.scale(0.35);
-  page.drawImage(sigImage, {
+  const sigWidth  = Math.min(sigDims.width, 200);
+  const sigHeight = Math.min(sigDims.height, 52);
+
+  const sigImgY = y - sigHeight;
+  currentPage.drawImage(sigImage, {
     x: margin,
-    y: sigAreaTop + 4,
-    width: Math.min(sigDims.width, 200),
-    height: Math.min(sigDims.height, 52),
+    y: sigImgY,
+    width: sigWidth,
+    height: sigHeight,
   });
 
   // Signature line
-  page.drawLine({ start: { x: margin, y: sigAreaTop + 2 }, end: { x: margin + 200, y: sigAreaTop + 2 }, thickness: 0.5, color: dark });
-  page.drawText('Firma del Candidato', { x: margin, y: sigAreaTop - 12, size: 9, font: fontRegular, color: gray });
+  currentPage.drawLine({
+    start: { x: margin, y: sigImgY - 4 },
+    end: { x: margin + 200, y: sigImgY - 4 },
+    thickness: 0.5,
+    color: dark,
+  });
+  currentPage.drawText('Firma del Candidato', {
+    x: margin,
+    y: sigImgY - 18,
+    size: 9,
+    font: fontRegular,
+    color: gray,
+  });
 
-  // Date signed
+  // Date signed — placed to the right of the signature
   const dateStr = input.signedAt.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
   const col2 = margin + contentWidth / 2;
-  page.drawText(`Firmado el ${dateStr}`, { x: col2, y: sigAreaTop + 30, size: 9, font: fontRegular, color: gray });
+  currentPage.drawText(`Firmado el ${dateStr}`, {
+    x: col2,
+    y: y - sigHeight / 2,
+    size: 9,
+    font: fontRegular,
+    color: gray,
+  });
 
-  // Footer
-  page.drawRectangle({ x: 0, y: 0, width, height: 32, color: rgb(0.976, 0.98, 0.984) });
-  page.drawText('Este documento tiene validez como carta oferta de trabajo. © Aviva', {
+  // ── Footer ──────────────────────────────────────────────────────────────────
+  currentPage.drawRectangle({ x: 0, y: 0, width, height: 32, color: rgb(0.976, 0.98, 0.984) });
+  currentPage.drawText('Este documento tiene validez como carta oferta de trabajo. © Aviva', {
     x: margin, y: 10, size: 8, font: fontRegular, color: gray,
   });
 
