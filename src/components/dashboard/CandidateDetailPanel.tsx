@@ -11,7 +11,6 @@ import {
   Copy,
   Check,
   FileText,
-  DollarSign,
   Calendar,
   User,
   RefreshCw,

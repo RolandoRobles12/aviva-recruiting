@@ -8,7 +8,6 @@ import {
   ChevronRight,
   FileSignature,
   FileText,
-  ClipboardList,
   ExternalLink,
   User,
 } from 'lucide-react';
