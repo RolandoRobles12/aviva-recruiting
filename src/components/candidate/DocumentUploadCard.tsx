@@ -184,36 +184,25 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
       {/* OCR Result */}
       {document.status === 'valid' && document.ocrResult && (
         <div className="mt-3 p-3 bg-green-50 border border-green-100 rounded-lg">
-          <p className="text-xs font-medium text-green-700 mb-1">Documento validado correctamente</p>
-          <p className="text-xs text-green-600">
-            Confianza OCR: {Math.round(document.ocrResult.confidence * 100)}%
-          </p>
+          <p className="text-xs font-medium text-green-700">Documento validado correctamente</p>
         </div>
       )}
 
       {/* Error: invalid doc */}
       {document.status === 'invalid' && (
         <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg space-y-2">
-          <p className="text-xs font-medium text-red-700">Documento rechazado</p>
-          {document.ocrResult?.documentTypeDetected &&
-            document.ocrResult.documentTypeDetected !== 'parse_error' &&
-            document.ocrResult.documentTypeDetected !== 'unknown' && (
-            <p className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded px-2 py-1">
-              Documento detectado: <strong>{document.ocrResult.documentTypeDetected}</strong>
-              {document.ocrResult.confidence != null && (
-                <> · Confianza: {Math.round(document.ocrResult.confidence * 100)}%</>
-              )}
-            </p>
-          )}
+          <p className="text-xs font-medium text-red-700">
+            Tu documento fue rechazado. Por favor revisa los motivos y sube uno nuevo:
+          </p>
           {document.ocrResult?.validationErrors && document.ocrResult.validationErrors.length > 0 ? (
-            <ul className="text-xs text-red-600 list-disc pl-4 space-y-0.5">
+            <ul className="text-xs text-red-600 list-disc pl-4 space-y-1">
               {document.ocrResult.validationErrors.map((err, i) => (
                 <li key={i}>{err}</li>
               ))}
             </ul>
           ) : (
             <p className="text-xs text-red-600">
-              {document.rejectionReason ?? 'El documento no cumple los requisitos. Sube uno nuevo.'}
+              {document.rejectionReason ?? 'El documento no cumple los requisitos. Asegúrate de que sea legible, esté completo y corresponda al tipo solicitado.'}
             </p>
           )}
         </div>

@@ -248,11 +248,48 @@ async function fetchViterbitCandidate(
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
 
-    const firstName = (data.first_name as string) ?? '';
-    const lastName = (data.last_name as string) ?? '';
-    const name = (data.name as string) ?? `${firstName} ${lastName}`.trim();
-    const email = (data.email as string) ?? '';
-    const phone = (data.phone as string) ?? undefined;
+    // Log full response keys and raw name fields to debug Viterbit API shape
+    console.log('[viterbit] fetchCandidate response keys:', Object.keys(data));
+    console.log('[viterbit] fetchCandidate raw name fields:', JSON.stringify({
+      name: data.name,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      surname: data.surname,
+      nombre: data.nombre,
+      apellido: data.apellido,
+      apellidos: data.apellidos,
+      full_name: data.full_name,
+      fullname: data.fullname,
+    }));
+
+    // Try every field name variation Viterbit may use
+    const firstName =
+      (data.first_name as string) ||
+      (data.nombre as string) ||
+      '';
+    const lastName =
+      (data.last_name as string) ||
+      (data.surname as string) ||
+      (data.apellido as string) ||
+      (data.apellidos as string) ||
+      '';
+    const name =
+      (data.name as string) ||
+      (data.full_name as string) ||
+      (data.fullname as string) ||
+      `${firstName} ${lastName}`.trim();
+
+    const email =
+      (data.email as string) ||
+      (data.correo as string) ||
+      '';
+    const phone =
+      (data.phone as string) ||
+      (data.telephone as string) ||
+      (data.mobile as string) ||
+      undefined;
+
+    console.log('[viterbit] fetchCandidate resolved → name:', name, '| email:', email);
 
     if (!email) return null;
     return { name, email, phone };
@@ -350,6 +387,8 @@ async function handleAprobado(
   const nameParts = candidateName.trim().split(/\s+/);
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
+
+  console.log('[webhook] handleAprobado candidate resolved → firstName:', firstName, '| lastName:', lastName, '| email:', candidateEmail);
 
   // Find best offer template for this position
   const templateMatch = await findOfferTemplate(jobTitle);

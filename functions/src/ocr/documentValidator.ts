@@ -26,10 +26,10 @@ const DOCUMENT_PROMPTS: Record<string, string> = {
 Validaciones requeridas:
 1. ¿Es una credencial INE o IFE oficial? Busca el logo, escudo nacional, o texto "Instituto Nacional Electoral" / "Instituto Federal Electoral".
 2. ¿Se puede leer un CURP (18 caracteres, formato: 4 letras + 6 dígitos + H/M + 5 letras + 2 alfanuméricos)?
-3. ¿Se puede leer el nombre del titular?
+3. ¿Se puede leer el nombre del titular? Es obligatorio — si no se puede leer el nombre, el documento no es válido.
 4. ¿La imagen es suficientemente clara para considerarse válida?
 
-Datos a extraer: curp, nombre_completo, clave_elector (si es visible).`,
+Datos a extraer: curp, nombre_completo, clave_elector (si es visible), domicilio (dirección completa que aparece en la credencial, incluyendo calle, número, colonia, municipio y estado).`,
 
   curp: `Analiza esta imagen y determina si es una constancia de CURP oficial de México.
 
@@ -105,16 +105,25 @@ Sé TOLERANTE: cartas personales con firma manuscrita, en papel simple, o sin me
 
 Datos a extraer: nombre_recomendado, empresa_emisora, puesto (si visible).`,
 
-  comprobante_domicilio: `Analiza esta imagen y determina si es un comprobante de domicilio válido de México.
+  comprobante_domicilio: `Analiza esta imagen y determina si es un comprobante de domicilio válido de México con vigencia mínima de 3 meses.
 
 Documentos válidos: recibos de luz (CFE), agua, gas (Naturgy), teléfono/internet (Telmex, Telcel, Izzi, Totalplay, Megacable, AT&T, Movistar, Axtel), estados de cuenta bancarios, recibos de predial.
+
+La fecha de hoy es: {{TODAY_DATE}}.
+
+{{#INE_ADDRESS}}
+Dirección registrada en INE del candidato: "{{INE_ADDRESS}}"
+{{/INE_ADDRESS}}
 
 Validaciones requeridas:
 1. ¿Es un recibo de servicios, estado de cuenta bancario, o documento que muestre un domicilio?
 2. ¿Se puede leer una dirección (calle, colonia, código postal, ciudad/estado)?
-3. ¿El documento parece ser reciente (no importa la fecha exacta, solo que sea un formato actual)?
+3. Vigencia: Lee la fecha del documento (fecha de emisión, período de facturación, o fecha de estado de cuenta). Si la fecha es anterior a 3 meses respecto a hoy ({{TODAY_DATE}}), el documento está vencido y debes rechazarlo indicando la fecha encontrada. Si no se puede leer ninguna fecha, rechaza el documento.
+{{#INE_ADDRESS}}
+4. Comparación de domicilio con INE: Compara la dirección del comprobante con la del INE ("{{INE_ADDRESS}}"). Deben corresponder al mismo domicilio (acepta variaciones menores como abreviaciones, diferente orden de palabras, o datos adicionales). Si son claramente distintas, rechaza e indica cuál es la diferencia.
+{{/INE_ADDRESS}}
 
-Datos a extraer: direccion (lo más completa posible), empresa_emisora.`,
+Datos a extraer: direccion (lo más completa posible), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,
 
   foto_profesional: `Analiza esta imagen y determina si es una foto profesional o tipo credencial de una persona.
 
@@ -181,9 +190,34 @@ export async function validateDocument(
   imageBuffer: Buffer,
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
   documentType: string,
+  extraContext?: Record<string, string>,
 ): Promise<ValidationResult> {
   const anthropic = getClient();
-  const prompt = DOCUMENT_PROMPTS[documentType];
+  let prompt = DOCUMENT_PROMPTS[documentType];
+
+  // Inject today's date
+  if (prompt) {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    prompt = prompt.replace(/\{\{TODAY_DATE\}\}/g, today);
+  }
+
+  // Inject extra context variables and handle {{#KEY}}...{{/KEY}} conditional blocks
+  if (prompt && extraContext) {
+    for (const [key, value] of Object.entries(extraContext)) {
+      // Render conditional blocks: {{#KEY}}content{{/KEY}} → content if value present, '' if not
+      prompt = prompt.replace(
+        new RegExp(`\\{\\{#${key}\\}\\}([\\s\\S]*?)\\{\\{\\/${key}\\}\\}`, 'g'),
+        value ? '$1' : '',
+      );
+      // Replace simple variables
+      prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    }
+  }
+
+  // Remove any unresolved conditional blocks (when key was not provided)
+  if (prompt) {
+    prompt = prompt.replace(/\{\{#\w+\}\}[\s\S]*?\{\{\/\w+\}\}/g, '');
+  }
   if (!prompt) {
     return {
       valid: false,

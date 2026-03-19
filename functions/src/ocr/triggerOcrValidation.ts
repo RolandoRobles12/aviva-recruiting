@@ -143,6 +143,13 @@ export const onDocumentUploaded = onObjectFinalized(
 
     if (!ALL_DOCUMENT_TYPES.includes(documentType)) return;
 
+    // Document types that MUST contain a readable nombre_completo
+    const REQUIRES_NAME = [
+      'ine', 'curp', 'nss', 'acta_nacimiento', 'caratula_bancaria',
+      'certificado_estudios', 'constancia_fiscal', 'aviso_retencion',
+      'estado_cuenta_fonacot',
+    ];
+
     try {
       // Download and prepare image for Claude
       const { buffer, mediaType } = await downloadFileAsImage(
@@ -151,8 +158,31 @@ export const onDocumentUploaded = onObjectFinalized(
         contentType,
       );
 
+      // For comprobante_domicilio: load INE address if already validated
+      let extraContext: Record<string, string> | undefined;
+      if (documentType === 'comprobante_domicilio') {
+        const candidate = await getCandidateById(candidateId);
+        const existingDocs = (candidate?.documents ?? {}) as Record<string, {
+          status: string;
+          ocrResult?: { extractedData?: Record<string, string> };
+        }>;
+        const ineDoc = existingDocs['ine'];
+        const ineAddress = ineDoc?.status === 'valid'
+          ? ineDoc.ocrResult?.extractedData?.domicilio
+          : undefined;
+        if (ineAddress) {
+          extraContext = { INE_ADDRESS: ineAddress };
+        }
+      }
+
       // Validate with Claude Haiku
-      const result = await validateDocument(buffer, mediaType, documentType);
+      const result = await validateDocument(buffer, mediaType, documentType, extraContext);
+
+      // Require nombre_completo for documents that must contain it
+      const extraErrors: string[] = [];
+      if (result.valid && REQUIRES_NAME.includes(documentType) && !result.extractedData.nombre_completo) {
+        extraErrors.push('No se pudo leer el nombre del titular en el documento. Asegúrate de que el nombre sea claramente visible y sube la imagen de nuevo.');
+      }
 
       // Cross-validate name against other valid documents
       let nameErrors: string[] = [];
@@ -173,8 +203,8 @@ export const onDocumentUploaded = onObjectFinalized(
         }
       }
 
-      const allErrors = [...result.errors, ...nameErrors];
-      const isValid = result.valid && nameErrors.length === 0;
+      const allErrors = [...result.errors, ...extraErrors, ...nameErrors];
+      const isValid = result.valid && extraErrors.length === 0 && nameErrors.length === 0;
 
       const ocrResult = {
         rawText: '',
