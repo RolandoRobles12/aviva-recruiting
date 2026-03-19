@@ -9,10 +9,30 @@ export default defineConfig({
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
     },
     proxy: {
-      '/api': {
-        target: 'https://us-central1-aviva-recruiting.cloudfunctions.net',
+      '/api/getOffer': {
+        target: 'https://getoffer-wp5lebnvja-uc.a.run.app',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        rewrite: (path) => path.replace(/^\/api\/getOffer/, '/'),
+      },
+      '/api/signOffer': {
+        target: 'https://signoffer-wp5lebnvja-uc.a.run.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/signOffer/, '/'),
+      },
+      '/api/getContract': {
+        target: 'https://getcontract-wp5lebnvja-uc.a.run.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/getContract/, '/'),
+      },
+      '/api/signContract': {
+        target: 'https://signcontract-wp5lebnvja-uc.a.run.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/signContract/, '/'),
+      },
+      '/api/analyzePdfTemplate': {
+        target: 'https://analyzepdftemplate-wp5lebnvja-uc.a.run.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/analyzePdfTemplate/, '/'),
       },
     },
   },
