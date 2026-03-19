@@ -3,6 +3,11 @@
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
+      { "source": "/api/signOffer", "function": "signOffer" },
+      { "source": "/api/getOffer", "function": "getOffer" },
+      { "source": "/api/signContract", "function": "signContract" },
+      { "source": "/api/getContract", "function": "getContract" },
+      { "source": "/api/analyzePdfTemplate", "function": "analyzePdfTemplate" },
       {
         "source": "**",
         "destination": "/index.html"

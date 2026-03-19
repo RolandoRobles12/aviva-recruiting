@@ -179,7 +179,7 @@ const DEFAULT_OFFER_BODY_HTML = `
 // ─── Cloud Function ────────────────────────────────────────────────────────────
 
 export const signOffer = onRequest(
-  { region: 'us-central1', cors: true },
+  { region: 'us-central1', cors: true, invoker: 'public' },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -377,7 +377,7 @@ export const signOffer = onRequest(
 // ─── Public endpoint: get offer data by token ─────────────────────────────────
 
 export const getOffer = onRequest(
-  { region: 'us-central1', cors: true },
+  { region: 'us-central1', cors: true, invoker: 'public' },
   async (req, res) => {
     if (req.method !== 'GET') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
