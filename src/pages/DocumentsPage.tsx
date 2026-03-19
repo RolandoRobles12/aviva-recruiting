@@ -337,6 +337,7 @@ function Expediente({ c }: { c: Candidate }) {
                 key={type}
                 type={type}
                 doc={docItem ?? { id: type, type, status: 'pending' }}
+                candidateId={c.id}
               />
             );
           })}
