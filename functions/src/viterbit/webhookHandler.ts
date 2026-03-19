@@ -150,9 +150,10 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     salary: '', startDate: '', hiringManager: '', company: '', departmentProfile: '',
   };
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages`, {
-      headers: { 'X-API-Key': apiKey },
-    });
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values&includes[]=department_profile`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
     if (!resp.ok) return empty;
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
@@ -172,19 +173,33 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
       salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
     }
 
-    // Try custom_fields for any extra fields (hiring manager, start date, company)
-    const custom = (data.custom_fields as Record<string, unknown>) ?? {};
-    const getCustom = (key: string): string =>
-      (custom[key] as string) ?? (data[key] as string) ?? '';
+    // Viterbit returns custom fields under custom_field_values (requires includes[]=custom_field_values)
+    const custom = (data.custom_field_values as Record<string, unknown>)
+      ?? (data.custom_fields as Record<string, unknown>)
+      ?? {};
+    const getCustom = (key: string): string => {
+      const val = custom[key];
+      if (val && typeof val === 'object' && 'value' in val) return String((val as Record<string, unknown>).value ?? '');
+      return (val as string) ?? (data[key] as string) ?? '';
+    };
+
+    // department_profile comes as object when includes[]=department_profile is used
+    const deptProfileObj = data.department_profile as Record<string, unknown> | undefined;
+    const departmentProfile =
+      (deptProfileObj?.name as string) ||
+      (deptProfileObj?.title as string) ||
+      getCustom('job_department_profile') ||
+      getCustom('department_profile') ||
+      '';
 
     return {
       title: (data.title as string) ?? (data.name as string) ?? jobId,
       stages: (data.stages as ViterbitStage[]) ?? [],
       salary,
-      startDate:         getCustom('start_date') || getCustom('hired_start_date_job') || '',
-      hiringManager:     getCustom('hiring_manager') || getCustom('custom_job_hiring_manager') || '',
-      company:           getCustom('company') || getCustom('custom_job_empresa') || (data.external_id as string) || 'Aviva',
-      departmentProfile: (data.department_profile_id as string) ?? getCustom('department_profile') ?? '',
+      startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',
+      hiringManager:  getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '',
+      company:        getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || 'Aviva',
+      departmentProfile,
     };
   } catch (err) {
     console.error('[viterbit] fetchViterbitJob error:', err);
@@ -213,9 +228,10 @@ async function fetchViterbitCandidatureStage(
   apiKey: string
 ): Promise<{ stageId: string; stageName: string } | null> {
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/candidatures/${candidatureId}?includes[]=custom_field_values`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
     if (!resp.ok) {
       console.error(`[viterbit] fetchCandidatureStage ${candidatureId} → HTTP ${resp.status}`);
       return null;
