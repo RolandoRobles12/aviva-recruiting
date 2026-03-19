@@ -46,9 +46,9 @@ type TabId = 'info' | 'answers' | 'docs' | 'offer' | 'contract' | 'accounts';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'info',     label: 'Info',        icon: <User size={14} /> },
+  { id: 'offer',    label: 'Carta Oferta', icon: <FileSignature size={14} /> },
   { id: 'answers',  label: 'Respuestas',  icon: <ClipboardList size={14} /> },
   { id: 'docs',     label: 'Documentos',  icon: <FolderOpen size={14} /> },
-  { id: 'offer',    label: 'Carta Oferta', icon: <FileSignature size={14} /> },
   { id: 'contract', label: 'Contrato',    icon: <ClipboardList size={14} /> },
   { id: 'accounts', label: 'Cuentas',     icon: <Users size={14} /> },
 ];
@@ -557,7 +557,7 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
 }) {
   return (
     <div className="px-5 py-4 space-y-5">
-      {!offerUrl ? (
+      {!offerUrl && !c.offerPdfUrl ? (
         <div className="text-center py-12">
           <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <FileSignature size={24} className="text-gray-300" />
@@ -585,18 +585,20 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
           </Section>
 
           {/* Link */}
-          <Section title="Enlace de la carta">
-            <LinkBox
-              url={offerUrl}
-              copied={copied}
-              onCopy={() => onCopy(offerUrl)}
-            />
-            {c.offerExpiresAt?.toDate && (
-              <p className="text-[11px] text-gray-400 mt-1">
-                Expira: {format(c.offerExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
-              </p>
-            )}
-          </Section>
+          {offerUrl && (
+            <Section title="Enlace de la carta">
+              <LinkBox
+                url={offerUrl}
+                copied={copied}
+                onCopy={() => onCopy(offerUrl)}
+              />
+              {c.offerExpiresAt?.toDate && (
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Expira: {format(c.offerExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
+                </p>
+              )}
+            </Section>
+          )}
 
           {/* PDF */}
           {c.offerPdfUrl && (
