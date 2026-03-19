@@ -179,7 +179,7 @@ const DEFAULT_OFFER_BODY_HTML = `
 // ─── Cloud Function ────────────────────────────────────────────────────────────
 
 export const signOffer = onRequest(
-  { region: 'us-central1', cors: true, invoker: 'public' },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300 },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -274,20 +274,18 @@ export const signOffer = onRequest(
 
       const sigPath = `candidates/${candidateId}/offer_signature.png`;
       const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
-      await bucket.file(sigPath).save(Buffer.from(sigBase64, 'base64'), {
+      const sigFile = bucket.file(sigPath);
+      await sigFile.save(Buffer.from(sigBase64, 'base64'), {
         metadata: { contentType: 'image/png' },
       });
-      const [sigUrl] = await bucket.file(sigPath).getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000, // 10 years
-      });
+      await sigFile.makePublic();
+      const sigUrl = sigFile.publicUrl();
 
       const pdfPath = `candidates/${candidateId}/carta_oferta_firmada.pdf`;
-      await bucket.file(pdfPath).save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
-      const [pdfUrl] = await bucket.file(pdfPath).getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000,
-      });
+      const pdfFile = bucket.file(pdfPath);
+      await pdfFile.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
+      await pdfFile.makePublic();
+      const pdfUrl = pdfFile.publicUrl();
 
       // ── Move candidate in Viterbit to "Documentos" ────────────────────────────
       const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
