@@ -18,22 +18,32 @@ type FormValues = {
   positionKeywordsRaw: string;
 };
 
-const DEFAULT_BODY = `<p>Contrato individual de trabajo que celebran por una parte <strong>Aviva Financial S.A. de C.V. SOFOM ENR</strong>, en lo sucesivo "La Empresa", y por otra parte <strong>{{firstName}} {{lastName}}</strong>, en lo sucesivo "El Trabajador".</p>
+const DEFAULT_BODY = `<p>Contrato individual de trabajo que celebran por una parte <strong>Aviva Financial S.A. de C.V. SOFOM ENR</strong>, representada por Salvador Hernández Díaz de León, en lo sucesivo "La Empresa", y por otra parte <strong>{{firstName}} {{lastName}}</strong>, en lo sucesivo "El Trabajador".</p>
 
-<h2>I. Declaraciones</h2>
-<p>La Empresa declara ser una persona moral constituida conforme a las leyes mexicanas.</p>
-<p>El Trabajador declara llamarse <strong>{{firstName}} {{lastName}}</strong>, ser de nacionalidad mexicana y tener capacidad legal para celebrar el presente contrato.</p>
+<h2>Declaraciones</h2>
+<p>La Empresa declara ser una persona moral constituida conforme a las leyes mexicanas, con domicilio en Calle Varsovia 36, Colonia Juárez, Delegación Cuauhtémoc, CP 06600, CDMX.</p>
+<p>El Trabajador declara llamarse <strong>{{firstName}} {{lastName}}</strong> y tener capacidad legal para celebrar el presente contrato.</p>
 
-<h2>II. Cláusulas</h2>
-<p><strong>PRIMERA.</strong> El Trabajador se obliga a prestar sus servicios personales subordinados a La Empresa en el puesto de <strong>{{position}}</strong>.</p>
-<p><strong>SEGUNDA.</strong> La duración del presente contrato será por tiempo indeterminado, iniciando el <strong>{{startDate}}</strong>.</p>
-<p><strong>TERCERA.</strong> El Trabajador percibirá un salario bruto mensual de <strong>{{salary}}</strong>, pagadero de forma quincenal.</p>
-<p><strong>CUARTA.</strong> El horario de trabajo será el que La Empresa determine conforme a las necesidades del servicio.</p>
-<p><strong>QUINTA.</strong> El Trabajador gozará de las prestaciones de ley y las adicionales que La Empresa otorgue.</p>
+<h2>Cláusulas</h2>
+<p><strong>PRIMERA.</strong> El Trabajador se obliga a prestar sus servicios personales subordinados a La Empresa en el puesto de <strong>{{position}}</strong>, iniciando el <strong>{{startDate}}</strong>.</p>
+<p><strong>SEGUNDA.</strong> El Trabajador percibirá un salario bruto mensual de <strong>{{salary}}</strong>, pagadero de forma quincenal.</p>
+<p><strong>TERCERA.</strong> El Trabajador se obliga a mantener absoluta confidencialidad sobre la información de La Empresa a la que tenga acceso con motivo de su cargo.</p>
 
-<p>Leído que fue el presente contrato, lo firman las partes en señal de conformidad.</p>
+<h2>Firmas</h2>
+<p>Leído que fue el presente contrato, ambas partes lo firman en señal de conformidad en la Ciudad de México, el <strong>{{date}}</strong>.</p>
 
-<p><strong>Fecha:</strong> {{date}}</p>`;
+<table style="width:100%; border-collapse:collapse; margin-top:16px;">
+<tr>
+<td style="width:50%; text-align:center; padding:8px; border:1px solid #ccc; vertical-align:top;">
+<p><strong>La Empresa</strong></p>
+<p style="margin-top:40px; border-top:1px solid #000; padding-top:6px;"><strong>SALVADOR HERNÁNDEZ DÍAZ DE LEÓN</strong><br>Representante Legal</p>
+</td>
+<td style="width:50%; text-align:center; padding:8px; border:1px solid #ccc; vertical-align:top;">
+<p><strong>El Trabajador</strong></p>
+<p style="margin-top:40px; border-top:1px solid #000; padding-top:6px;"><strong>{{firstName}} {{lastName}}</strong><br>Por su propio derecho</p>
+</td>
+</tr>
+</table>`;
 
 export function ContractTemplatesPage() {
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
