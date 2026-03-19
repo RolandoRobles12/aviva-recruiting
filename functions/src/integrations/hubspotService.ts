@@ -14,6 +14,9 @@ export async function createHubSpotUser(params: {
   lastName: string;
 }): Promise<{ userId: string }> {
   const apiKey = HUBSPOT_API_KEY.value();
+  if (!apiKey) {
+    throw new Error('HubSpot API key not configured.');
+  }
 
   const resp = await fetch(`${HUBSPOT_API_BASE}/settings/v3/users/`, {
     method: 'POST',
