@@ -166,6 +166,17 @@ export async function updateCandidateFormAnswers(
   await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), updateData);
 }
 
+export async function markDocumentAsValid(
+  candidateId: string,
+  documentType: DocumentType,
+): Promise<void> {
+  const candidateRef = doc(db, CANDIDATES_COLLECTION, candidateId);
+  await updateDoc(candidateRef, {
+    [`documents.${documentType}.status`]: 'valid',
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function extendFormToken(candidateId: string, formDays = 7): Promise<string> {
   const newToken = generateToken();
   const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + formDays * 24 * 60 * 60 * 1000));

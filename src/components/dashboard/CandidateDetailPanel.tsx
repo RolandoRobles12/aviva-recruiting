@@ -485,6 +485,7 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
                 key={type}
                 type={type}
                 doc={docItem ?? { id: type, type, status: 'pending' }}
+                candidateId={c.id}
               />
             );
           })}

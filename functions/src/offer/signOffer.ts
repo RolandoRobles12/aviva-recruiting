@@ -10,7 +10,7 @@ import { sendEmail } from '../email/gmailClient';
 import { invitationTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLinkDuration } from '../utils/linkDuration';
-import { generateOfferPdf, stripHtml } from './pdfGenerator';
+import { generateOfferPdf } from './pdfGenerator';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -149,7 +149,7 @@ function interpolate(template: string, vars: Record<string, string>): string {
 // ─── Default offer letter body (matches Carta Oferta design) ─────────────────
 
 const DEFAULT_OFFER_BODY_HTML = `
-<p>Bienvenido/a \${name},</p>
+<p>Bienvenido/a <strong>\${name}</strong>,</p>
 <p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que  tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas. Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
 <p>Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
 <h2>I. Posición y organización</h2>
@@ -272,7 +272,7 @@ export const signOffer = onRequest(
         startDate,
         date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
       };
-      const bodyText = stripHtml(interpolate(DEFAULT_OFFER_BODY_HTML, vars));
+      const bodyHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
       let pdfBuffer: Buffer;
@@ -280,7 +280,7 @@ export const signOffer = onRequest(
         pdfBuffer = await generateOfferPdf({
           candidateName: candidateFullName,
           position: positionVal,
-          bodyText,
+          bodyHtml,
           signatureBase64,
           signedAt: now,
         });
