@@ -19,13 +19,11 @@ type FormValues = {
 
 const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{name}}</strong>,</p>
 
-<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas.</p>
-
-<p>Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que  tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas. Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
 
 <p>Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
 
-<h2>1. Posición y organización</h2>
+<h2>I. Posición y organización</h2>
 <p><strong>Puesto:</strong> {{departmentProfile}}<br>
 <strong>Empresa:</strong> {{company}}<br>
 <strong>Líder:</strong> {{hiringManager}}<br>
@@ -33,7 +31,7 @@ const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{name}}</strong>,</p>
 <strong>Horario:</strong> Lunes a Domingo 10 a 19 con Descanso Jueves*</p>
 <p><em>*Pueden cambiar de acuerdo a necesidades del negocio</em></p>
 
-<h2>2. Responsabilidades clave</h2>
+<h2>II. Responsabilidades clave</h2>
 <ul>
 <li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
 <li>Tener pleno conocimiento de las características de los productos que se venden en tienda física y digital.</li>
@@ -44,12 +42,21 @@ const DEFAULT_BODY = `<p>Bienvenido/a <strong>{{name}}</strong>,</p>
 <li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
 </ul>
 
-<h2>3. Compensación y beneficios iniciales</h2>
+<h2>III. Compensación y beneficios iniciales</h2>
 <p>El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
-<p><strong>Sueldo Bruto:</strong> {{salary}} (antes de impuestos)</p>
-<p>{{benefits}}</p>
+<p><strong>Sueldo Bruto:</strong> {{salary}} (antes de impuestos)<br>
+<strong>Bono Garantía Bruto:</strong> 1750 MXN (pagado únicamente en las primeras 2 quincenas)*<br>
+<strong>Bono Mensual Bruto:</strong> 0 a 14373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*<br>
+<strong>Premios bimestral:</strong> bono variable a los 3 primeros lugares de cada grupo de tienda*<br>
+<strong>Seguridad social:</strong> IMSS<br>
+<strong>Prima vacacional:</strong> 25%<br>
+<strong>Prima dominical:</strong> 25%<br>
+<strong>Aguinaldo:</strong> 15 días (proporcional a los días laborados en el año)<br>
+<strong>Días Aviva:</strong> 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva<br>
+<strong>Día de cumpleaños:</strong> 1 día al año para celebrar tu vida<br>
+<strong>Bono de Maternidad o paternidad:</strong> 15 días de tu salario bruto mensual al nacer tu hijo/a</p>
 
-<p><em>*La compensación variable y beneficios superiores están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
+<p><em>*La compensación variable y beneficios superiores  están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
 
 <p><strong>¡Nos encanta que estés a unos pasos de ser parte de Aviva!</strong></p>`;
 
