@@ -18,7 +18,7 @@ import { CandidateDocumentCard } from '../components/dashboard/CandidateDocument
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { PARENTESCO_LABELS } from '../types';
-import type { Candidate, DocumentType } from '../types';
+import type { Candidate } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getCandidateDocTypes, computeCompletion } from '../utils/candidateCompletion';
