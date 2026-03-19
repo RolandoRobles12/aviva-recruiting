@@ -2,267 +2,507 @@ import { useState } from 'react';
 import {
   FolderOpen,
   Search,
-  Eye,
-  Download,
   CheckCircle,
-  Clock,
-  XCircle,
   AlertTriangle,
-  RefreshCw,
-  Filter,
+  ChevronDown,
+  ChevronRight,
+  FileSignature,
+  FileText,
+  ClipboardList,
+  ExternalLink,
+  User,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { useCandidates } from '../hooks/useCandidates';
-import { DOCUMENT_CONFIG, DOCUMENT_TYPES } from '../types';
-import type { DocumentType, DocumentStatus, CandidateDocument, Candidate } from '../types';
+import { useFormQuestions } from '../hooks/useFormQuestions';
+import { CandidateDocumentCard } from '../components/dashboard/CandidateDocumentCard';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { ProgressBar } from '../components/ui/ProgressBar';
+import {
+  DOCUMENT_TYPES_REQUIRED,
+  PARENTESCO_LABELS,
+} from '../types';
+import type { Candidate, DocumentType } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type DocRow = {
-  candidate: Candidate;
-  type: DocumentType;
-  doc: CandidateDocument;
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STATUS_ICONS: Record<DocumentStatus, React.ReactNode> = {
-  pending:  <Clock size={13} className="text-gray-400" />,
-  uploaded: <RefreshCw size={13} className="text-blue-500 animate-spin" />,
-  valid:    <CheckCircle size={13} className="text-green-600" />,
-  invalid:  <XCircle size={13} className="text-red-500" />,
-  review:   <AlertTriangle size={13} className="text-yellow-500" />,
-};
+function getCandidateDocTypes(c: Candidate): DocumentType[] {
+  const types: DocumentType[] = [...DOCUMENT_TYPES_REQUIRED];
+  if (c.formAnswers?.tieneInfonavit) types.push('aviso_retencion');
+  if (c.formAnswers?.tieneFonacot) types.push('estado_cuenta_fonacot');
+  return types;
+}
 
-const STATUS_LABELS: Record<DocumentStatus, string> = {
-  pending:  'Pendiente',
-  uploaded: 'Validando...',
-  valid:    'Válido',
-  invalid:  'Inválido',
-  review:   'Rev. manual',
-};
+// ─── Collapsible section ──────────────────────────────────────────────────────
 
-const STATUS_BADGE_CLASS: Record<DocumentStatus, string> = {
-  pending:  'bg-gray-100 text-gray-600',
-  uploaded: 'bg-blue-50 text-blue-700',
-  valid:    'bg-green-50 text-green-700',
-  invalid:  'bg-red-50 text-red-700',
-  review:   'bg-yellow-50 text-yellow-700',
-};
+function Section({
+  title,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+      >
+        {open ? (
+          <ChevronDown size={15} className="text-gray-400 shrink-0" />
+        ) : (
+          <ChevronRight size={15} className="text-gray-400 shrink-0" />
+        )}
+        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider flex-1">
+          {title}
+        </span>
+        {badge}
+      </button>
+      {open && <div className="px-4 py-4">{children}</div>}
+    </div>
+  );
+}
 
-type StatusFilter = DocumentStatus | 'all';
-type TypeFilter = DocumentType | 'all';
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1">
+      <span className="text-xs text-gray-400 shrink-0">{label}</span>
+      <span className="text-xs text-gray-800 font-medium text-right">{value || '—'}</span>
+    </div>
+  );
+}
+
+// ─── Expediente ───────────────────────────────────────────────────────────────
+
+function Expediente({ c }: { c: Candidate }) {
+  const { questions: dynamicQuestions } = useFormQuestions();
+  const a = c.formAnswers;
+  const docTypes = getCandidateDocTypes(c);
+  const validDocs = docTypes.filter((t) => c.documents[t]?.status === 'valid').length;
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5 space-y-3">
+      {/* ── Header: candidate identity ─────────────────────────────── */}
+      <div className="flex items-start gap-3 mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-primary-100 flex items-center justify-center shrink-0">
+          <span className="text-primary-700 text-base font-semibold">
+            {c.firstName[0]}{c.lastName[0]}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-semibold text-gray-900">
+            {c.firstName} {c.lastName}
+          </h2>
+          <p className="text-xs text-gray-500 truncate">{c.position}</p>
+          <div className="mt-1">
+            <StatusBadge status={c.status} />
+          </div>
+        </div>
+        {c.viterbitHiringManager && (
+          <div className="text-right shrink-0">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Líder</p>
+            <p className="text-xs text-gray-700 font-medium">{c.viterbitHiringManager}</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Respuestas ─────────────────────────────────────────────── */}
+      <Section
+        title="Respuestas"
+        defaultOpen={!!a}
+        badge={
+          !a ? (
+            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+              Sin responder
+            </span>
+          ) : null
+        }
+      >
+        {!a && (
+          <p className="text-xs text-gray-400 italic">El candidato aún no ha respondido.</p>
+        )}
+
+        <div className="space-y-0.5">
+          <Row label="Estado civil" value={
+            a?.estadoCivil === 'soltero' ? 'Soltero/a' :
+            a?.estadoCivil === 'casado' ? 'Casado/a' :
+            a?.estadoCivil === 'union_libre' ? 'Unión Libre' : ''
+          } />
+          <Row label="¿Tiene hijos?" value={a?.tieneHijos === true ? 'Sí' : a?.tieneHijos === false ? 'No' : ''} />
+          <Row label="INFONAVIT" value={a?.tieneInfonavit === true ? 'Sí' : a?.tieneInfonavit === false ? 'No' : ''} />
+          <Row label="FONACOT" value={a?.tieneFonacot === true ? 'Sí' : a?.tieneFonacot === false ? 'No' : ''} />
+          <Row label="Talla playera" value={a?.tallaPlayera ?? ''} />
+          <Row label="Sobre ti" value={a?.sobreTi ?? ''} />
+          <Row label="Entidad financiera previa" value={
+            a?.trabajoEntidadFinanciera === true
+              ? `Sí — ${a?.nombreEntidadFinanciera ?? ''}`
+              : a?.trabajoEntidadFinanciera === false ? 'No' : ''
+          } />
+        </div>
+
+        {/* Beneficiario */}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Beneficiario</p>
+          <div className="space-y-0.5">
+            <Row label="Nombre" value={a?.beneficiarioNombre ?? ''} />
+            <Row label="Teléfono" value={a?.beneficiarioTelefono ?? ''} />
+            <Row label="Correo" value={a?.beneficiarioCorreo ?? ''} />
+            <Row label="Parentesco" value={a?.beneficiarioParentesco ? PARENTESCO_LABELS[a.beneficiarioParentesco] : ''} />
+          </div>
+        </div>
+
+        {/* Contacto 1 */}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Contacto de emergencia 1</p>
+          <div className="space-y-0.5">
+            <Row label="Nombre" value={a?.contacto1Nombre ?? ''} />
+            <Row label="Teléfono" value={a?.contacto1Telefono ?? ''} />
+            <Row label="Correo" value={a?.contacto1Correo ?? ''} />
+            <Row label="Parentesco" value={a?.contacto1Parentesco ? PARENTESCO_LABELS[a.contacto1Parentesco] : ''} />
+          </div>
+        </div>
+
+        {/* Contacto 2 */}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Contacto de emergencia 2</p>
+          <div className="space-y-0.5">
+            <Row label="Nombre" value={a?.contacto2Nombre ?? ''} />
+            <Row label="Teléfono" value={a?.contacto2Telefono ?? ''} />
+            <Row label="Correo" value={a?.contacto2Correo ?? ''} />
+            <Row label="Parentesco" value={a?.contacto2Parentesco ? PARENTESCO_LABELS[a.contacto2Parentesco] : ''} />
+          </div>
+        </div>
+
+        {/* Dynamic questions */}
+        {dynamicQuestions.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Preguntas adicionales</p>
+            <div className="space-y-0.5">
+              {dynamicQuestions.map((q) => (
+                <Row key={q.id} label={q.label} value={(a?.customAnswers ?? {})[q.id] ?? ''} />
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* ── Carta Oferta ───────────────────────────────────────────── */}
+      <Section
+        title="Carta Oferta"
+        defaultOpen={!!c.offerPdfUrl || !!c.offerToken}
+        badge={
+          c.offerSignedAt ? (
+            <span className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              <CheckCircle size={10} /> Firmada
+            </span>
+          ) : c.offerToken ? (
+            <span className="flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+              <AlertTriangle size={10} /> Pendiente
+            </span>
+          ) : null
+        }
+      >
+        {!c.offerToken && !c.offerPdfUrl ? (
+          <p className="text-xs text-gray-400 italic">
+            La carta oferta se genera cuando el candidato avanza al stage correspondiente en Viterbit.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {c.offerSignedAt && (
+              <p className="text-xs text-green-700 font-medium">
+                Firmada el {format(c.offerSignedAt.toDate(), "d 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
+              </p>
+            )}
+            {c.offerPdfUrl && (
+              <a
+                href={c.offerPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded-lg px-3 py-2.5 hover:bg-primary-100 transition-colors"
+              >
+                <FileSignature size={14} />
+                <span className="font-medium flex-1">Carta oferta firmada (PDF)</span>
+                <ExternalLink size={12} />
+              </a>
+            )}
+            {c.offerSignatureUrl && (
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Firma digital</p>
+                <img
+                  src={c.offerSignatureUrl}
+                  alt="Firma"
+                  className="max-h-16 bg-white border border-gray-200 rounded-lg p-2"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {/* ── Contrato ───────────────────────────────────────────────── */}
+      <Section
+        title="Contrato"
+        defaultOpen={!!c.contractPdfUrl || !!c.contractToken}
+        badge={
+          c.contractSignedAt ? (
+            <span className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              <CheckCircle size={10} /> Firmado
+            </span>
+          ) : c.contractToken ? (
+            <span className="flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+              Enviado
+            </span>
+          ) : null
+        }
+      >
+        {!c.contractToken && !c.contractPdfUrl ? (
+          <p className="text-xs text-gray-400 italic">
+            El contrato se genera cuando el candidato avanza al stage de "Contrato" en Viterbit.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {c.contractSignedAt && (
+              <p className="text-xs text-green-700 font-medium">
+                Firmado el {format(c.contractSignedAt.toDate(), "d 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
+              </p>
+            )}
+            {c.contractPdfUrl && (
+              <a
+                href={c.contractPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded-lg px-3 py-2.5 hover:bg-primary-100 transition-colors"
+              >
+                <FileText size={14} />
+                <span className="font-medium flex-1">Contrato firmado (PDF)</span>
+                <ExternalLink size={12} />
+              </a>
+            )}
+            {c.contractEvidenceUrl && (
+              <a
+                href={c.contractEvidenceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5 hover:bg-indigo-100 transition-colors"
+              >
+                <FileText size={14} />
+                <span className="font-medium flex-1">Certificado FES (SHA-256)</span>
+                <ExternalLink size={12} />
+              </a>
+            )}
+            {c.contractSignatureUrl && (
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Firma digital</p>
+                <img
+                  src={c.contractSignatureUrl}
+                  alt="Firma"
+                  className="max-h-16 bg-white border border-gray-200 rounded-lg p-2"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {/* ── Documentos ─────────────────────────────────────────────── */}
+      <Section
+        title="Documentos"
+        defaultOpen
+        badge={
+          <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+            {validDocs}/{docTypes.length}
+          </span>
+        }
+      >
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-gray-500">{c.completionPercentage}% completado</span>
+            <span className="text-xs text-gray-400">{validDocs}/{docTypes.length} válidos</span>
+          </div>
+          <ProgressBar percentage={c.completionPercentage} showLabel={false} />
+        </div>
+
+        <div className="space-y-2">
+          {docTypes.map((type) => {
+            const docItem = c.documents[type];
+            return (
+              <CandidateDocumentCard
+                key={type}
+                type={type}
+                doc={docItem ?? { id: type, type, status: 'pending' }}
+              />
+            );
+          })}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+// ─── Candidate list item ──────────────────────────────────────────────────────
+
+function CandidateItem({
+  c,
+  selected,
+  onClick,
+}: {
+  c: Candidate;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const docTypes = getCandidateDocTypes(c);
+  const valid = docTypes.filter((t) => c.documents[t]?.status === 'valid').length;
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-3 rounded-lg transition-colors ${
+        selected
+          ? 'bg-primary-50 border border-primary-200'
+          : 'hover:bg-gray-50 border border-transparent'
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+          <span className="text-primary-700 text-[10px] font-semibold">
+            {c.firstName[0]}{c.lastName[0]}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">
+            {c.firstName} {c.lastName}
+          </p>
+          <p className="text-[11px] text-gray-400 truncate">{c.position}</p>
+          <div className="flex items-center gap-1.5 mt-1">
+            <div className="flex-1 bg-gray-100 rounded-full h-1 overflow-hidden">
+              <div
+                className="h-full bg-primary-400 rounded-full transition-all"
+                style={{ width: `${c.completionPercentage}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-gray-400 shrink-0">
+              {valid}/{docTypes.length}
+            </span>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function DocumentsPage() {
   const { candidates, loading } = useCandidates();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Build flat list of all documents
-  const allDocs: DocRow[] = [];
-  for (const c of candidates) {
-    for (const type of DOCUMENT_TYPES) {
-      const doc = c.documents[type];
-      if (doc && doc.status !== 'pending') {
-        allDocs.push({ candidate: c, type, doc });
-      }
-    }
-  }
-
-  // Sort by upload date descending
-  allDocs.sort((a, b) => {
-    const da = a.doc.uploadedAt?.toDate?.()?.getTime() ?? 0;
-    const db = b.doc.uploadedAt?.toDate?.()?.getTime() ?? 0;
-    return db - da;
+  const filtered = candidates.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
+      c.position.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q)
+    );
   });
 
-  const filtered = allDocs.filter((row) => {
-    if (statusFilter !== 'all' && row.doc.status !== statusFilter) return false;
-    if (typeFilter !== 'all' && row.type !== typeFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const name = `${row.candidate.firstName} ${row.candidate.lastName}`.toLowerCase();
-      const docLabel = DOCUMENT_CONFIG[row.type].label.toLowerCase();
-      if (!name.includes(q) && !docLabel.includes(q) && !row.candidate.email.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
+  const selected = filtered.find((c) => c.id === selectedId) ?? filtered[0] ?? null;
 
-  // Summary stats
-  const totalUploaded = allDocs.length;
-  const totalValid = allDocs.filter((r) => r.doc.status === 'valid').length;
-  const totalInvalid = allDocs.filter((r) => r.doc.status === 'invalid').length;
-  const totalReview = allDocs.filter((r) => r.doc.status === 'review' || r.doc.status === 'uploaded').length;
+  // Summary stats across all candidates
+  const allDocRows = candidates.flatMap((c) =>
+    getCandidateDocTypes(c).map((t) => c.documents[t])
+  ).filter(Boolean);
+  const totalValid   = allDocRows.filter((d) => d?.status === 'valid').length;
+  const totalInvalid = allDocRows.filter((d) => d?.status === 'invalid').length;
+  const totalReview  = allDocRows.filter((d) => d?.status === 'review' || d?.status === 'uploaded').length;
 
   return (
     <DashboardLayout>
-      <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <FolderOpen size={18} className="text-primary-600" />
-              <h2 className="text-base font-semibold text-gray-900">Documentos</h2>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-600" /> {totalValid} válidos</span>
-              <span className="flex items-center gap-1"><AlertTriangle size={12} className="text-yellow-500" /> {totalReview} en revisión</span>
-              <span className="flex items-center gap-1"><XCircle size={12} className="text-red-500" /> {totalInvalid} inválidos</span>
-              <span className="text-gray-300">|</span>
-              <span>{totalUploaded} total</span>
-            </div>
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <FolderOpen size={18} className="text-primary-600" />
+            <h2 className="text-base font-semibold text-gray-900">Expedientes</h2>
           </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por candidato o documento..."
-                className="input-field pl-9 text-sm"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <Filter size={13} className="text-gray-400" />
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="all">Todos los tipos</option>
-                {DOCUMENT_TYPES.map((t) => (
-                  <option key={t} value={t}>{DOCUMENT_CONFIG[t].label}</option>
-                ))}
-              </select>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="all">Todos los estados</option>
-                <option value="valid">Válido</option>
-                <option value="uploaded">Validando</option>
-                <option value="review">Revisión manual</option>
-                <option value="invalid">Inválido</option>
-              </select>
-            </div>
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span className="flex items-center gap-1">
+              <CheckCircle size={12} className="text-green-600" /> {totalValid} válidos
+            </span>
+            <span className="flex items-center gap-1">
+              <AlertTriangle size={12} className="text-yellow-500" /> {totalReview} en revisión
+            </span>
+            <span className="flex items-center gap-1 text-red-500">
+              {totalInvalid} inválidos
+            </span>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="flex-1 overflow-y-auto bg-white">
-          {loading ? (
-            <div className="flex items-center justify-center h-40">
-              <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <FolderOpen size={24} className="text-gray-300" />
+        {/* ── Body ───────────────────────────────────────────────── */}
+        <div className="flex-1 flex overflow-hidden">
+
+          {/* Left: candidate list */}
+          <div className="w-64 shrink-0 border-r border-gray-100 flex flex-col bg-white overflow-hidden">
+            {/* Search */}
+            <div className="p-3 border-b border-gray-100">
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar candidato…"
+                  className="input-field pl-8 text-xs py-2"
+                />
               </div>
-              <p className="text-sm text-gray-500 font-medium">Sin documentos</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {search || statusFilter !== 'all' || typeFilter !== 'all'
-                  ? 'No se encontraron documentos con estos filtros.'
-                  : 'Los documentos aparecerán aquí cuando los candidatos los suban.'}
-              </p>
             </div>
-          ) : (
-            <table className="w-full">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                  <th className="px-5 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Candidato</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Documento</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Archivo</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Fecha</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map((row) => {
-                  const uploadedAt = row.doc.uploadedAt?.toDate?.();
-                  return (
-                    <tr key={`${row.candidate.id}-${row.type}`} className="hover:bg-gray-50 transition-colors">
-                      {/* Candidate */}
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
-                            <span className="text-primary-700 text-[10px] font-semibold">
-                              {row.candidate.firstName[0]}{row.candidate.lastName[0]}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {row.candidate.firstName} {row.candidate.lastName}
-                            </p>
-                            <p className="text-[11px] text-gray-400 truncate">{row.candidate.position}</p>
-                          </div>
-                        </div>
-                      </td>
 
-                      {/* Document type */}
-                      <td className="px-4 py-3">
-                        <span className="text-sm text-gray-700">{DOCUMENT_CONFIG[row.type].label}</span>
-                      </td>
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {loading ? (
+                <div className="flex items-center justify-center h-24">
+                  <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : filtered.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-8">Sin candidatos</p>
+              ) : (
+                filtered.map((c) => (
+                  <CandidateItem
+                    key={c.id}
+                    c={c}
+                    selected={selected?.id === c.id}
+                    onClick={() => setSelectedId(c.id)}
+                  />
+                ))
+              )}
+            </div>
+          </div>
 
-                      {/* Filename */}
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <span className="text-xs text-gray-400 truncate max-w-[180px] block">
-                          {row.doc.fileName ?? '—'}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE_CLASS[row.doc.status]}`}>
-                          {STATUS_ICONS[row.doc.status]}
-                          {STATUS_LABELS[row.doc.status]}
-                        </span>
-                      </td>
-
-                      {/* Date */}
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className="text-xs text-gray-400">
-                          {uploadedAt ? format(uploadedAt, 'd MMM yyyy', { locale: es }) : '—'}
-                        </span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {row.doc.downloadUrl && (
-                            <>
-                              <a
-                                href={row.doc.downloadUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                                title="Ver documento"
-                              >
-                                <Eye size={14} />
-                              </a>
-                              <a
-                                href={row.doc.downloadUrl}
-                                download
-                                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Descargar"
-                              >
-                                <Download size={14} />
-                              </a>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+          {/* Right: expediente */}
+          <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+            {selected ? (
+              <Expediente key={selected.id} c={selected} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <User size={28} className="text-gray-300" />
+                  </div>
+                  <p className="text-sm text-gray-500 font-medium">Selecciona un candidato</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Su expediente completo aparecerá aquí.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </DashboardLayout>
