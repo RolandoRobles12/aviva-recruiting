@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { CheckCircle, Save, ChevronRight } from 'lucide-react';
-import type { Candidate, FormAnswers, Parentesco } from '../../types';
+import type { Candidate, FormAnswers, FormQuestion, Parentesco } from '../../types';
 import { PARENTESCO_LABELS } from '../../types';
 import { updateCandidateFormAnswers } from '../../services/candidates';
+import { useFormQuestions } from '../../hooks/useFormQuestions';
 
 interface Props {
   candidate: Candidate;
@@ -16,6 +17,7 @@ export function CandidateQuestionnaire({ candidate, onComplete }: Props) {
   const [answers, setAnswers] = useState<FormAnswers>(existing ?? {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const { questions: dynamicQuestions } = useFormQuestions();
 
   const update = <K extends keyof FormAnswers>(key: K, value: FormAnswers[K]) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
@@ -229,6 +231,21 @@ export function CandidateQuestionnaire({ candidate, onComplete }: Props) {
         </div>
       </FieldCard>
 
+      {/* ── Preguntas adicionales (dinámicas) ───────────────────────── */}
+      {dynamicQuestions.map((q) => (
+        <DynamicQuestionField
+          key={q.id}
+          question={q}
+          value={(answers.customAnswers ?? {})[q.id] ?? ''}
+          onChange={(val) =>
+            setAnswers((prev) => ({
+              ...prev,
+              customAnswers: { ...(prev.customAnswers ?? {}), [q.id]: val },
+            }))
+          }
+        />
+      ))}
+
       {/* ── Action buttons ───────────────────────────────────────────── */}
       <div className="flex gap-3">
         <button
@@ -291,6 +308,87 @@ function YesNoButtons({ value, onChange }: { value?: boolean; onChange: (v: bool
         No
       </button>
     </div>
+  );
+}
+
+function DynamicQuestionField({
+  question,
+  value,
+  onChange,
+}: {
+  question: FormQuestion;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <FieldCard title={`${question.label}${question.required ? ' *' : ''}`}>
+      {question.type === 'text' && (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Tu respuesta"
+          className="input-field text-sm"
+        />
+      )}
+      {question.type === 'textarea' && (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={3}
+          placeholder="Tu respuesta"
+          className="input-field text-sm resize-none"
+        />
+      )}
+      {question.type === 'yes_no' && (
+        <div className="flex gap-2">
+          {['Sí', 'No'].map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(opt)}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                value === opt
+                  ? 'bg-primary-50 border-primary-300 text-primary-700'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+      {(question.type === 'radio' || question.type === 'select') && question.type === 'select' && (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="input-field text-sm"
+        >
+          <option value="">Selecciona una opción</option>
+          {(question.options ?? []).map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      )}
+      {question.type === 'radio' && (
+        <div className="flex flex-wrap gap-2">
+          {(question.options ?? []).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(opt)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                value === opt
+                  ? 'bg-primary-50 border-primary-300 text-primary-700'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </FieldCard>
   );
 }
 

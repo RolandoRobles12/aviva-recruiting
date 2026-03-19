@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { DOCUMENT_TYPES_REQUIRED, PARENTESCO_LABELS } from '../../types';
 import type { Candidate, DocumentType } from '../../types';
+import { useFormQuestions } from '../../hooks/useFormQuestions';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
 import { CandidateDocumentCard } from './CandidateDocumentCard';
@@ -411,15 +412,9 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
       </Section>
 
       {/* Viterbit data */}
-      {(c.viterbitSalary || c.viterbitStartDate || c.viterbitHiringManager || c.viterbitDepartmentProfile) && (
+      {(c.viterbitStartDate || c.viterbitHiringManager) && (
         <Section title="Datos del puesto (Viterbit)">
           <div className="grid grid-cols-2 gap-3">
-            {c.viterbitDepartmentProfile && (
-              <DataCell icon={<Briefcase size={12} />} label="Perfil" value={c.viterbitDepartmentProfile} />
-            )}
-            {c.viterbitSalary && (
-              <DataCell icon={<DollarSign size={12} />} label="Salario" value={c.viterbitSalary} />
-            )}
             {c.viterbitHiringManager && (
               <DataCell icon={<User size={12} />} label="Líder" value={c.viterbitHiringManager} />
             )}
@@ -851,49 +846,61 @@ function getCandidateDocTypes(c: Candidate): DocumentType[] {
 
 function TabAnswers({ c }: { c: Candidate }) {
   const a = c.formAnswers;
-
-  if (!a) {
-    return (
-      <div className="px-5 py-10 text-center">
-        <ClipboardList size={28} className="mx-auto text-gray-300 mb-2" />
-        <p className="text-sm text-gray-500">El candidato aún no ha respondido las preguntas.</p>
-      </div>
-    );
-  }
+  const { questions: dynamicQuestions } = useFormQuestions();
 
   return (
     <div className="px-5 py-4 space-y-4">
-      <AnswerRow label="Estado civil" value={a.estadoCivil === 'soltero' ? 'Soltero/a' : a.estadoCivil === 'casado' ? 'Casado/a' : a.estadoCivil === 'union_libre' ? 'Unión Libre' : '—'} />
-      <AnswerRow label="¿Tiene hijos?" value={a.tieneHijos === true ? 'Sí' : a.tieneHijos === false ? 'No' : '—'} />
-      <AnswerRow label="¿Crédito INFONAVIT?" value={a.tieneInfonavit === true ? 'Sí' : a.tieneInfonavit === false ? 'No' : '—'} />
-      <AnswerRow label="¿Crédito FONACOT?" value={a.tieneFonacot === true ? 'Sí' : a.tieneFonacot === false ? 'No' : '—'} />
-      <AnswerRow label="Talla de playera" value={a.tallaPlayera ?? '—'} />
-      {a.sobreTi && <AnswerRow label="Sobre ti" value={a.sobreTi} />}
-      <AnswerRow label="¿Laboró en entidad financiera?" value={a.trabajoEntidadFinanciera === true ? `Sí — ${a.nombreEntidadFinanciera ?? ''}` : a.trabajoEntidadFinanciera === false ? 'No' : '—'} />
+      {!a && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <ClipboardList size={15} className="text-amber-600 shrink-0" />
+          <p className="text-xs text-amber-800">El candidato aún no ha respondido las preguntas.</p>
+        </div>
+      )}
+
+      <AnswerRow label="Estado civil" value={a?.estadoCivil === 'soltero' ? 'Soltero/a' : a?.estadoCivil === 'casado' ? 'Casado/a' : a?.estadoCivil === 'union_libre' ? 'Unión Libre' : '—'} />
+      <AnswerRow label="¿Tiene hijos?" value={a?.tieneHijos === true ? 'Sí' : a?.tieneHijos === false ? 'No' : '—'} />
+      <AnswerRow label="¿Crédito INFONAVIT?" value={a?.tieneInfonavit === true ? 'Sí' : a?.tieneInfonavit === false ? 'No' : '—'} />
+      <AnswerRow label="¿Crédito FONACOT?" value={a?.tieneFonacot === true ? 'Sí' : a?.tieneFonacot === false ? 'No' : '—'} />
+      <AnswerRow label="Talla de playera" value={a?.tallaPlayera ?? '—'} />
+      <AnswerRow label="Sobre ti" value={a?.sobreTi ?? '—'} />
+      <AnswerRow label="¿Laboró en entidad financiera?" value={a?.trabajoEntidadFinanciera === true ? `Sí — ${a?.nombreEntidadFinanciera ?? ''}` : a?.trabajoEntidadFinanciera === false ? 'No' : '—'} />
 
       <div className="border-t border-gray-100 pt-3">
         <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Beneficiario</h4>
-        <AnswerRow label="Nombre" value={a.beneficiarioNombre ?? '—'} />
-        <AnswerRow label="Teléfono" value={a.beneficiarioTelefono ?? '—'} />
-        <AnswerRow label="Correo" value={a.beneficiarioCorreo ?? '—'} />
-        <AnswerRow label="Parentesco" value={a.beneficiarioParentesco ? PARENTESCO_LABELS[a.beneficiarioParentesco] : '—'} />
+        <AnswerRow label="Nombre" value={a?.beneficiarioNombre ?? '—'} />
+        <AnswerRow label="Teléfono" value={a?.beneficiarioTelefono ?? '—'} />
+        <AnswerRow label="Correo" value={a?.beneficiarioCorreo ?? '—'} />
+        <AnswerRow label="Parentesco" value={a?.beneficiarioParentesco ? PARENTESCO_LABELS[a.beneficiarioParentesco] : '—'} />
       </div>
 
       <div className="border-t border-gray-100 pt-3">
         <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Contacto de emergencia 1</h4>
-        <AnswerRow label="Nombre" value={a.contacto1Nombre ?? '—'} />
-        <AnswerRow label="Teléfono" value={a.contacto1Telefono ?? '—'} />
-        <AnswerRow label="Correo" value={a.contacto1Correo ?? '—'} />
-        <AnswerRow label="Parentesco" value={a.contacto1Parentesco ? PARENTESCO_LABELS[a.contacto1Parentesco] : '—'} />
+        <AnswerRow label="Nombre" value={a?.contacto1Nombre ?? '—'} />
+        <AnswerRow label="Teléfono" value={a?.contacto1Telefono ?? '—'} />
+        <AnswerRow label="Correo" value={a?.contacto1Correo ?? '—'} />
+        <AnswerRow label="Parentesco" value={a?.contacto1Parentesco ? PARENTESCO_LABELS[a.contacto1Parentesco] : '—'} />
       </div>
 
       <div className="border-t border-gray-100 pt-3">
         <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Contacto de emergencia 2</h4>
-        <AnswerRow label="Nombre" value={a.contacto2Nombre ?? '—'} />
-        <AnswerRow label="Teléfono" value={a.contacto2Telefono ?? '—'} />
-        <AnswerRow label="Correo" value={a.contacto2Correo ?? '—'} />
-        <AnswerRow label="Parentesco" value={a.contacto2Parentesco ? PARENTESCO_LABELS[a.contacto2Parentesco] : '—'} />
+        <AnswerRow label="Nombre" value={a?.contacto2Nombre ?? '—'} />
+        <AnswerRow label="Teléfono" value={a?.contacto2Telefono ?? '—'} />
+        <AnswerRow label="Correo" value={a?.contacto2Correo ?? '—'} />
+        <AnswerRow label="Parentesco" value={a?.contacto2Parentesco ? PARENTESCO_LABELS[a.contacto2Parentesco] : '—'} />
       </div>
+
+      {dynamicQuestions.length > 0 && (
+        <div className="border-t border-gray-100 pt-3">
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Preguntas adicionales</h4>
+          {dynamicQuestions.map((q) => (
+            <AnswerRow
+              key={q.id}
+              label={q.label}
+              value={(a?.customAnswers ?? {})[q.id] || '—'}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
