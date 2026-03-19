@@ -20,8 +20,9 @@ import {
   ClipboardList,
   Users,
 } from 'lucide-react';
-import { DOCUMENT_TYPES_REQUIRED, PARENTESCO_LABELS } from '../../types';
+import { PARENTESCO_LABELS } from '../../types';
 import type { Candidate, DocumentType } from '../../types';
+import { getCandidateDocTypes, computeCompletion } from '../../utils/candidateCompletion';
 import { useFormQuestions } from '../../hooks/useFormQuestions';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
@@ -466,12 +467,12 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
       <Section title="Progreso de documentación">
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-gray-500">{c.completionPercentage}% completado</span>
+            <span className="text-xs text-gray-500">{computeCompletion(c)}% completado</span>
             <span className="text-xs text-gray-400">
               {getCandidateDocTypes(c).filter((t) => c.documents[t]?.status === 'valid').length}/{getCandidateDocTypes(c).length} documentos
             </span>
           </div>
-          <ProgressBar percentage={c.completionPercentage} showLabel={false} />
+          <ProgressBar percentage={computeCompletion(c)} showLabel={false} />
         </div>
       </Section>
 
@@ -485,7 +486,6 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
                 key={type}
                 type={type}
                 doc={docItem ?? { id: type, type, status: 'pending' }}
-                candidateId={c.id}
               />
             );
           })}
@@ -875,12 +875,6 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
    Helper: candidate-specific doc types
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function getCandidateDocTypes(c: Candidate): DocumentType[] {
-  const types: DocumentType[] = [...DOCUMENT_TYPES_REQUIRED];
-  if (c.formAnswers?.tieneInfonavit) types.push('aviso_retencion');
-  if (c.formAnswers?.tieneFonacot) types.push('estado_cuenta_fonacot');
-  return types;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TAB: Respuestas

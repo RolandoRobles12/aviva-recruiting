@@ -17,22 +17,11 @@ import { useFormQuestions } from '../hooks/useFormQuestions';
 import { CandidateDocumentCard } from '../components/dashboard/CandidateDocumentCard';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import {
-  DOCUMENT_TYPES_REQUIRED,
-  PARENTESCO_LABELS,
-} from '../types';
+import { PARENTESCO_LABELS } from '../types';
 import type { Candidate, DocumentType } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getCandidateDocTypes(c: Candidate): DocumentType[] {
-  const types: DocumentType[] = [...DOCUMENT_TYPES_REQUIRED];
-  if (c.formAnswers?.tieneInfonavit) types.push('aviso_retencion');
-  if (c.formAnswers?.tieneFonacot) types.push('estado_cuenta_fonacot');
-  return types;
-}
+import { getCandidateDocTypes, computeCompletion } from '../utils/candidateCompletion';
 
 // ─── Collapsible section ──────────────────────────────────────────────────────
 
@@ -322,10 +311,10 @@ function Expediente({ c }: { c: Candidate }) {
       >
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-gray-500">{c.completionPercentage}% completado</span>
+            <span className="text-xs text-gray-500">{computeCompletion(c)}% completado</span>
             <span className="text-xs text-gray-400">{validDocs}/{docTypes.length} válidos</span>
           </div>
-          <ProgressBar percentage={c.completionPercentage} showLabel={false} />
+          <ProgressBar percentage={computeCompletion(c)} showLabel={false} />
         </div>
 
         <div className="space-y-2">
@@ -336,7 +325,6 @@ function Expediente({ c }: { c: Candidate }) {
                 key={type}
                 type={type}
                 doc={docItem ?? { id: type, type, status: 'pending' }}
-                candidateId={c.id}
               />
             );
           })}
@@ -384,7 +372,7 @@ function CandidateItem({
             <div className="flex-1 bg-gray-100 rounded-full h-1 overflow-hidden">
               <div
                 className="h-full bg-primary-400 rounded-full transition-all"
-                style={{ width: `${c.completionPercentage}%` }}
+                style={{ width: `${computeCompletion(c)}%` }}
               />
             </div>
             <span className="text-[10px] text-gray-400 shrink-0">
