@@ -124,17 +124,16 @@ function interpolate(template: string, vars: Record<string, string>): string {
 
 const DEFAULT_OFFER_BODY_HTML = `
 <p>Bienvenido/a \${name},</p>
-<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas.</p>
-<p>Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que  tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas. Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
 <p>Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
-<p><strong>1. Posición y organización</strong></p>
+<h2>I. Posición y organización</h2>
 <p><strong>Puesto:</strong> \${job_department_profile}<br>
 <strong>Empresa:</strong> \${custom_job_empresa}<br>
 <strong>Líder:</strong> \${custom_job_hiring_manager}<br>
 <strong>Fecha de inicio:</strong> \${hired_start_date_job}<br>
 <strong>Horario:</strong> Lunes a Domingo 10 a 19 con Descanso Jueves*<br>
 <em>*Pueden cambiar de acuerdo a necesidades del negocio</em></p>
-<p><strong>2. Responsabilidades clave</strong></p>
+<h2>II. Responsabilidades clave</h2>
 <ul>
 <li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
 <li>Tener pleno conocimiento de las características de los productos que se venden en tienda física y digital.</li>
@@ -144,7 +143,7 @@ const DEFAULT_OFFER_BODY_HTML = `
 <li>En caso necesario, realizar actividades de cambaceo en zonas cercanas para impulsar el tráfico y las ventas.</li>
 <li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
 </ul>
-<p><strong>3. Compensación y beneficios iniciales</strong></p>
+<h2>III. Compensación y beneficios iniciales</h2>
 <p>El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
 <p><strong>Sueldo Bruto:</strong> \${hired_salary_job} (antes de impuestos)<br>
 <strong>Bono Garantía Bruto:</strong> 1750 MXN (pagado únicamente en las primeras 2 quincenas)*<br>
@@ -157,7 +156,7 @@ const DEFAULT_OFFER_BODY_HTML = `
 <strong>Días Aviva:</strong> 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva<br>
 <strong>Día de cumpleaños:</strong> 1 día al año para celebrar tu vida<br>
 <strong>Bono de Maternidad o paternidad:</strong> 15 días de tu salario bruto mensual al nacer tu hijo/a</p>
-<p><em>*La compensación variable y beneficios superiores están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
+<p><em>*La compensación variable y beneficios superiores  están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
 <p><strong>¡Nos encanta que estés a unos pasos de ser parte de Aviva!</strong></p>
 `;
 
