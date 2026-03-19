@@ -9,6 +9,7 @@ import { inductionTemplate } from '../email/templates';
 interface ProvisionRequest {
   candidateId: string;
   corporateEmail: string;
+  skipSlack?: boolean;
 }
 
 /**
@@ -22,7 +23,7 @@ export const provisionAccountsManual = onCall(
       throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
     }
 
-    const { candidateId, corporateEmail } = request.data as ProvisionRequest;
+    const { candidateId, corporateEmail, skipSlack = false } = request.data as ProvisionRequest;
 
     if (!candidateId || !corporateEmail) {
       throw new HttpsError('invalid-argument', 'Se requiere candidateId y corporateEmail.');
@@ -42,29 +43,32 @@ export const provisionAccountsManual = onCall(
 
     const candidate = doc.data()!;
 
-    // Provision HubSpot + dual Slack in parallel
-    const [hubspotResult, slackResult] = await Promise.allSettled([
-      createHubSpotUser({
-        corporateEmail,
-        firstName: candidate.firstName as string,
-        lastName: candidate.lastName as string,
-      }),
-      inviteSlackDual({
-        corporateEmail,
-        firstName: candidate.firstName as string,
-        lastName: candidate.lastName as string,
-      }),
-    ]);
+    // Provision HubSpot (always) + dual Slack (optional)
+    const hubspotPromise = createHubSpotUser({
+      corporateEmail,
+      firstName: candidate.firstName as string,
+      lastName: candidate.lastName as string,
+    });
+
+    const slackPromise = skipSlack
+      ? Promise.resolve(null)
+      : inviteSlackDual({
+          corporateEmail,
+          firstName: candidate.firstName as string,
+          lastName: candidate.lastName as string,
+        });
+
+    const [hubspotResult, slackResult] = await Promise.allSettled([hubspotPromise, slackPromise]);
 
     const hubspotOk = hubspotResult.status === 'fulfilled';
-    const slackDual = slackResult.status === 'fulfilled' ? slackResult.value : null;
-    const slackPrimaryOk = slackDual?.primary.ok ?? false;
-    const slackGuestOk = slackDual?.guest.ok ?? false;
+    const slackValue = slackResult.status === 'fulfilled' ? slackResult.value : null;
+    const slackPrimaryOk = slackValue?.primary.ok ?? false;
+    const slackGuestOk = slackValue?.guest.ok ?? false;
 
     if (hubspotResult.status === 'rejected') {
       console.error(`[provisionManual] HubSpot failed for ${candidateId}:`, hubspotResult.reason);
     }
-    if (slackResult.status === 'rejected') {
+    if (!skipSlack && slackResult.status === 'rejected') {
       console.error(`[provisionManual] Slack failed for ${candidateId}:`, slackResult.reason);
     }
 
