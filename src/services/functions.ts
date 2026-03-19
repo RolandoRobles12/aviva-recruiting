@@ -32,3 +32,8 @@ export const provisionAccountsManual = httpsCallable<
   { candidateId: string; corporateEmail: string },
   ProvisionResult
 >(functions, 'provisionAccountsManual');
+
+export const sendOfferEmail = httpsCallable<
+  { candidateId: string },
+  { success: boolean }
+>(functions, 'sendOfferEmail');

@@ -30,6 +30,7 @@ import { CandidateDocumentCard } from './CandidateDocumentCard';
 import {
   sendReminderEmail,
   provisionAccountsManual,
+  sendOfferEmail,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
@@ -551,6 +552,24 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
   copied: boolean;
   onCopy: (text: string) => void;
 }) {
+  const [sendingOffer, setSendingOffer] = useState(false);
+  const [offerSent, setOfferSent] = useState(false);
+  const [offerSendError, setOfferSendError] = useState('');
+
+  async function handleResendOffer() {
+    setSendingOffer(true);
+    setOfferSendError('');
+    try {
+      await sendOfferEmail({ candidateId: c.id });
+      setOfferSent(true);
+      setTimeout(() => setOfferSent(false), 3000);
+    } catch (err: unknown) {
+      setOfferSendError(err instanceof Error ? err.message : 'Error al enviar el correo.');
+    } finally {
+      setSendingOffer(false);
+    }
+  }
+
   return (
     <div className="px-5 py-4 space-y-5">
       {!offerUrl && !c.offerPdfUrl ? (
@@ -620,6 +639,29 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
                 alt="Firma del candidato"
                 className="max-h-20 bg-white border border-gray-200 rounded-lg p-2"
               />
+            </Section>
+          )}
+
+          {/* Resend offer email — only when not yet signed */}
+          {offerUrl && !c.offerSignedAt && (
+            <Section title="Correo de carta oferta">
+              {offerSendError && (
+                <p className="text-xs text-red-600 mb-2">{offerSendError}</p>
+              )}
+              <button
+                onClick={handleResendOffer}
+                disabled={sendingOffer}
+                className="flex items-center gap-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60"
+              >
+                {sendingOffer ? (
+                  <RefreshCw size={13} className="animate-spin" />
+                ) : offerSent ? (
+                  <Check size={13} />
+                ) : (
+                  <Send size={13} />
+                )}
+                {offerSent ? 'Correo enviado' : 'Reenviar correo de carta oferta'}
+              </button>
             </Section>
           )}
         </>
