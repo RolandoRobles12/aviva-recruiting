@@ -63,6 +63,8 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [extendingToken, setExtendingToken] = useState(false);
   const [tokenExtended, setTokenExtended] = useState(false);
+  const [generatingFormToken, setGeneratingFormToken] = useState(false);
+  const [formTokenGenerated, setFormTokenGenerated] = useState(false);
   const [corpEmail, setCorpEmail] = useState('');
   const [provisioning, setProvisioning] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
@@ -113,6 +115,19 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
       setTimeout(() => setTokenExtended(false), 4000);
     } finally {
       setExtendingToken(false);
+    }
+  };
+
+  const handleGenerateFormToken = async () => {
+    setGeneratingFormToken(true);
+    try {
+      const linkSettings = await getLinkDurationSettings();
+      await extendFormToken(c.id, linkSettings.formDays);
+      await sendInvitationEmail({ candidateId: c.id });
+      setFormTokenGenerated(true);
+      setTimeout(() => setFormTokenGenerated(false), 4000);
+    } finally {
+      setGeneratingFormToken(false);
     }
   };
 
@@ -290,6 +305,15 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                   </button>
                 )}
               </>
+            ) : (c.status === 'offer_signed') ? (
+              <button
+                onClick={handleGenerateFormToken}
+                disabled={generatingFormToken}
+                className="w-full flex items-center justify-center gap-1.5 bg-primary-600 text-white px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors disabled:opacity-60"
+              >
+                <RefreshCw size={12} className={generatingFormToken ? 'animate-spin' : ''} />
+                {generatingFormToken ? 'Generando...' : formTokenGenerated ? '¡Enlace enviado!' : 'Generar enlace de documentación'}
+              </button>
             ) : (
               <p className="text-xs text-gray-400">
                 El enlace se genera cuando el candidato firma la carta oferta o se crea manualmente.
