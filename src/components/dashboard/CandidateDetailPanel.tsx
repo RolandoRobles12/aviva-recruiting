@@ -33,9 +33,8 @@ import {
   sendOfferEmail,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
-import { updateCandidateStatus, updateCandidateNotes, extendFormToken } from '../../services/candidates';
+import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
-import { sendInvitationEmail } from '../../services/functions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -108,12 +107,15 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
     try {
       const linkSettings = await getLinkDurationSettings();
       await extendFormToken(c.id, linkSettings.formDays);
-      await sendInvitationEmail({ candidateId: c.id });
       setTokenExtended(true);
       setTimeout(() => setTokenExtended(false), 4000);
     } finally {
       setExtendingToken(false);
     }
+  };
+
+  const handleMarkValid = async (type: import('../../types').DocumentType) => {
+    await markDocumentAsValid(c.id, type, c);
   };
 
   // Auto-generate formToken when offer is signed but token doesn't exist yet
@@ -230,6 +232,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                 extendingToken={extendingToken}
                 tokenExtended={tokenExtended}
                 onExtendToken={handleExtendToken}
+                onMarkValid={handleMarkValid}
               />
             )}
             {tab === 'offer' && (
@@ -464,7 +467,7 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
    TAB: Documentos
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, tokenExtended, onExtendToken }: {
+function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, tokenExtended, onExtendToken, onMarkValid }: {
   c: Candidate;
   formUrl: string | null;
   formExpired: boolean;
@@ -473,6 +476,7 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
   extendingToken: boolean;
   tokenExtended: boolean;
   onExtendToken: () => void;
+  onMarkValid: (type: import('../../types').DocumentType) => void;
 }) {
   return (
     <div className="px-5 py-4 space-y-5">
@@ -494,12 +498,22 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
         <div className="space-y-2">
           {getCandidateDocTypes(c).map((type) => {
             const docItem = c.documents[type];
+            const status = docItem?.status ?? 'pending';
             return (
-              <CandidateDocumentCard
-                key={type}
-                type={type}
-                doc={docItem ?? { id: type, type, status: 'pending' }}
-              />
+              <div key={type}>
+                <CandidateDocumentCard
+                  type={type}
+                  doc={docItem ?? { id: type, type, status: 'pending' }}
+                />
+                {(status === 'invalid' || status === 'review') && docItem?.fileName && (
+                  <button
+                    onClick={() => onMarkValid(type)}
+                    className="mt-1 w-full flex items-center justify-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 rounded-lg py-1 transition-colors"
+                  >
+                    <CheckCircle size={11} /> Marcar como válido
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

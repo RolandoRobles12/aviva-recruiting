@@ -8,6 +8,8 @@ import { sendEmail } from '../email/gmailClient';
 import { invitationTemplate, contractTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLinkDuration } from '../utils/linkDuration';
+import { updateCandidateCompletion } from '../utils/candidates';
+import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
@@ -47,6 +49,27 @@ export const onCandidateUpdated = functions
 
     const prevStatus = before.status as string;
     const newStatus = after.status as string;
+
+    // ── 0. Recalculate completionPercentage if any document status changed ──
+    // This handles admin overrides (e.g. manual Firestore edits or UI button).
+    // We skip the update if only completionPercentage itself changed (anti-loop).
+    const beforeDocs = (before.documents ?? {}) as Record<string, { status?: string }>;
+    const afterDocs = (after.documents ?? {}) as Record<string, { status?: string }>;
+    const allDocKeys = new Set([
+      ...DOCUMENT_TYPES_REQUIRED,
+      'aviso_retencion',
+      'estado_cuenta_fonacot',
+      ...Object.keys(beforeDocs),
+      ...Object.keys(afterDocs),
+    ]);
+    const docStatusChanged = [...allDocKeys].some(
+      (k) => beforeDocs[k]?.status !== afterDocs[k]?.status,
+    );
+    if (docStatusChanged) {
+      // updateCandidateCompletion reads fresh data and writes completionPercentage + status.
+      // Since it reads from Firestore, it's safe to call even mid-trigger.
+      await updateCandidateCompletion(candidateId);
+    }
 
     // ── 1. offer_signed without formToken → generate form link + send invitation ──
     if (newStatus === 'offer_signed' && !after.formToken) {

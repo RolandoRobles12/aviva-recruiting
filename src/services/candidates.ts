@@ -14,6 +14,7 @@ import {
 import { db } from '../lib/firebase';
 import type { Candidate, CandidateStatus, CreateCandidatePayload, DocumentType, FormAnswers } from '../types';
 import { DOCUMENT_TYPES_REQUIRED } from '../types';
+import { computeCompletion, getCandidateDocTypes } from '../utils/candidateCompletion';
 
 const CANDIDATES_COLLECTION = 'candidates';
 
@@ -169,10 +170,36 @@ export async function updateCandidateFormAnswers(
 export async function markDocumentAsValid(
   candidateId: string,
   documentType: DocumentType,
+  candidate: Candidate,
 ): Promise<void> {
   const candidateRef = doc(db, CANDIDATES_COLLECTION, candidateId);
+
+  // Compute new completion percentage with this document now valid
+  const simulatedCandidate: Candidate = {
+    ...candidate,
+    documents: {
+      ...candidate.documents,
+      [documentType]: { ...candidate.documents[documentType], status: 'valid' },
+    },
+  };
+  const completionPercentage = computeCompletion(simulatedCandidate);
+
+  // Determine if all required docs are now valid → transition to under_review
+  const docTypes = getCandidateDocTypes(simulatedCandidate);
+  const allValid = docTypes.every((t) => simulatedCandidate.documents[t]?.status === 'valid');
+  const hasFormAnswers = candidate.formAnswers != null;
+  const shouldTransitionToReview =
+    allValid &&
+    hasFormAnswers &&
+    candidate.status !== 'under_review' &&
+    candidate.status !== 'contract_sent' &&
+    candidate.status !== 'approved' &&
+    candidate.status !== 'rejected';
+
   await updateDoc(candidateRef, {
     [`documents.${documentType}.status`]: 'valid',
+    completionPercentage,
+    ...(shouldTransitionToReview ? { status: 'under_review' } : {}),
     updatedAt: serverTimestamp(),
   });
 }
