@@ -589,10 +589,14 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
         <>
           {/* Status */}
           <Section title="Estado">
-            {c.offerSignedAt ? (
+            {(c.offerSignedAt || c.status === 'offer_signed') ? (
               <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
                 <CheckCircle size={14} />
-                <span className="font-medium">Firmada el {format(c.offerSignedAt.toDate(), "d MMM yyyy 'a las' HH:mm", { locale: es })}</span>
+                <span className="font-medium">
+                  {c.offerSignedAt
+                    ? `Firmada el ${format(c.offerSignedAt.toDate(), "d MMM yyyy 'a las' HH:mm", { locale: es })}`
+                    : 'Carta firmada'}
+                </span>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
@@ -646,7 +650,7 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
           )}
 
           {/* Resend offer email — only when not yet signed */}
-          {offerUrl && !c.offerSignedAt && (
+          {offerUrl && !c.offerSignedAt && c.status !== 'offer_signed' && (
             <Section title="Correo de carta oferta">
               {offerSendError && (
                 <p className="text-xs text-red-600 mb-2">{offerSendError}</p>
