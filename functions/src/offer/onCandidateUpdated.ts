@@ -1,0 +1,171 @@
+import * as functions from 'firebase-functions/v1';
+import { randomBytes } from 'crypto';
+import { FieldValue } from 'firebase-admin/firestore';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { db } from '../utils/admin';
+import { sendEmail } from '../email/gmailClient';
+import { invitationTemplate, contractTemplate } from '../email/templates';
+import { getRecruiterEmail } from '../utils/recruiters';
+import { getLinkDuration } from '../utils/linkDuration';
+
+const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
+
+function generateToken(): string {
+  return randomBytes(32).toString('hex');
+}
+
+async function findContractTemplate(
+  position: string
+): Promise<{ id: string } | null> {
+  const snap = await db.collection('contract_templates').get();
+  if (snap.empty) return null;
+  const posLower = position.toLowerCase();
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const keywords = (data.positionKeywords as string[]) ?? [];
+    if (keywords.some((kw) => posLower.includes(kw.toLowerCase()))) {
+      return { id: doc.id };
+    }
+  }
+  return { id: snap.docs[0].id };
+}
+
+/**
+ * Firestore trigger: reacts to candidate status changes.
+ *
+ * 1. offer_signed (no formToken) → generate formToken + send invitation email
+ * 2. under_review               → generate contractToken + send contract email
+ */
+export const onCandidateUpdated = functions
+  .region('us-central1')
+  .firestore.document('candidates/{candidateId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    const candidateId = context.params.candidateId;
+
+    const prevStatus = before.status as string;
+    const newStatus = after.status as string;
+
+    // ── 1. offer_signed without formToken → generate form link + send invitation ──
+    if (newStatus === 'offer_signed' && !after.formToken) {
+      try {
+        const now = new Date();
+        const linkDurations = await getLinkDuration();
+        const formToken = generateToken();
+        const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
+
+        await change.after.ref.update({
+          formToken,
+          formExpiresAt,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const appUrl = APP_URL;
+        const formUrl = `${appUrl}/form/${formToken}`;
+        const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+        const { subject, html } = invitationTemplate({
+          firstName: after.firstName as string,
+          lastName: after.lastName as string,
+          position: after.position as string,
+          formUrl,
+          formExpiresAt: formExpiresAtStr,
+        });
+
+        const createdBy = after.createdBy as string;
+        const senderEmail = await getRecruiterEmail(createdBy);
+        await sendEmail({
+          to: after.email as string,
+          subject,
+          html,
+          senderEmail,
+          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+        });
+
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'invitation',
+          sentTo: after.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'onCandidateUpdated_offer_signed',
+          success: true,
+        });
+
+        console.log(`[onCandidateUpdated] formToken generated for ${candidateId}`);
+      } catch (err) {
+        console.error(`[onCandidateUpdated] formToken generation error for ${candidateId}:`, err);
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'invitation',
+          sentTo: after.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'onCandidateUpdated_offer_signed',
+          success: false,
+          error: String(err),
+        });
+      }
+    }
+
+    // ── 2. under_review → auto-generate contract link + send contract email ──
+    if (prevStatus !== 'under_review' && newStatus === 'under_review') {
+      // Skip if contractToken already exists (e.g. set by Viterbit webhook)
+      if (after.contractToken) return null;
+
+      try {
+        const now = new Date();
+        const linkDurations = await getLinkDuration();
+        const contractTokenValue = generateToken();
+        const contractExpiresAt = new Date(now.getTime() + linkDurations.contractDays * 24 * 60 * 60 * 1000);
+
+        const templateMatch = await findContractTemplate(after.position as string ?? '');
+
+        await change.after.ref.update({
+          status: 'contract_sent',
+          contractToken: contractTokenValue,
+          contractExpiresAt,
+          contractTemplateId: templateMatch?.id ?? null,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const appUrl = APP_URL;
+        const contractUrl = `${appUrl}/contract/${contractTokenValue}`;
+        const contractExpiresAtStr = format(contractExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+        const { subject, html } = contractTemplate({
+          firstName: after.firstName as string,
+          lastName: after.lastName as string,
+          position: after.position as string,
+          contractUrl,
+          contractExpiresAt: contractExpiresAtStr,
+        });
+
+        await sendEmail({ to: after.email as string, subject, html });
+
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'contract',
+          sentTo: after.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'onCandidateUpdated_under_review',
+          success: true,
+        });
+
+        console.log(`[onCandidateUpdated] contractToken generated for ${candidateId}`);
+      } catch (err) {
+        console.error(`[onCandidateUpdated] contractToken generation error for ${candidateId}:`, err);
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'contract',
+          sentTo: after.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'onCandidateUpdated_under_review',
+          success: false,
+          error: String(err),
+        });
+      }
+    }
+
+    return null;
+  });
