@@ -239,9 +239,19 @@ export const onDocumentUploaded = onObjectFinalized(
 
       const errorMessage = (err as Error).message || 'Error al procesar el documento.';
 
-      // Strict: mark as invalid (not review)
+      // If the failure is a configuration error (e.g. missing API key), mark for
+      // manual review instead of rejecting the document and emailing the candidate.
+      const isConfigError =
+        errorMessage.includes('apiKey') ||
+        errorMessage.includes('authToken') ||
+        errorMessage.includes('API key') ||
+        errorMessage.includes('authentication') ||
+        errorMessage.includes('ANTHROPIC_API_KEY');
+
+      const docStatus = isConfigError ? 'review' : 'invalid';
+
       await updateCandidateDocument(candidateId, documentType, {
-        status: 'invalid',
+        status: docStatus,
         ocrResult: {
           rawText: '',
           extractedData: {},
@@ -250,11 +260,16 @@ export const onDocumentUploaded = onObjectFinalized(
           validationErrors: [errorMessage],
           processedAt: FieldValue.serverTimestamp(),
         },
-        rejectionReason: errorMessage,
+        ...(isConfigError ? {} : { rejectionReason: errorMessage }),
       });
 
       await updateCandidateCompletion(candidateId);
-      await notifyOcrError(candidateId, documentType, [errorMessage]);
+
+      // Only notify the candidate when the document itself is the problem,
+      // not when OCR failed due to a server configuration issue.
+      if (!isConfigError) {
+        await notifyOcrError(candidateId, documentType, [errorMessage]);
+      }
     }
   }
 );
