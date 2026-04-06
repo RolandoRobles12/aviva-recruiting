@@ -180,6 +180,7 @@ export const signOffer = onRequest(
       const bodyHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
+      const t0 = Date.now();
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await generateOfferPdf({
@@ -189,42 +190,50 @@ export const signOffer = onRequest(
           signatureBase64,
           signedAt: now,
         });
+        console.log(`[signOffer] PDF generated in ${Date.now() - t0}ms`);
       } catch (pdfErr) {
         console.error('[signOffer] PDF generation error:', pdfErr);
         res.status(500).json({ ok: false, error: 'Error al generar el PDF. Intenta de nuevo en unos segundos.' });
         return;
       }
 
-      // ── Upload signature image & PDF to Storage ───────────────────────────────
+      // ── Upload signature PNG & offer PDF to Storage in parallel ───────────────
       const bucket = getStorage().bucket();
-
-      const sigPath = `candidates/${candidateId}/offer_signature.png`;
       const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
-      const sigFile = bucket.file(sigPath);
-      await sigFile.save(Buffer.from(sigBase64, 'base64'), {
-        metadata: { contentType: 'image/png' },
-      });
-      await sigFile.makePublic();
-      const sigUrl = sigFile.publicUrl();
 
-      const pdfPath = `candidates/${candidateId}/carta_oferta_firmada.pdf`;
-      const pdfFile = bucket.file(pdfPath);
-      await pdfFile.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
-      await pdfFile.makePublic();
-      const pdfUrl = pdfFile.publicUrl();
+      let sigUrl: string;
+      let pdfUrl: string;
+      try {
+        [sigUrl, pdfUrl] = await Promise.all([
+          (async () => {
+            const f = bucket.file(`candidates/${candidateId}/offer_signature.png`);
+            await f.save(Buffer.from(sigBase64, 'base64'), { metadata: { contentType: 'image/png' } });
+            await f.makePublic();
+            return f.publicUrl();
+          })(),
+          (async () => {
+            const f = bucket.file(`candidates/${candidateId}/carta_oferta_firmada.pdf`);
+            await f.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
+            await f.makePublic();
+            return f.publicUrl();
+          })(),
+        ]);
+        console.log(`[signOffer] Storage uploads done in ${Date.now() - t0}ms`);
+      } catch (storageErr) {
+        console.error('[signOffer] Storage upload error:', storageErr);
+        res.status(500).json({ ok: false, error: 'Error al guardar los archivos. Intenta de nuevo.' });
+        return;
+      }
 
-      // ── Move candidate in Viterbit to "Documentos" ────────────────────────────
+      // ── Move candidate in Viterbit to "Documentos" (fire-and-forget) ──────────
       const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
       const documentosStageId = stageIds?.documentos;
       const candidatureId = candidate.viterbitCandidatureId as string | undefined;
 
       if (apiKey && documentosStageId && candidatureId) {
-        try {
-          await moveToStage(candidatureId, documentosStageId, apiKey);
-        } catch (err) {
-          console.error('[signOffer] moveToStage documentos error:', err);
-          // Non-fatal: continue so candidate is not blocked
-        }
+        void moveToStage(candidatureId, documentosStageId, apiKey).catch((err) =>
+          console.error('[signOffer] moveToStage documentos error:', err)
+        );
       }
 
       // ── Generate documents form token ─────────────────────────────────────────
@@ -244,6 +253,7 @@ export const signOffer = onRequest(
       });
 
       // ── Respond immediately — email runs in background ───────────────────────
+      console.log(`[signOffer] sending 200 at ${Date.now() - t0}ms`);
       res.status(200).json({ ok: true, pdfUrl });
 
       // ── Fire-and-forget: send invitation email ────────────────────────────────
