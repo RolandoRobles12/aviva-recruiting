@@ -18,12 +18,14 @@ function generateId(): string {
 export function QuestionsTab() {
   const [questions, setQuestions] = useState<FormQuestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     getFormQuestions()
       .then((qs) => setQuestions(qs.sort((a, b) => a.order - b.order)))
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Error al cargar las preguntas'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -106,6 +108,14 @@ export function QuestionsTab() {
     return (
       <div className="flex items-center justify-center h-32">
         <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="card p-4 text-sm text-red-600 bg-red-50 border border-red-200">
+        Error al cargar las preguntas: {loadError}
       </div>
     );
   }

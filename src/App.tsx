@@ -12,6 +12,7 @@ import { ContractTemplatesPage } from './pages/ContractTemplatesPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { GmailCallbackPage } from './pages/GmailCallbackPage';
 import { EmailTemplatesPage } from './pages/EmailTemplatesPage';
+import { FormConfigPage } from './pages/FormConfigPage';
 
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -100,6 +101,16 @@ export default function App() {
           element={
             <PrivateRoute>
               <EmailTemplatesPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Private: form questions & document config */}
+        <Route
+          path="/form-config"
+          element={
+            <PrivateRoute>
+              <FormConfigPage />
             </PrivateRoute>
           }
         />
