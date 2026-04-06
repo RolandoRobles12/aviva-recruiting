@@ -182,13 +182,13 @@ No incluyas texto fuera del JSON. Solo responde con el JSON.`;
 /**
  * Validate a document image using Claude Haiku 4.5 vision.
  *
- * @param imageBuffer - The raw file bytes (JPEG, PNG, or first page of PDF rendered as image)
- * @param mediaType - MIME type of the image
+ * @param fileBuffer - The raw file bytes (JPEG, PNG, WebP, GIF, or PDF)
+ * @param mediaType - MIME type of the file (images or application/pdf)
  * @param documentType - Expected document type (ine, curp, nss, acta_nacimiento, etc.)
  */
 export async function validateDocument(
-  imageBuffer: Buffer,
-  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+  fileBuffer: Buffer,
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | 'application/pdf',
   documentType: string,
   extraContext?: Record<string, string>,
 ): Promise<ValidationResult> {
@@ -228,7 +228,27 @@ export async function validateDocument(
     };
   }
 
-  const base64Image = imageBuffer.toString('base64');
+  const base64Data = fileBuffer.toString('base64');
+
+  // Build the content source — PDFs use 'document' type, images use 'image' type
+  const fileContent: Anthropic.MessageParam['content'][number] =
+    mediaType === 'application/pdf'
+      ? {
+          type: 'document' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: 'application/pdf' as const,
+            data: base64Data,
+          },
+        }
+      : {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: mediaType,
+            data: base64Data,
+          },
+        };
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -238,14 +258,7 @@ export async function validateDocument(
       {
         role: 'user',
         content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: base64Image,
-            },
-          },
+          fileContent,
           {
             type: 'text',
             text: prompt,
