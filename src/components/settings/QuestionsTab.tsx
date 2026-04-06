@@ -3,14 +3,6 @@ import { Plus, Trash2, ChevronUp, ChevronDown, Save, Check, GripVertical } from 
 import type { FormQuestion, QuestionType } from '../../types';
 import { getFormQuestions, saveFormQuestions } from '../../services/formQuestions';
 
-const TYPE_LABELS: Record<QuestionType, string> = {
-  text: 'Texto corto',
-  textarea: 'Texto largo',
-  yes_no: 'Sí / No',
-  radio: 'Opción múltiple (radio)',
-  select: 'Desplegable',
-};
-
 function generateId(): string {
   return `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
