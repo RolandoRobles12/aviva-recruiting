@@ -161,8 +161,11 @@ export function OfferPage() {
       setPdfUrl((json?.pdfUrl as string) ?? null);
       setState('signed');
     } catch (err) {
+      const isAbort = err instanceof Error && err.name === 'AbortError';
       setErrorMsg(
-        err instanceof Error
+        isAbort
+          ? 'La solicitud tardó demasiado. Verifica tu conexión e intenta de nuevo.'
+          : err instanceof Error
           ? err.message
           : 'Error de conexión. Verifica tu internet e intenta de nuevo.'
       );
