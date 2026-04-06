@@ -19,14 +19,21 @@ const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 // ─── Viterbit API ─────────────────────────────────────────────────────────────
 
 async function moveToStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
-  const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
-    method: 'POST',
-    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stage_id: stageId }),
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Viterbit moveToStage ${stageId} → HTTP ${resp.status}: ${text}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000); // 10s max
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage_id: stageId }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Viterbit moveToStage ${stageId} → HTTP ${resp.status}: ${text}`);
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -222,22 +229,18 @@ export const signOffer = onRequest(
         return;
       }
 
-      // ── Fetch live job data from Viterbit API ────────────────────────────────
+      // ── Build candidate data from stored Firestore values (no live API calls) ──
       const apiKey = VITERBIT_API_KEY.value();
-      const jobId = (candidate.viterbitJobId as string) || '';
-
-      const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
 
       const firstNameVal = (candidate.firstName as string) || '';
       const lastNameVal  = (candidate.lastName  as string) || '';
-      // If the name wasn't stored at webhook time, build it from the live job candidate name or email
       const storedFullName = `${firstNameVal} ${lastNameVal}`.trim();
       const candidateFullName = storedFullName
         || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
 
-      const positionVal  = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
-      const salary       = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
-      const startDate    = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'A convenir';
+      const positionVal = (candidate.position as string) || 'Asesor de Ventas';
+      const salary      = (candidate.viterbitSalary as string) || 'A convenir';
+      const startDate   = (candidate.viterbitStartDate as string) || 'A convenir';
 
       const vars: Record<string, string> = {
         name:      candidateFullName,
