@@ -91,6 +91,8 @@ export interface FormQuestion {
   required: boolean;
   enabled: boolean;
   order: number;
+  /** If set, this question maps to a hardcoded field in FormAnswers with special rendering */
+  builtinKey?: string;
 }
 
 // ─── Candidate ────────────────────────────────────────────────────────────────

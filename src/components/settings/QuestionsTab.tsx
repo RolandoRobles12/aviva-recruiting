@@ -1,29 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, ChevronUp, ChevronDown, Save, Check, GripVertical, Lock } from 'lucide-react';
+import { Plus, Trash2, ChevronUp, ChevronDown, Save, Check, GripVertical } from 'lucide-react';
 import type { FormQuestion, QuestionType } from '../../types';
 import { getFormQuestions, saveFormQuestions } from '../../services/formQuestions';
-
-const TYPE_LABELS: Record<QuestionType, string> = {
-  text: 'Texto corto',
-  textarea: 'Texto largo',
-  yes_no: 'Sí / No',
-  radio: 'Opción múltiple (radio)',
-  select: 'Desplegable',
-};
-
-// These questions are always shown to candidates — they cannot be removed or reordered
-const BUILTIN_QUESTIONS = [
-  'Estado civil',
-  '¿Tienes hijos?',
-  '¿Cuentas con crédito INFONAVIT?',
-  '¿Cuentas con un crédito FONACOT?',
-  'Talla de playera',
-  'Cuéntanos sobre ti',
-  '¿Anteriormente has laborado en otra entidad financiera?',
-  'Beneficiario',
-  'Primer contacto de emergencia',
-  'Segundo contacto de emergencia',
-];
 
 function generateId(): string {
   return `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -149,27 +127,11 @@ export function QuestionsTab() {
         </button>
       </div>
 
-      {/* Built-in questions — always included, cannot be edited */}
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide px-1">Incluidas siempre</p>
-        {BUILTIN_QUESTIONS.map((label) => (
-          <div key={label} className="flex items-center gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
-            <Lock size={13} className="text-gray-300 shrink-0" />
-            <span className="text-sm text-gray-500 flex-1">{label}</span>
-            <span className="text-xs text-gray-300">Fija</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Dynamic / custom questions */}
-      <div className="space-y-1 pt-1">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide px-1">Preguntas adicionales</p>
-        {questions.length === 0 && (
-          <div className="card p-6 text-center text-sm text-gray-400">
-            No hay preguntas adicionales. Haz clic en "Agregar pregunta" para crear una.
-          </div>
-        )}
-      </div>
+      {questions.length === 0 && (
+        <div className="card p-6 text-center text-sm text-gray-400">
+          No hay preguntas. Haz clic en "Agregar pregunta" para crear una.
+        </div>
+      )}
 
       {questions.map((q, idx) => (
         <div key={q.id} className="card p-4 space-y-3">
