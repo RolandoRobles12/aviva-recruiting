@@ -317,7 +317,10 @@ export const signOffer = onRequest(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // ── Send documents invitation email ───────────────────────────────────────
+      // ── Respond immediately so the client isn't blocked by email sending ────────
+      res.status(200).json({ ok: true, pdfUrl });
+
+      // ── Send documents invitation email (after response) ──────────────────────
       const appUrl = APP_URL.value();
       const formUrl = `${appUrl}/form/${formToken}`;
       const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
@@ -360,8 +363,6 @@ export const signOffer = onRequest(
           error: String(emailErr),
         });
       }
-
-      res.status(200).json({ ok: true, pdfUrl });
     } catch (err) {
       console.error('[signOffer] Unhandled error:', err);
       res.status(500).json({
@@ -375,7 +376,7 @@ export const signOffer = onRequest(
 // ─── Public endpoint: get offer data by token ─────────────────────────────────
 
 export const getOffer = onRequest(
-  { region: 'us-central1', cors: true, invoker: 'public' },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 120 },
   async (req, res) => {
     if (req.method !== 'GET') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });

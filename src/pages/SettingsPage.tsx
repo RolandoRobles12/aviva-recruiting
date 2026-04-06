@@ -1,22 +1,18 @@
 import { useState } from 'react';
-import { Bell, FileText, Settings, Link, Clock, HelpCircle, Wrench } from 'lucide-react';
+import { Bell, Settings, Link, Clock, Wrench } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { RemindersTab } from '../components/settings/RemindersTab';
-import { DocumentsTab } from '../components/settings/DocumentsTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { LinkDurationTab } from '../components/settings/LinkDurationTab';
-import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { useSettings } from '../hooks/useSettings';
 import { backfillCandidateDocuments } from '../services/functions';
 
-type Tab = 'gmail' | 'reminders' | 'links' | 'documents' | 'questions' | 'admin';
+type Tab = 'gmail' | 'reminders' | 'links' | 'admin';
 
 const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
   { id: 'reminders', label: 'Recordatorios', Icon: Bell },
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
-  { id: 'documents', label: 'Documentos', Icon: FileText },
-  { id: 'questions', label: 'Preguntas', Icon: HelpCircle },
   { id: 'admin', label: 'Admin', Icon: Wrench },
 ];
 
@@ -66,13 +62,11 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('gmail');
   const {
     reminderSettings,
-    documentSettings,
     linkDuration,
     loading,
     saving,
     savedKey,
     saveReminders,
-    saveDocuments,
     saveLinkDuration,
   } = useSettings();
 
@@ -128,15 +122,6 @@ export function SettingsPage() {
                   onSave={saveLinkDuration}
                 />
               )}
-              {activeTab === 'documents' && (
-                <DocumentsTab
-                  settings={documentSettings}
-                  saving={saving}
-                  saved={savedKey === 'documents'}
-                  onSave={saveDocuments}
-                />
-              )}
-              {activeTab === 'questions' && <QuestionsTab />}
               {activeTab === 'admin' && <AdminTab />}
             </>
           )}
