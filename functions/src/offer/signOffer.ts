@@ -37,83 +37,6 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
-interface ViterbitJobLive {
-  title: string;
-  salary: string;
-  hiringManager: string;
-  startDate: string;
-  company: string;
-  departmentProfile: string;
-}
-
-/** Fetch job details live from Viterbit API */
-async function fetchViterbitJobLive(jobId: string, apiKey: string): Promise<ViterbitJobLive> {
-  const empty: ViterbitJobLive = { title: '', salary: '', hiringManager: '', startDate: '', company: '', departmentProfile: '' };
-  try {
-    const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=custom_field_values&includes[]=department_profile`,
-      { headers: { accept: 'application/json', 'X-API-Key': apiKey } },
-    );
-    if (!resp.ok) {
-      console.error(`[signOffer] fetchViterbitJobLive HTTP ${resp.status} for job ${jobId}`);
-      return empty;
-    }
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-
-    // Salary: use salary_min only (as per business requirement)
-    const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
-    let salary = '';
-    if (salaryMin?.amount) {
-      const currency = salaryMin.currency ?? 'MXN';
-      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`;
-    }
-
-    // Viterbit returns custom fields under custom_field_values (requires includes[]=custom_field_values)
-    const custom = (data.custom_field_values as Record<string, unknown>)
-      ?? (data.custom_fields as Record<string, unknown>)
-      ?? {};
-    const getCustom = (key: string): string => {
-      const val = custom[key];
-      if (val && typeof val === 'object' && 'value' in val) return String((val as Record<string, unknown>).value ?? '');
-      return typeof val === 'string' ? val : String((data[key] as string) ?? '');
-    };
-
-    // department_profile comes as object when includes[]=department_profile is used
-    const deptProfileRaw = data.department_profile;
-    const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
-      ? deptProfileRaw as Record<string, unknown>
-      : undefined;
-    const departmentProfile =
-      (deptProfileObj?.name as string) ||
-      (deptProfileObj?.title as string) ||
-      getCustom('job_department_profile') ||
-      getCustom('department_profile') ||
-      '';
-
-    const title = (data.title as string) || (data.name as string) || '';
-    console.log('[signOffer] custom_field_values:', JSON.stringify(custom));
-    console.log('[signOffer] department_profile raw:', JSON.stringify(deptProfileRaw));
-    console.log('[signOffer] job data keys:', Object.keys(data).join(', '));
-    console.log('[signOffer] title:', JSON.stringify(title));
-
-    const result: ViterbitJobLive = {
-      title,
-      salary,
-      hiringManager:  getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '',
-      startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',
-      company:        getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || 'Aviva',
-      departmentProfile,
-    };
-
-    console.log('[signOffer] Parsed job info:', JSON.stringify(result));
-    return result;
-  } catch (err) {
-    console.error('[signOffer] fetchViterbitJobLive error:', err);
-    return empty;
-  }
-}
-
 
 // ─── Helper: interpolate template variables ────────────────────────────────────
 
@@ -417,22 +340,16 @@ export const getOffer = onRequest(
         return;
       }
 
-      // Fetch live job data from Viterbit API (don't rely on stored values)
-      const apiKey = VITERBIT_API_KEY.value();
-      const jobId = (candidate.viterbitJobId as string) || '';
-
-      const jobInfo = jobId && apiKey ? await fetchViterbitJobLive(jobId, apiKey) : null;
-
-      // Candidate name comes from Firestore (set by webhook)
+      // Use stored Firestore values (set by webhook) — no live API calls to avoid hangs
       const firstNameVal = (candidate.firstName as string) || '';
       const lastNameVal  = (candidate.lastName  as string) || '';
       const storedFullName2 = `${firstNameVal} ${lastNameVal}`.trim();
       const candidateFullName2 = storedFullName2
         || (candidate.email as string || '').split('@')[0].replace(/[._-]/g, ' ');
 
-      const positionVal    = jobInfo?.title || (candidate.position as string) || 'Asesor de Ventas';
-      const offerSalary    = jobInfo?.salary || (candidate.viterbitSalary as string) || 'A convenir';
-      const offerStartDate = jobInfo?.startDate || (candidate.viterbitStartDate as string) || 'A convenir';
+      const positionVal    = (candidate.position as string) || 'Asesor de Ventas';
+      const offerSalary    = (candidate.viterbitSalary as string) || 'A convenir';
+      const offerStartDate = (candidate.viterbitStartDate as string) || 'A convenir';
 
       const vars: Record<string, string> = {
         name:      candidateFullName2,
