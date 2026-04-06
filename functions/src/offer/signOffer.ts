@@ -243,14 +243,14 @@ export const signOffer = onRequest(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // ── Respond immediately so the client isn't blocked by email sending ────────
+      // ── Respond immediately — email runs in background ───────────────────────
       res.status(200).json({ ok: true, pdfUrl });
 
-      // ── Send documents invitation email (after response) ──────────────────────
+      // ── Fire-and-forget: send invitation email ────────────────────────────────
+      // Do NOT await — handler must return now so the response is flushed to client.
       const appUrl = APP_URL.value();
       const formUrl = `${appUrl}/form/${formToken}`;
       const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
-
       const { subject, html } = invitationTemplate({
         firstName: candidate.firstName as string,
         lastName: candidate.lastName as string,
@@ -258,37 +258,39 @@ export const signOffer = onRequest(
         formUrl,
         formExpiresAt: formExpiresAtStr,
       });
+      const createdBy = candidate.createdBy as string;
 
-      try {
-        const createdBy = candidate.createdBy as string;
-        const senderEmail = await getRecruiterEmail(createdBy);
-        await sendEmail({
-          to: candidate.email as string,
-          subject,
-          html,
-          senderEmail,
-          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
-        });
-        await db.collection('email_logs').add({
-          candidateId,
-          templateType: 'invitation',
-          sentTo: candidate.email,
-          sentAt: FieldValue.serverTimestamp(),
-          sentBy: 'sign_offer',
-          success: true,
-        });
-      } catch (emailErr) {
-        console.error('[signOffer] send invitation email error:', emailErr);
-        await db.collection('email_logs').add({
-          candidateId,
-          templateType: 'invitation',
-          sentTo: candidate.email,
-          sentAt: FieldValue.serverTimestamp(),
-          sentBy: 'sign_offer',
-          success: false,
-          error: String(emailErr),
-        });
-      }
+      void (async () => {
+        try {
+          const senderEmail = await getRecruiterEmail(createdBy);
+          await sendEmail({
+            to: candidate.email as string,
+            subject,
+            html,
+            senderEmail,
+            recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+          });
+          await db.collection('email_logs').add({
+            candidateId,
+            templateType: 'invitation',
+            sentTo: candidate.email,
+            sentAt: FieldValue.serverTimestamp(),
+            sentBy: 'sign_offer',
+            success: true,
+          });
+        } catch (emailErr) {
+          console.error('[signOffer] send invitation email error:', emailErr);
+          void db.collection('email_logs').add({
+            candidateId,
+            templateType: 'invitation',
+            sentTo: candidate.email,
+            sentAt: FieldValue.serverTimestamp(),
+            sentBy: 'sign_offer',
+            success: false,
+            error: String(emailErr),
+          });
+        }
+      })();
     } catch (err) {
       console.error('[signOffer] Unhandled error:', err);
       res.status(500).json({
