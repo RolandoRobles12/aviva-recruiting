@@ -138,11 +138,19 @@ export function OfferPage() {
     setErrorMsg('');
     try {
       const signatureBase64 = padRef.current.toDataURL('image/png');
-      const resp = await fetch(`${API_BASE}/signOffer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, signatureBase64 }),
-      });
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 60_000); // 60s client timeout
+      let resp: Response;
+      try {
+        resp = await fetch(`${API_BASE}/signOffer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, signatureBase64 }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(fetchTimeout);
+      }
       const json = await safeJson(resp);
       if (!resp.ok) {
         const serverMsg = (json?.error as string) || null;
