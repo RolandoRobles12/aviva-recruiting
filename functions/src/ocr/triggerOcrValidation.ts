@@ -23,7 +23,12 @@ async function notifyOcrError(
     if (!candidate) return;
 
     const documentLabel = DOCUMENT_LABELS[documentType] ?? documentType;
-    const formUrl = `${APP_URL}/form/${candidate.formToken as string}`;
+    const formToken = candidate.formToken as string | undefined;
+    if (!formToken) {
+      console.warn(`[notifyOcrError] candidate ${candidateId} has no formToken — skipping error email`);
+      return;
+    }
+    const formUrl = `${APP_URL}/form/${formToken}`;
 
     const { subject, html } = ocrErrorTemplate(
       {

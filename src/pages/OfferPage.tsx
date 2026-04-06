@@ -37,6 +37,7 @@ export function OfferPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const padRef = useRef<SignaturePad | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const submittingRef = useRef(false);
 
   // Load offer data
   useEffect(() => {
@@ -131,7 +132,8 @@ export function OfferPage() {
   };
 
   const handleSubmit = async () => {
-    if (!token || !padRef.current || padRef.current.isEmpty()) return;
+    if (!token || !padRef.current || padRef.current.isEmpty() || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setErrorMsg('');
     try {
@@ -157,6 +159,7 @@ export function OfferPage() {
           : 'Error de conexión. Verifica tu internet e intenta de nuevo.'
       );
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };

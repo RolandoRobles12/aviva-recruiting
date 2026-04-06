@@ -199,6 +199,8 @@ export const signContract = onRequest(
 
     // Upload to Storage
     const bucket = getStorage().bucket();
+    const uploadedPaths: string[] = [];
+
     // Signature image
     const sigPath = `candidates/${candidateId}/contract_signature.png`;
     const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
@@ -208,6 +210,7 @@ export const signContract = onRequest(
     });
     await sigFile.makePublic();
     const sigUrl = sigFile.publicUrl();
+    uploadedPaths.push(sigPath);
 
     // Signed contract PDF
     const pdfPath = `candidates/${candidateId}/contrato_firmado.pdf`;
@@ -215,6 +218,7 @@ export const signContract = onRequest(
     await pdfFile.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
     await pdfFile.makePublic();
     const pdfUrl = pdfFile.publicUrl();
+    uploadedPaths.push(pdfPath);
 
     // Evidence certificate PDF
     const evidencePath = `candidates/${candidateId}/certificado_firma.pdf`;
@@ -222,6 +226,7 @@ export const signContract = onRequest(
     await evidenceFile.save(evidencePdfBuffer, { metadata: { contentType: 'application/pdf' } });
     await evidenceFile.makePublic();
     const evidenceUrl = evidenceFile.publicUrl();
+    uploadedPaths.push(evidencePath);
 
     // Move in Viterbit to "Correos" stage
     const apiKey = VITERBIT_API_KEY.value();
@@ -237,16 +242,22 @@ export const signContract = onRequest(
       }
     }
 
-    // Update candidate
-    await candidateDoc.ref.update({
-      status: 'contract_signed',
-      contractSignedAt: now,
-      contractSignatureUrl: sigUrl,
-      contractPdfUrl: pdfUrl,
-      contractEvidenceUrl: evidenceUrl,
-      contractEvidence: evidence,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    // Update candidate — if this fails, clean up the uploaded Storage files
+    try {
+      await candidateDoc.ref.update({
+        status: 'contract_signed',
+        contractSignedAt: now,
+        contractSignatureUrl: sigUrl,
+        contractPdfUrl: pdfUrl,
+        contractEvidenceUrl: evidenceUrl,
+        contractEvidence: evidence,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } catch (firestoreErr) {
+      console.error('[signContract] Firestore update failed, cleaning up Storage files:', firestoreErr);
+      await Promise.allSettled(uploadedPaths.map((p) => bucket.file(p).delete()));
+      throw firestoreErr;
+    }
 
     // Log
     await db.collection('email_logs').add({
