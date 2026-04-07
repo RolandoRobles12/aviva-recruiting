@@ -196,13 +196,17 @@ export const signOffer = onRequest(
       const t0 = Date.now();
       let pdfBuffer: Buffer;
       try {
-        pdfBuffer = await generateOfferPdf({
-          candidateName: candidateFullName,
-          position: positionVal,
-          bodyHtml,
-          signatureBase64,
-          signedAt: now,
-        });
+        pdfBuffer = await withTimeout(
+          generateOfferPdf({
+            candidateName: candidateFullName,
+            position: positionVal,
+            bodyHtml,
+            signatureBase64,
+            signedAt: now,
+          }),
+          30_000,
+          'PDF generation'
+        );
         console.log(`[signOffer] PDF generated in ${Date.now() - t0}ms`);
       } catch (pdfErr) {
         console.error('[signOffer] PDF generation error:', pdfErr);
