@@ -185,11 +185,16 @@ function newPage(pdfDoc: PDFDocument, margin: number): PageState {
 // ─── Main PDF generator ───────────────────────────────────────────────────────
 
 export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
+  console.log('[pdfGenerator] PDFDocument.create...');
   const pdfDoc = await PDFDocument.create();
 
+  console.log('[pdfGenerator] embedFont Helvetica...');
   const fReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  console.log('[pdfGenerator] embedFont HelveticaBold...');
   const fBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  console.log('[pdfGenerator] embedFont HelveticaOblique...');
   const fObl  = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+  console.log('[pdfGenerator] fonts embedded, building PDF...');
 
   const margin       = 56;
   const PAGE_W       = 595;
@@ -366,9 +371,11 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
   st.y -= 8;
 
   // Embed signature image
+  console.log('[pdfGenerator] embedPng signature...');
   const base64Data = input.signatureBase64.replace(/^data:image\/png;base64,/, '');
   const sigImageBytes = Buffer.from(base64Data, 'base64');
   const sigImage = await pdfDoc.embedPng(sigImageBytes);
+  console.log('[pdfGenerator] embedPng done');
   const sigDims  = sigImage.scale(0.35);
   const sigWidth  = Math.min(sigDims.width,  200);
   const sigHeight = Math.min(sigDims.height,  52);
@@ -402,6 +409,8 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
     x: margin, y: 10, size: 8, font: fReg, color: gray,
   });
 
+  console.log('[pdfGenerator] saving PDF...');
   const pdfBytes = await pdfDoc.save();
+  console.log('[pdfGenerator] PDF saved.');
   return Buffer.from(pdfBytes);
 }
