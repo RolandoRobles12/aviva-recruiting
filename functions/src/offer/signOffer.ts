@@ -117,6 +117,7 @@ export const signOffer = onRequest(
     }
 
     const { token, signatureBase64 } = req.body as { token?: string; signatureBase64?: string };
+    console.log(`[signOffer] REQUEST received. token=${token ? token.slice(0,8) : 'missing'} sig=${signatureBase64 ? signatureBase64.length + ' chars' : 'missing'}`);
 
     if (!token || !signatureBase64) {
       res.status(400).json({ ok: false, error: 'Se requiere el token y la firma.' });
@@ -125,6 +126,7 @@ export const signOffer = onRequest(
 
     try {
       // ── Find candidate by offerToken ──────────────────────────────────────────
+      console.log('[signOffer] Querying Firestore...');
       const snap = await db
         .collection('candidates')
         .where('offerToken', '==', token)
@@ -180,6 +182,7 @@ export const signOffer = onRequest(
       const bodyHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
+      console.log('[signOffer] Starting PDF generation...');
       const t0 = Date.now();
       let pdfBuffer: Buffer;
       try {
