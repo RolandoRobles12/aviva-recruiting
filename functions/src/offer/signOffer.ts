@@ -198,8 +198,16 @@ export const signOffer = onRequest(
       }
 
       // ── Upload signature PNG & offer PDF to Storage in parallel ───────────────
+      // Each GCS call is wrapped in a 20s timeout — the SDK default totalTimeout
+      // is 600s which would cause the function to hang until the 300s Cloud Run
+      // timeout kills it.
       const bucket = getStorage().bucket();
       const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
+
+      const gcsTimeout = (ms: number, label: string) =>
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`[signOffer] GCS timeout (${label}) after ${ms}ms`)), ms)
+        );
 
       let sigUrl: string;
       let pdfUrl: string;
@@ -207,14 +215,20 @@ export const signOffer = onRequest(
         [sigUrl, pdfUrl] = await Promise.all([
           (async () => {
             const f = bucket.file(`candidates/${candidateId}/offer_signature.png`);
-            await f.save(Buffer.from(sigBase64, 'base64'), { metadata: { contentType: 'image/png' } });
-            await f.makePublic();
+            await Promise.race([
+              f.save(Buffer.from(sigBase64, 'base64'), { metadata: { contentType: 'image/png' } }),
+              gcsTimeout(20_000, 'sig save'),
+            ]);
+            await Promise.race([f.makePublic(), gcsTimeout(10_000, 'sig makePublic')]);
             return f.publicUrl();
           })(),
           (async () => {
             const f = bucket.file(`candidates/${candidateId}/carta_oferta_firmada.pdf`);
-            await f.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
-            await f.makePublic();
+            await Promise.race([
+              f.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } }),
+              gcsTimeout(20_000, 'pdf save'),
+            ]);
+            await Promise.race([f.makePublic(), gcsTimeout(10_000, 'pdf makePublic')]);
             return f.publicUrl();
           })(),
         ]);
