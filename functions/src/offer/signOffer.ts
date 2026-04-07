@@ -117,19 +117,31 @@ export const signOffer = onRequest(
     }
 
     const { token, signatureBase64 } = req.body as { token?: string; signatureBase64?: string };
+    console.log(`[signOffer] REQUEST received. token=${token ? token.slice(0,8) : 'missing'} sig=${signatureBase64 ? signatureBase64.length + ' chars' : 'missing'}`);
 
     if (!token || !signatureBase64) {
       res.status(400).json({ ok: false, error: 'Se requiere el token y la firma.' });
       return;
     }
 
+    // Wrap any promise with a hard timeout — lets us identify which operation hangs.
+    function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`[signOffer] TIMEOUT: ${label} after ${ms}ms`)), ms)
+        ),
+      ]);
+    }
+
     try {
       // ── Find candidate by offerToken ──────────────────────────────────────────
-      const snap = await db
-        .collection('candidates')
-        .where('offerToken', '==', token)
-        .limit(1)
-        .get();
+      console.log('[signOffer] Querying Firestore...');
+      const snap = await withTimeout(
+        db.collection('candidates').where('offerToken', '==', token).limit(1).get(),
+        10_000,
+        'Firestore query'
+      );
 
       if (snap.empty) {
         res.status(404).json({ ok: false, error: 'No se encontró la carta oferta. Verifica tu enlace.' });
@@ -180,6 +192,7 @@ export const signOffer = onRequest(
       const bodyHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
+      console.log('[signOffer] Starting PDF generation...');
       const t0 = Date.now();
       let pdfBuffer: Buffer;
       try {
@@ -252,19 +265,23 @@ export const signOffer = onRequest(
 
       // ── Generate documents form token ─────────────────────────────────────────
       const formToken = randomBytes(32).toString('hex');
-      const linkDurations = await getLinkDuration();
+      const linkDurations = await withTimeout(getLinkDuration(), 8_000, 'getLinkDuration');
       const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
 
       // ── Update candidate in Firestore ─────────────────────────────────────────
-      await candidateDoc.ref.update({
-        status: 'offer_signed',
-        offerSignedAt: now,
-        offerSignatureUrl: sigUrl,
-        offerPdfUrl: pdfUrl,
-        formToken,
-        formExpiresAt,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await withTimeout(
+        candidateDoc.ref.update({
+          status: 'offer_signed',
+          offerSignedAt: now,
+          offerSignatureUrl: sigUrl,
+          offerPdfUrl: pdfUrl,
+          formToken,
+          formExpiresAt,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+        10_000,
+        'Firestore update'
+      );
 
       // ── Respond immediately — email runs in background ───────────────────────
       console.log(`[signOffer] sending 200 at ${Date.now() - t0}ms`);
