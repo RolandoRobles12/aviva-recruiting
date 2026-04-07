@@ -124,14 +124,24 @@ export const signOffer = onRequest(
       return;
     }
 
+    // Wrap any promise with a hard timeout — lets us identify which operation hangs.
+    function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`[signOffer] TIMEOUT: ${label} after ${ms}ms`)), ms)
+        ),
+      ]);
+    }
+
     try {
       // ── Find candidate by offerToken ──────────────────────────────────────────
       console.log('[signOffer] Querying Firestore...');
-      const snap = await db
-        .collection('candidates')
-        .where('offerToken', '==', token)
-        .limit(1)
-        .get();
+      const snap = await withTimeout(
+        db.collection('candidates').where('offerToken', '==', token).limit(1).get(),
+        10_000,
+        'Firestore query'
+      );
 
       if (snap.empty) {
         res.status(404).json({ ok: false, error: 'No se encontró la carta oferta. Verifica tu enlace.' });
@@ -255,19 +265,23 @@ export const signOffer = onRequest(
 
       // ── Generate documents form token ─────────────────────────────────────────
       const formToken = randomBytes(32).toString('hex');
-      const linkDurations = await getLinkDuration();
+      const linkDurations = await withTimeout(getLinkDuration(), 8_000, 'getLinkDuration');
       const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
 
       // ── Update candidate in Firestore ─────────────────────────────────────────
-      await candidateDoc.ref.update({
-        status: 'offer_signed',
-        offerSignedAt: now,
-        offerSignatureUrl: sigUrl,
-        offerPdfUrl: pdfUrl,
-        formToken,
-        formExpiresAt,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await withTimeout(
+        candidateDoc.ref.update({
+          status: 'offer_signed',
+          offerSignedAt: now,
+          offerSignatureUrl: sigUrl,
+          offerPdfUrl: pdfUrl,
+          formToken,
+          formExpiresAt,
+          updatedAt: FieldValue.serverTimestamp(),
+        }),
+        10_000,
+        'Firestore update'
+      );
 
       // ── Respond immediately — email runs in background ───────────────────────
       console.log(`[signOffer] sending 200 at ${Date.now() - t0}ms`);
