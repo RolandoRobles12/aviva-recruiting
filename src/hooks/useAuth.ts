@@ -76,8 +76,8 @@ export function useAuth() {
         try {
           const p = await upsertProfile(firebaseUser);
           setProfile(p);
-        } catch {
-          // Firestore rules pending deploy — non-blocking
+        } catch (err) {
+          console.error('[useAuth] upsertProfile failed:', err);
         }
       } else {
         setProfile(null);

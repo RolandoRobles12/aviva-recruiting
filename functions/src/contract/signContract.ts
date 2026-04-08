@@ -228,21 +228,9 @@ export const signContract = onRequest(
     const evidenceUrl = evidenceFile.publicUrl();
     uploadedPaths.push(evidencePath);
 
-    // Move in Viterbit to "Correos" stage
-    const apiKey = VITERBIT_API_KEY.value();
-    const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
-    const correosStageId = stageIds?.correos;
-    const candidatureId = candidate.viterbitCandidatureId as string | undefined;
-
-    if (apiKey && correosStageId && candidatureId) {
-      try {
-        await moveToStage(candidatureId, correosStageId, apiKey);
-      } catch (err) {
-        console.error('[signContract] moveToStage correos error:', err);
-      }
-    }
-
-    // Update candidate — if this fails, clean up the uploaded Storage files
+    // Update Firestore FIRST — then trigger Viterbit move.
+    // Order matters: if we moved Viterbit first, the "Correos" webhook could fire
+    // and overwrite the status with 'email_pending' before we set 'contract_signed'.
     try {
       await candidateDoc.ref.update({
         status: 'contract_signed',
@@ -257,6 +245,18 @@ export const signContract = onRequest(
       console.error('[signContract] Firestore update failed, cleaning up Storage files:', firestoreErr);
       await Promise.allSettled(uploadedPaths.map((p) => bucket.file(p).delete()));
       throw firestoreErr;
+    }
+
+    // Move in Viterbit to "Correos" stage (fire-and-forget after Firestore is saved)
+    const apiKey = VITERBIT_API_KEY.value();
+    const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
+    const correosStageId = stageIds?.correos;
+    const candidatureId = candidate.viterbitCandidatureId as string | undefined;
+
+    if (apiKey && correosStageId && candidatureId) {
+      void moveToStage(candidatureId, correosStageId, apiKey).catch((err) =>
+        console.error('[signContract] moveToStage correos error:', err)
+      );
     }
 
     // Log
