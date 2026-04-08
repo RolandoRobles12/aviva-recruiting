@@ -202,7 +202,8 @@ export interface RecruiterProfile {
   email: string;
   displayName: string;
   photoUrl?: string;
-  role: 'admin' | 'recruiter';
+  /** 'recruiter' is a legacy value that maps to 'reclutador' */
+  role: 'admin' | 'reclutador' | 'lider' | 'nomina' | 'legal' | 'recruiter';
   createdAt: Timestamp;
   gmailConnected?: boolean;
 }

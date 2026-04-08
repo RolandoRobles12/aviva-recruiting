@@ -13,22 +13,37 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/recruiters/$(request.auth.uid));
     }
 
+    function recruiterData() {
+      return get(/databases/$(database)/documents/recruiters/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
-      return isRecruiter() &&
-        get(/databases/$(database)/documents/recruiters/$(request.auth.uid)).data.role == 'admin';
+      return isRecruiter() && recruiterData().role == 'admin';
     }
 
     // ─── Recruiters ───────────────────────────────────────────────────────────
 
     match /recruiters/{uid} {
-      allow read: if isAuthenticated() && request.auth.uid == uid;
-      allow write: if isAuthenticated() && request.auth.uid == uid;
+      // Each user can read and write their own profile
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+      // Admins can read all profiles (needed for Users management)
       allow read: if isAdmin();
+      // Admins can update any profile (e.g. changing roles)
+      allow update: if isAdmin();
     }
 
     // Gmail OAuth tokens — only Cloud Functions can read/write
     match /recruiters/{uid}/private/gmailTokens {
       allow read, write: if false;
+    }
+
+    // ─── Roles & Permissions ──────────────────────────────────────────────────
+
+    match /roles/{roleId} {
+      // Any authenticated recruiter can read role permissions (needed by useAuth)
+      allow read: if isRecruiter();
+      // Only admins can create or modify role permissions
+      allow write: if isAdmin();
     }
 
     // ─── Candidates ───────────────────────────────────────────────────────────
@@ -38,7 +53,6 @@ service cloud.firestore {
       allow read, write: if isRecruiter();
 
       // Candidates can read their own record via token (no auth needed)
-      // Token verification happens in Cloud Functions / client query
       allow read: if resource.data.formToken != null;
 
       // Candidates can update their documents and questionnaire answers (no auth, identified by token).
@@ -59,13 +73,29 @@ service cloud.firestore {
     // ─── Settings ─────────────────────────────────────────────────────────────
 
     match /settings/{docId} {
-      allow read, write: if isRecruiter();
+      allow read: if isRecruiter();
+      allow write: if isAdmin();
     }
 
     // ─── Offer Templates ──────────────────────────────────────────────────────
 
     match /offer_templates/{templateId} {
-      allow read, write: if isRecruiter();
+      allow read: if isRecruiter();
+      allow write: if isAdmin();
+    }
+
+    // ─── Contract Templates ───────────────────────────────────────────────────
+
+    match /contract_templates/{templateId} {
+      allow read: if isRecruiter();
+      allow write: if isAdmin();
+    }
+
+    // ─── Viterbit Webhook Logs ────────────────────────────────────────────────
+
+    match /viterbit_webhook_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
   }
 }
