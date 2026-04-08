@@ -74,10 +74,8 @@ export function useAuth() {
       setUser(firebaseUser);
       if (firebaseUser) {
         try {
-          const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (profileSnap.exists()) {
-            setProfile(profileSnap.data() as RecruiterProfile);
-          }
+          const p = await upsertProfile(firebaseUser);
+          setProfile(p);
         } catch {
           // Firestore rules pending deploy — non-blocking
         }
