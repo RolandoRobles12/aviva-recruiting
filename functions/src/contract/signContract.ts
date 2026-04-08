@@ -310,8 +310,13 @@ export const getContract = onRequest(
 
     const candidate = snap.docs[0].data();
 
-    if (candidate.status !== 'contract_sent') {
+    if (candidate.status === 'contract_signed') {
       res.status(409).json({ ok: false, error: 'already_signed' });
+      return;
+    }
+    if (candidate.status !== 'contract_sent') {
+      // Status was reset (e.g. by a document review after sending) — treat as not ready yet
+      res.status(409).json({ ok: false, error: 'not_ready' });
       return;
     }
 

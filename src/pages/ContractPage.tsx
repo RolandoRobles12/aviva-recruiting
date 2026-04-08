@@ -16,7 +16,7 @@ interface ContractData {
   expiresAt?: string;
 }
 
-type PageState = 'loading' | 'ready' | 'signed' | 'expired' | 'already_signed' | 'error' | 'server_error';
+type PageState = 'loading' | 'ready' | 'signed' | 'expired' | 'already_signed' | 'not_ready' | 'error' | 'server_error';
 
 /** Safely parse JSON from a response, returning null if it fails */
 async function safeJson(resp: Response): Promise<Record<string, unknown> | null> {
@@ -50,7 +50,11 @@ export function ContractPage() {
     setState('loading');
     fetch(`${API_BASE}/getContract?token=${encodeURIComponent(token)}`)
       .then(async (resp) => {
-        if (resp.status === 409) { setState('already_signed'); return; }
+        if (resp.status === 409) {
+          const json = await safeJson(resp);
+          setState(json?.error === 'not_ready' ? 'not_ready' : 'already_signed');
+          return;
+        }
         if (resp.status === 410) { setState('expired'); return; }
         if (resp.status >= 500) { setState('server_error'); return; }
         if (!resp.ok) { setState('error'); return; }
@@ -235,6 +239,10 @@ export function ContractPage() {
 
   if (state === 'already_signed') {
     return <TerminalCard icon="check" title="Contrato ya firmado" message="Tu contrato ya fue firmado. Revisa tu correo para los siguientes pasos." />;
+  }
+
+  if (state === 'not_ready') {
+    return <TerminalCard icon="clock" title="Contrato no disponible aún" message="Tu contrato no está listo para firmar todavía. Contacta a tu reclutador si crees que esto es un error." />;
   }
 
   if (state === 'expired') {
