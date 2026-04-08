@@ -148,7 +148,21 @@ export const onCandidateUpdated = functions
       }
     }
 
-    // ── 2. under_review → auto-generate contract link + send contract email ──
+    // ── 2. formAnswers submitted for the first time → recalculate completion ──
+    // Scenario: candidate uploads all docs THEN fills the questionnaire.
+    // The storage OCR trigger already ran (without formAnswers), so under_review
+    // was never set. Re-running updateCandidateCompletion here detects 100% and
+    // transitions the status to under_review, which then triggers block 3 below.
+    const prevHasFormAnswers = before.formAnswers != null;
+    const nowHasFormAnswers = after.formAnswers != null;
+    if (!prevHasFormAnswers && nowHasFormAnswers) {
+      await updateCandidateCompletion(candidateId);
+      // updateCandidateCompletion writes the new status to Firestore, which will
+      // fire onCandidateUpdated again — that second invocation handles contract generation.
+      return null;
+    }
+
+    // ── 3. under_review → auto-generate contract link + send contract email ──
     if (prevStatus !== 'under_review' && newStatus === 'under_review') {
       // Skip if contractToken already exists (e.g. set by Viterbit webhook)
       if (after.contractToken) return null;
