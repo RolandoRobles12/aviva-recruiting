@@ -75,7 +75,7 @@ export const gmailOAuthCallback = onRequest(
     try {
       // Verify the UID corresponds to a real recruiter
       await auth.getUser(uid as string);
-      const recruiterSnap = await db.collection('recruiters').doc(uid as string).get();
+      const recruiterSnap = await db.collection('users').doc(uid as string).get();
       if (!recruiterSnap.exists) {
         res.redirect(`${appUrl}/settings?gmail=error&reason=not_recruiter`);
         return;
@@ -90,7 +90,7 @@ export const gmailOAuthCallback = onRequest(
       }
 
       // Store tokens in a private subcollection (not readable by client)
-      await db.doc(`recruiters/${uid}/private/gmailTokens`).set({
+      await db.doc(`users/${uid}/private/gmailTokens`).set({
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expiry_date: tokens.expiry_date,
@@ -99,7 +99,7 @@ export const gmailOAuthCallback = onRequest(
       });
 
       // Mark the recruiter profile as gmail-connected
-      await db.collection('recruiters').doc(uid as string).update({
+      await db.collection('users').doc(uid as string).update({
         gmailConnected: true,
       });
 
@@ -124,7 +124,7 @@ export const disconnectGmail = onCall(
 
     try {
       // Read stored tokens
-      const tokenSnap = await db.doc(`recruiters/${uid}/private/gmailTokens`).get();
+      const tokenSnap = await db.doc(`users/${uid}/private/gmailTokens`).get();
       if (tokenSnap.exists) {
         const tokens = tokenSnap.data() as { access_token?: string; refresh_token?: string };
 
@@ -140,11 +140,11 @@ export const disconnectGmail = onCall(
         }
 
         // Delete stored tokens
-        await db.doc(`recruiters/${uid}/private/gmailTokens`).delete();
+        await db.doc(`users/${uid}/private/gmailTokens`).delete();
       }
 
       // Update recruiter profile
-      await db.collection('recruiters').doc(uid).update({
+      await db.collection('users').doc(uid).update({
         gmailConnected: false,
       });
 

@@ -21,7 +21,7 @@ export function GmailConnectionTab() {
   // Listen for real-time updates to the recruiter profile
   useEffect(() => {
     if (!user) return;
-    const unsubscribe = onSnapshot(doc(db, 'recruiters', user.uid), (snap) => {
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data() as RecruiterProfile;
         setGmailConnected(data.gmailConnected ?? false);

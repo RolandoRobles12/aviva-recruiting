@@ -10,11 +10,11 @@ service cloud.firestore {
 
     function isRecruiter() {
       return isAuthenticated() &&
-        exists(/databases/$(database)/documents/recruiters/$(request.auth.uid));
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
     function recruiterData() {
-      return get(/databases/$(database)/documents/recruiters/$(request.auth.uid)).data;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function isAdmin() {
@@ -23,7 +23,7 @@ service cloud.firestore {
 
     // ─── Recruiters ───────────────────────────────────────────────────────────
 
-    match /recruiters/{uid} {
+    match /users/{uid} {
       // Each user can read and write their own profile
       allow read, write: if isAuthenticated() && request.auth.uid == uid;
       // Admins can read all profiles (needed for Users management)
@@ -33,7 +33,7 @@ service cloud.firestore {
     }
 
     // Gmail OAuth tokens — only Cloud Functions can read/write
-    match /recruiters/{uid}/private/gmailTokens {
+    match /users/{uid}/private/gmailTokens {
       allow read, write: if false;
     }
 
