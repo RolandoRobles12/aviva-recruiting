@@ -645,6 +645,12 @@ async function handleContrato(
 
   const { ref: candidateRef, data: candidate } = found;
 
+  // Idempotency: skip if contract already sent or signed
+  if (candidate.contractToken || candidate.contractSignedAt) {
+    await logRef.update({ status: 'ignored', reason: 'contract already sent or signed', candidateId: candidateRef.id });
+    return { action: 'ignored', candidateId: candidateRef.id };
+  }
+
   // Find contract template
   const templateMatch = await findContractTemplate(candidate.position as string);
 
