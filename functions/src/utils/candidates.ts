@@ -46,10 +46,17 @@ export async function updateCandidateCompletion(candidateId: string) {
   const completionPercentage = Math.round((completedItems / totalItems) * 100);
 
   const currentStatus = candidate.status as string;
+
+  // Statuses that are past the document review phase — never revert these.
+  const TERMINAL_STATUSES = [
+    'contract_sent', 'contract_signed',
+    'email_pending', 'email_ready', 'induction',
+  ];
+
   const allValid = validCount === requiredTypes.length;
   const hasAnyUpload = requiredTypes.some((t) => docs[t]?.status && docs[t].status !== 'pending');
   const newStatus =
-    allValid && hasFormAnswers
+    allValid && hasFormAnswers && !TERMINAL_STATUSES.includes(currentStatus)
       ? 'under_review'
       : hasAnyUpload && currentStatus === 'invited'
       ? 'in_progress'
