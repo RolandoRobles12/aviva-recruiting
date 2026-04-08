@@ -368,6 +368,16 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               <Send size={12} />
               {sendingReminder ? 'Enviando...' : 'Enviar recordatorio'}
             </button>
+            {/* Trigger contract generation for candidates stuck at 100% before under_review */}
+            {computeCompletion(c) === 100 &&
+              ['offer_signed', 'invited', 'in_progress'].includes(c.status) && (
+              <button
+                onClick={() => updateCandidateStatus(c.id, 'under_review')}
+                className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 text-white px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+              >
+                <FileText size={12} /> Generar contrato
+              </button>
+            )}
             {c.status === 'under_review' && (
               <div className="flex gap-2">
                 <button

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { useAuth } from './hooks/useAuth';
+import type { PermissionKey } from './types/permissions';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CandidateFormPage } from './pages/CandidateFormPage';
@@ -13,105 +14,111 @@ import { DocumentsPage } from './pages/DocumentsPage';
 import { GmailCallbackPage } from './pages/GmailCallbackPage';
 import { EmailTemplatesPage } from './pages/EmailTemplatesPage';
 import { FormConfigPage } from './pages/FormConfigPage';
+import { RolesPage } from './pages/RolesPage';
 
+function Spinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+/** Redirects to /login if unauthenticated */
 function PrivateRoute({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <Spinner />;
   return user ? children : <Navigate to="/login" replace />;
+}
+
+/** Redirects to / if authenticated but lacks the required permission */
+function PermissionRoute({
+  permission,
+  children,
+}: {
+  permission: PermissionKey;
+  children: ReactElement;
+}) {
+  const { user, loading, can } = useAuth();
+  if (loading) return <Spinner />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!can(permission)) return <Navigate to="/" replace />;
+  return children;
 }
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public: candidate document form */}
-        <Route path="/form/:token" element={<CandidateFormPage />} />
-
-        {/* Public: candidate offer letter & signature */}
-        <Route path="/offer/:token" element={<OfferPage />} />
-
-        {/* Public: candidate contract signing */}
+        {/* ── Public: candidate flows (token-protected) ── */}
+        <Route path="/form/:token"     element={<CandidateFormPage />} />
+        <Route path="/offer/:token"    element={<OfferPage />} />
         <Route path="/contract/:token" element={<ContractPage />} />
+        <Route path="/gmail/callback"  element={<GmailCallbackPage />} />
+        <Route path="/login"           element={<LoginPage />} />
 
-        {/* Gmail OAuth callback — redirects to /settings with status */}
-        <Route path="/gmail/callback" element={<GmailCallbackPage />} />
+        {/* ── Dashboard (requires being logged in) ── */}
+        <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
 
-        {/* Auth */}
-        <Route path="/login" element={<LoginPage />} />
-
-        {/* Private: recruiter dashboard */}
+        {/* ── Documents / Expedientes ── */}
         <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <DashboardPage />
-            </PrivateRoute>
-          }
+          path="/documents"
+          element={<PrivateRoute><DocumentsPage /></PrivateRoute>}
         />
 
-        {/* Private: settings */}
-        <Route
-          path="/settings"
-          element={
-            <PrivateRoute>
-              <SettingsPage />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Private: offer letter templates */}
+        {/* ── Templates (requires config_templates permission) ── */}
         <Route
           path="/offer-templates"
           element={
-            <PrivateRoute>
+            <PermissionRoute permission="config_templates">
               <OfferTemplatesPage />
-            </PrivateRoute>
+            </PermissionRoute>
           }
         />
-
-        {/* Private: documents */}
-        <Route
-          path="/documents"
-          element={
-            <PrivateRoute>
-              <DocumentsPage />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Private: contract templates */}
         <Route
           path="/contract-templates"
           element={
-            <PrivateRoute>
+            <PermissionRoute permission="config_templates">
               <ContractTemplatesPage />
-            </PrivateRoute>
+            </PermissionRoute>
           }
         />
-
-        {/* Private: email templates */}
         <Route
           path="/email-templates"
           element={
-            <PrivateRoute>
+            <PermissionRoute permission="config_templates">
               <EmailTemplatesPage />
-            </PrivateRoute>
+            </PermissionRoute>
           }
         />
 
-        {/* Private: form questions & document config */}
+        {/* ── Form config (requires config_form) ── */}
         <Route
           path="/form-config"
           element={
-            <PrivateRoute>
+            <PermissionRoute permission="config_form">
               <FormConfigPage />
-            </PrivateRoute>
+            </PermissionRoute>
+          }
+        />
+
+        {/* ── Settings (requires config_settings) ── */}
+        <Route
+          path="/settings"
+          element={
+            <PermissionRoute permission="config_settings">
+              <SettingsPage />
+            </PermissionRoute>
+          }
+        />
+
+        {/* ── Roles & Permissions (requires admin_manage_roles) ── */}
+        <Route
+          path="/roles"
+          element={
+            <PermissionRoute permission="admin_manage_roles">
+              <RolesPage />
+            </PermissionRoute>
           }
         />
 

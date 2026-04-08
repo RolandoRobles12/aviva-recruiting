@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../lib/firebase';
 import type { RecruiterProfile } from '../types';
+import type { PermissionKey, RolePermissions } from '../types/permissions';
+import { ROLE_DEFAULTS, ALL_PERMISSIONS, normalizeRole } from '../types/permissions';
 
 async function upsertProfile(firebaseUser: User): Promise<RecruiterProfile> {
   const profileRef = doc(db, 'recruiters', firebaseUser.uid);
@@ -18,7 +20,7 @@ async function upsertProfile(firebaseUser: User): Promise<RecruiterProfile> {
       email: firebaseUser.email!,
       displayName: firebaseUser.displayName ?? 'Reclutador',
       photoUrl: firebaseUser.photoURL ?? undefined,
-      role: 'recruiter',
+      role: 'reclutador',
       createdAt: serverTimestamp() as never,
     };
     await setDoc(profileRef, newProfile);
@@ -30,8 +32,42 @@ async function upsertProfile(firebaseUser: User): Promise<RecruiterProfile> {
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<RecruiterProfile | null>(null);
+  const [permissions, setPermissions] = useState<RolePermissions | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Subscribe to role permissions in Firestore whenever the user's role changes
+  useEffect(() => {
+    if (!profile?.role) {
+      setPermissions(null);
+      return;
+    }
+
+    const role = normalizeRole(profile.role as Parameters<typeof normalizeRole>[0]);
+
+    if (role === 'admin') {
+      setPermissions(ALL_PERMISSIONS);
+      return;
+    }
+
+    // Pre-populate with hardcoded defaults immediately (no flash)
+    setPermissions(ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS.reclutador);
+
+    // Then subscribe for live Firestore updates (admin can edit permissions in real-time)
+    const unsubscribe = onSnapshot(
+      doc(db, 'roles', role),
+      (snap) => {
+        if (snap.exists() && snap.data().permissions) {
+          setPermissions(snap.data().permissions as RolePermissions);
+        }
+      },
+      () => {
+        // Permission denied or offline — keep defaults already set
+      }
+    );
+
+    return unsubscribe;
+  }, [profile?.role]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -47,12 +83,28 @@ export function useAuth() {
         }
       } else {
         setProfile(null);
+        setPermissions(null);
       }
       setLoading(false);
     });
 
     return unsubscribe;
   }, []);
+
+  /**
+   * Check if the current user has a specific permission.
+   * Admin always returns true. Falls back to hardcoded defaults while Firestore loads.
+   */
+  const can = useCallback(
+    (permission: PermissionKey): boolean => {
+      if (!profile) return false;
+      const role = normalizeRole(profile.role as Parameters<typeof normalizeRole>[0]);
+      if (role === 'admin') return true;
+      const perms = permissions ?? ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS.reclutador;
+      return perms[permission] ?? false;
+    },
+    [profile, permissions]
+  );
 
   const signInWithGoogle = async () => {
     setAuthError(null);
@@ -90,5 +142,5 @@ export function useAuth() {
 
   const signOut = () => firebaseSignOut(auth);
 
-  return { user, profile, loading, authError, signInWithGoogle, signOut };
+  return { user, profile, permissions, loading, authError, can, signInWithGoogle, signOut };
 }
