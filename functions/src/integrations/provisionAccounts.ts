@@ -1,10 +1,30 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { createHubSpotUser } from './hubspotService';
 import { inviteSlackDual } from './slackService';
 import { sendEmail } from '../email/gmailClient';
 import { inductionTemplate } from '../email/templates';
+
+const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
+const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
+
+async function moveToViterbitStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage_id: stageId }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`moveToStage ${stageId} → HTTP ${resp.status}: ${text}`);
+    }
+  } catch (err) {
+    console.error('[provisionManual] moveToViterbitStage error:', err);
+  }
+}
 
 interface ProvisionRequest {
   candidateId: string;
@@ -83,9 +103,18 @@ export const provisionAccountsManual = onCall(
     };
     if (hubspotOk) {
       firestoreUpdate.corporateEmail = corporateEmail;
-      firestoreUpdate.status = 'email_ready';
+      firestoreUpdate.status = 'induction';
     }
     await docRef.update(firestoreUpdate);
+
+    // Move candidate to "Inducción" stage in Viterbit
+    const apiKey = VITERBIT_API_KEY.value();
+    const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
+    const viterbitStageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
+    const induccionStageId = viterbitStageIds?.induccion;
+    if (apiKey && viterbitCandidatureId && induccionStageId) {
+      void moveToViterbitStage(viterbitCandidatureId, induccionStageId, apiKey);
+    }
 
     // Send induction email
     try {

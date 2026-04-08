@@ -12,6 +12,23 @@ import { updateCandidateCompletion } from '../utils/candidates';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
+const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
+
+async function moveToViterbitStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage_id: stageId }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`moveToStage ${stageId} → HTTP ${resp.status}: ${text}`);
+    }
+  } catch (err) {
+    console.error('[onCandidateUpdated] moveToViterbitStage error:', err);
+  }
+}
 
 function generateToken(): string {
   return randomBytes(32).toString('hex');
@@ -136,6 +153,7 @@ export const onCandidateUpdated = functions
       // Skip if contractToken already exists (e.g. set by Viterbit webhook)
       if (after.contractToken) return null;
 
+
       try {
         const now = new Date();
         const linkDurations = await getLinkDuration();
@@ -176,6 +194,15 @@ export const onCandidateUpdated = functions
         });
 
         console.log(`[onCandidateUpdated] contractToken generated for ${candidateId}`);
+
+        // Move candidate to "Contrato" stage in Viterbit
+        const viterbitApiKey = process.env.VITERBIT_API_KEY;
+        const viterbitCandidatureId = after.viterbitCandidatureId as string | undefined;
+        const viterbitStageIds = after.viterbitStageIds as Record<string, string> | undefined;
+        const contratoStageId = viterbitStageIds?.contrato;
+        if (viterbitApiKey && viterbitCandidatureId && contratoStageId) {
+          void moveToViterbitStage(viterbitCandidatureId, contratoStageId, viterbitApiKey);
+        }
       } catch (err) {
         console.error(`[onCandidateUpdated] contractToken generation error for ${candidateId}:`, err);
         await db.collection('email_logs').add({
