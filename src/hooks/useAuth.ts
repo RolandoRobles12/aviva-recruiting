@@ -12,7 +12,7 @@ import type { PermissionKey, RolePermissions } from '../types/permissions';
 import { ROLE_DEFAULTS, ALL_PERMISSIONS, normalizeRole } from '../types/permissions';
 
 async function upsertProfile(firebaseUser: User): Promise<RecruiterProfile> {
-  const profileRef = doc(db, 'recruiters', firebaseUser.uid);
+  const profileRef = doc(db, 'users', firebaseUser.uid);
   const profileSnap = await getDoc(profileRef);
   if (!profileSnap.exists()) {
     const newProfile: RecruiterProfile = {
@@ -74,7 +74,7 @@ export function useAuth() {
       setUser(firebaseUser);
       if (firebaseUser) {
         try {
-          const profileSnap = await getDoc(doc(db, 'recruiters', firebaseUser.uid));
+          const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (profileSnap.exists()) {
             setProfile(profileSnap.data() as RecruiterProfile);
           }

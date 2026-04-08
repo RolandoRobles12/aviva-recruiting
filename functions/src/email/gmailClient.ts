@@ -17,7 +17,7 @@ const GMAIL_DEFAULT_SENDER = defineString('GMAIL_DEFAULT_SENDER', { default: '' 
  * Returns null if the recruiter has no stored tokens.
  */
 async function getOAuthGmailClient(recruiterUid: string) {
-  const tokenSnap = await db.doc(`recruiters/${recruiterUid}/private/gmailTokens`).get();
+  const tokenSnap = await db.doc(`users/${recruiterUid}/private/gmailTokens`).get();
   if (!tokenSnap.exists) return null;
 
   const tokens = tokenSnap.data() as {
@@ -47,7 +47,7 @@ async function getOAuthGmailClient(recruiterUid: string) {
     if (newTokens.refresh_token) {
       update.refresh_token = newTokens.refresh_token;
     }
-    await db.doc(`recruiters/${recruiterUid}/private/gmailTokens`).update(update);
+    await db.doc(`users/${recruiterUid}/private/gmailTokens`).update(update);
   });
 
   return google.gmail({ version: 'v1', auth: oauth2Client });
@@ -96,7 +96,7 @@ export async function sendEmail(options: {
     gmail = await getOAuthGmailClient(options.recruiterUid);
     if (gmail) {
       // Fetch recruiter email for the From header
-      const recruiterSnap = await db.collection('recruiters').doc(options.recruiterUid).get();
+      const recruiterSnap = await db.collection('users').doc(options.recruiterUid).get();
       if (recruiterSnap.exists) {
         sender = (recruiterSnap.data() as { email?: string }).email ?? sender;
       }

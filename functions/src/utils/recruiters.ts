@@ -8,7 +8,7 @@ export async function getRecruiterEmail(uid: string): Promise<string | undefined
   if (!uid || uid === 'viterbit_webhook') return undefined;
 
   try {
-    const snap = await db.collection('recruiters').doc(uid).get();
+    const snap = await db.collection('users').doc(uid).get();
     if (snap.exists) {
       return (snap.data() as { email?: string }).email;
     }

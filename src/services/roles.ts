@@ -42,12 +42,12 @@ export async function updateRolePermissions(
 // ─── Users (recruiters) ────────────────────────────────────────────────────────
 
 export async function getAllRecruiters(): Promise<RecruiterProfile[]> {
-  const snap = await getDocs(collection(db, 'recruiters'));
+  const snap = await getDocs(collection(db, 'users'));
   return snap.docs.map((d) => d.data() as RecruiterProfile);
 }
 
 export async function updateUserRole(uid: string, role: RoleType): Promise<void> {
-  await updateDoc(doc(db, 'recruiters', uid), {
+  await updateDoc(doc(db, 'users', uid), {
     role,
     updatedAt: serverTimestamp(),
   });
