@@ -197,8 +197,8 @@ export function ContractTemplatesPage() {
     }
   }, [pdfStoragePath]);
 
-  const updateVarMapping = (index: number, variable: string) => {
-    setVariableMappings((prev) => prev.map((m, i) => (i === index ? { ...m, variable } : m)));
+  const updateVarMapping = (index: number, variableName: string) => {
+    setVariableMappings((prev) => prev.map((m, i) => (i === index ? { ...m, variableName } : m)));
   };
 
   const removeField = (fieldId: string) => {
@@ -845,7 +845,7 @@ export function ContractTemplatesPage() {
                                       <p className="text-[10px] text-gray-400 mt-0.5">pág. {ph.pageIndex + 1}</p>
                                     </div>
                                     <select
-                                      value={variableMappings[idx]?.variable || ''}
+                                      value={variableMappings[idx]?.variableName || ''}
                                       onChange={(e) => updateVarMapping(idx, e.target.value)}
                                       className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 shrink-0 max-w-[170px]"
                                     >
@@ -886,10 +886,10 @@ export function ContractTemplatesPage() {
                                       {idx + 1}
                                     </span>
                                     <span className="flex-1 text-xs text-gray-400 italic">
-                                      {VARIABLES.find((v) => v.id === m.variable)?.description?.split('.')[0] || `Placeholder #${idx + 1}`}
+                                      {VARIABLES.find((v) => v.id === m.variableName)?.description?.split('.')[0] || `Placeholder #${idx + 1}`}
                                     </span>
                                     <select
-                                      value={m.variable || ''}
+                                      value={m.variableName || ''}
                                       onChange={(e) => updateVarMapping(idx, e.target.value)}
                                       className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 shrink-0 max-w-[170px]"
                                     >
