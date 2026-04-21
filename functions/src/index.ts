@@ -1,5 +1,6 @@
 export { sendInvitationEmail } from './email/sendInvitationEmail';
 export { sendReminderEmail } from './email/sendReminderEmail';
+export { sendContractEmail } from './email/sendContractEmail';
 export { scheduleReminders } from './email/scheduleReminders';
 export { getGmailAuthUrl, gmailOAuthCallback, disconnectGmail } from './email/gmailOAuth';
 export { onDocumentUploaded } from './ocr/triggerOcrValidation';

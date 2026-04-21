@@ -190,7 +190,7 @@ export function ContractTemplatesPage() {
       const result = await analyzeContractVariables(pdfStoragePath);
       setDetectedPlaceholders(result.placeholders);
       setVariableMappings(result.variableMappings);
-      if (result.signatureFields.length > 0) {
+      if ((result.signatureFields ?? []).length > 0) {
         setSignatureFields(result.signatureFields);
       }
     } catch (err) {

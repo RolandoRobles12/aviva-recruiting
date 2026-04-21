@@ -31,6 +31,8 @@ import {
   sendReminderEmail,
   provisionAccountsManual,
   sendOfferEmail,
+  sendInvitationEmail,
+  sendContractEmail,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid } from '../../services/candidates';
@@ -488,6 +490,23 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
   onExtendToken: () => void;
   onMarkValid: (type: import('../../types').DocumentType) => void;
 }) {
+  const [sendingInvitation, setSendingInvitation] = useState(false);
+  const [invitationSent, setInvitationSent] = useState(false);
+  const [invitationError, setInvitationError] = useState('');
+
+  async function handleSendInvitation() {
+    setSendingInvitation(true);
+    setInvitationError('');
+    try {
+      await sendInvitationEmail({ candidateId: c.id });
+      setInvitationSent(true);
+      setTimeout(() => setInvitationSent(false), 3000);
+    } catch (err: unknown) {
+      setInvitationError(err instanceof Error ? err.message : 'Error al enviar.');
+    } finally {
+      setSendingInvitation(false);
+    }
+  }
   return (
     <div className="px-5 py-4 space-y-5">
       {/* Progress */}
@@ -571,6 +590,20 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
                 ? '¡Enlace renovado y enviado!'
                 : 'Renovar enlace (+7 días) y reenviar'}
             </button>
+          )}
+
+          {!formExpired && c.status !== 'approved' && c.status !== 'rejected' && (
+            <>
+              {invitationError && <p className="text-xs text-red-600 mt-2">{invitationError}</p>}
+              <button
+                onClick={handleSendInvitation}
+                disabled={sendingInvitation}
+                className="mt-2 w-full flex items-center justify-center gap-2 bg-primary-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors disabled:opacity-60"
+              >
+                {sendingInvitation ? <RefreshCw size={13} className="animate-spin" /> : invitationSent ? <Check size={13} /> : <Send size={13} />}
+                {invitationSent ? '¡Correo enviado!' : 'Enviar correo de invitación'}
+              </button>
+            </>
           )}
         </Section>
       )}
@@ -720,6 +753,24 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
   copied: boolean;
   onCopy: (text: string) => void;
 }) {
+  const [sendingContract, setSendingContract] = useState(false);
+  const [contractSent, setContractSent] = useState(false);
+  const [contractSendError, setContractSendError] = useState('');
+
+  async function handleResendContract() {
+    setSendingContract(true);
+    setContractSendError('');
+    try {
+      await sendContractEmail({ candidateId: c.id });
+      setContractSent(true);
+      setTimeout(() => setContractSent(false), 3000);
+    } catch (err: unknown) {
+      setContractSendError(err instanceof Error ? err.message : 'Error al enviar.');
+    } finally {
+      setSendingContract(false);
+    }
+  }
+
   return (
     <div className="px-5 py-4 space-y-5">
       {!contractUrl ? (
@@ -810,6 +861,20 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
             </Section>
           )}
 
+          {/* Resend contract email — only when not yet signed */}
+          {!c.contractSignedAt && c.status !== 'contract_signed' && (
+            <Section title="Correo del contrato">
+              {contractSendError && <p className="text-xs text-red-600 mb-2">{contractSendError}</p>}
+              <button
+                onClick={handleResendContract}
+                disabled={sendingContract}
+                className="flex items-center gap-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60 w-full justify-center"
+              >
+                {sendingContract ? <RefreshCw size={13} className="animate-spin" /> : contractSent ? <Check size={13} /> : <Send size={13} />}
+                {contractSent ? 'Correo enviado' : 'Reenviar correo de contrato'}
+              </button>
+            </Section>
+          )}
         </>
       )}
     </div>
