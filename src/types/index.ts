@@ -237,6 +237,9 @@ export interface PdfVariableMapping {
   y: number;
   fontSize: number;
   fontWeight?: 'normal' | 'bold';
+  placeholderWidth?: number;
+  placeholderHeight?: number;
+  erasePlaceholder?: boolean;
 }
 
 export interface ContractTemplate {

@@ -327,11 +327,35 @@ export async function generatePdfContract(
       const pageIndex = Math.min(mapping.pageIndex, pages.length - 1);
       const page = pages[pageIndex];
       const font = mapping.fontWeight === 'bold' ? fontBold : fontRegular;
+      const baseFontSize = mapping.fontSize || 10;
+
+      // Erase the *** placeholder with a white rectangle before drawing the value
+      if (mapping.erasePlaceholder) {
+        const eraseW = mapping.placeholderWidth ?? baseFontSize * 2;
+        const eraseH = mapping.placeholderHeight ?? baseFontSize * 1.4;
+        page.drawRectangle({
+          x: mapping.x - 1,
+          y: mapping.y - 2,
+          width: eraseW + 2,
+          height: eraseH + 2,
+          color: rgb(1, 1, 1),
+          borderWidth: 0,
+        });
+      }
+
+      // Auto-shrink font if the value is wider than the erased area
+      let fontSize = baseFontSize;
+      if (mapping.placeholderWidth) {
+        const textW = font.widthOfTextAtSize(value, baseFontSize);
+        if (textW > mapping.placeholderWidth) {
+          fontSize = Math.max(6, baseFontSize * (mapping.placeholderWidth / textW));
+        }
+      }
 
       page.drawText(value, {
         x: mapping.x,
         y: mapping.y,
-        size: mapping.fontSize || 10,
+        size: fontSize,
         font,
         color: dark,
       });

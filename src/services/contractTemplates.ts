@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
-import type { ContractTemplate, PdfFieldPosition } from '../types';
+import type { ContractTemplate, PdfFieldPosition, PdfVariableMapping } from '../types';
 
 const COL = 'contract_templates';
 const API_BASE = import.meta.env.VITE_FUNCTIONS_URL ?? '';
@@ -105,4 +105,38 @@ export async function analyzePdfTemplate(
 
   const json = await resp.json();
   return json.analysis;
+}
+
+export interface DetectedPlaceholder {
+  occurrence: number;
+  variable: string;
+  context: string;
+  pageIndex: number;
+  xPercent: number;
+  yPercent: number;
+  fontSize: number;
+  pageDimensions: { width: number; height: number };
+}
+
+/**
+ * Call the analyzeContractVariables Cloud Function.
+ * Sends the PDF to Claude, which detects each *** placeholder and identifies the variable.
+ */
+export async function analyzeContractVariables(storagePath: string): Promise<{
+  placeholders: DetectedPlaceholder[];
+  variableMappings: PdfVariableMapping[];
+  pageDimensions: Array<{ width: number; height: number }>;
+}> {
+  const resp = await fetch(`${API_BASE}/analyzeContractVariables`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storagePath }),
+  });
+
+  if (!resp.ok) {
+    const json = await resp.json().catch(() => ({}));
+    throw new Error((json as { error?: string }).error || `Error al analizar el contrato: HTTP ${resp.status}`);
+  }
+
+  return resp.json();
 }

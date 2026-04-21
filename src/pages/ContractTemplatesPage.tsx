@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { FileText, Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, Upload, FileCode, Eye, AlertCircle, Check } from 'lucide-react';
+import { FileText, Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, Upload, FileCode, Eye, AlertCircle, Check, Brain } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
   getContractTemplates,
@@ -9,9 +9,11 @@ import {
   deleteContractTemplate,
   uploadContractPdf,
   analyzePdfTemplate,
+  analyzeContractVariables,
 } from '../services/contractTemplates';
-import { RichTextEditor } from '../components/offer/RichTextEditor';
-import type { ContractTemplate, ContractTemplateType, PdfFieldPosition } from '../types';
+import type { DetectedPlaceholder } from '../services/contractTemplates';
+import { RichTextEditor, VARIABLES } from '../components/offer/RichTextEditor';
+import type { ContractTemplate, ContractTemplateType, PdfFieldPosition, PdfVariableMapping } from '../types';
 
 type FormValues = {
   name: string;
@@ -74,6 +76,12 @@ export function ContractTemplatesPage() {
   const [initialsOnEveryPage, setInitialsOnEveryPage] = useState(true);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
+  // AI variable analysis
+  const [variableMappings, setVariableMappings] = useState<PdfVariableMapping[]>([]);
+  const [detectedPlaceholders, setDetectedPlaceholders] = useState<DetectedPlaceholder[]>([]);
+  const [analyzingVars, setAnalyzingVars] = useState(false);
+  const [varAnalysisError, setVarAnalysisError] = useState<string | null>(null);
+
   const { register, handleSubmit, reset } = useForm<FormValues>();
 
   const load = async () => {
@@ -95,6 +103,9 @@ export function ContractTemplatesPage() {
     setSignatureFields([]);
     setInitialsOnEveryPage(true);
     setPdfError(null);
+    setVariableMappings([]);
+    setDetectedPlaceholders([]);
+    setVarAnalysisError(null);
   };
 
   const openCreate = () => {
@@ -117,6 +128,9 @@ export function ContractTemplatesPage() {
     setPdfAnalysis(null);
     setPdfError(null);
     setPdfFile(null);
+    setVariableMappings(t.variableMappings || []);
+    setDetectedPlaceholders([]);
+    setVarAnalysisError(null);
     reset({
       name: t.name,
       positionKeywordsRaw: (t.positionKeywords ?? []).join(', '),
@@ -168,6 +182,25 @@ export function ContractTemplatesPage() {
     if (file) handlePdfUpload(file);
   }, [handlePdfUpload]);
 
+  const handleAnalyzeVars = useCallback(async () => {
+    if (!pdfStoragePath) return;
+    setAnalyzingVars(true);
+    setVarAnalysisError(null);
+    try {
+      const result = await analyzeContractVariables(pdfStoragePath);
+      setDetectedPlaceholders(result.placeholders);
+      setVariableMappings(result.variableMappings);
+    } catch (err) {
+      setVarAnalysisError(err instanceof Error ? err.message : 'Error al analizar variables');
+    } finally {
+      setAnalyzingVars(false);
+    }
+  }, [pdfStoragePath]);
+
+  const updateVarMapping = (index: number, variable: string) => {
+    setVariableMappings((prev) => prev.map((m, i) => (i === index ? { ...m, variable } : m)));
+  };
+
   const removeField = (fieldId: string) => {
     setSignatureFields((prev) => prev.filter((f) => f.id !== fieldId));
   };
@@ -210,7 +243,7 @@ export function ContractTemplatesPage() {
       pdfPageCount: templateType === 'pdf' ? pdfPageCount : undefined,
       pdfFileSize: templateType === 'pdf' && pdfAnalysis ? pdfAnalysis.fileSize : undefined,
       signatureFields: templateType === 'pdf' ? signatureFields : undefined,
-      variableMappings: undefined,
+      variableMappings: templateType === 'pdf' && variableMappings.length > 0 ? variableMappings : undefined,
       initialsOnEveryPage,
       initialsPosition: undefined,
     };
@@ -739,6 +772,135 @@ export function ContractTemplatesPage() {
                             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
                               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                               <p className="text-sm text-blue-700 font-medium">Analizando PDF y detectando campos de firma...</p>
+                            </div>
+                          )}
+
+                          {/* AI variable analysis */}
+                          {!analyzingVars && detectedPlaceholders.length === 0 && variableMappings.length === 0 && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                              <div className="flex items-center gap-3">
+                                <Brain size={18} className="text-purple-600 shrink-0" />
+                                <div>
+                                  <p className="text-sm font-medium text-purple-800">Detectar variables con IA</p>
+                                  <p className="text-xs text-purple-600 mt-0.5">Claude identifica cada *** del contrato y lo mapea a la variable correcta</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleAnalyzeVars}
+                                className="px-4 py-2 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition-colors whitespace-nowrap shrink-0"
+                              >
+                                Analizar con IA
+                              </button>
+                            </div>
+                          )}
+
+                          {analyzingVars && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center gap-3">
+                              <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                              <div>
+                                <p className="text-sm text-purple-700 font-medium">Claude está analizando el contrato...</p>
+                                <p className="text-xs text-purple-500 mt-0.5">Esto puede tardar 30–60 segundos</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {varAnalysisError && !analyzingVars && (
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+                              <AlertCircle size={18} className="text-red-500 shrink-0" />
+                              <p className="text-sm text-red-700">{varAnalysisError}</p>
+                            </div>
+                          )}
+
+                          {/* Detected placeholders table */}
+                          {detectedPlaceholders.length > 0 && (
+                            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Brain size={14} className="text-purple-600" />
+                                  <h3 className="text-sm font-semibold text-gray-800">Variables detectadas</h3>
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                    {detectedPlaceholders.length}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleAnalyzeVars}
+                                  className="text-xs text-purple-600 font-medium hover:underline disabled:opacity-50"
+                                  disabled={analyzingVars}
+                                >
+                                  Re-analizar
+                                </button>
+                              </div>
+                              <div className="divide-y divide-gray-50">
+                                {detectedPlaceholders.map((ph, idx) => (
+                                  <div key={idx} className="px-5 py-3 flex items-start gap-3">
+                                    <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                      {ph.occurrence}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[11px] text-gray-500 italic leading-snug line-clamp-2" title={ph.context}>
+                                        «{ph.context}»
+                                      </p>
+                                      <p className="text-[10px] text-gray-400 mt-0.5">pág. {ph.pageIndex + 1}</p>
+                                    </div>
+                                    <select
+                                      value={variableMappings[idx]?.variable || ''}
+                                      onChange={(e) => updateVarMapping(idx, e.target.value)}
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 shrink-0 max-w-[170px]"
+                                    >
+                                      <option value="">— Sin variable —</option>
+                                      {VARIABLES.map((v) => (
+                                        <option key={v.id} value={v.id}>{v.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Saved mappings (edit mode, no fresh analysis) */}
+                          {variableMappings.length > 0 && detectedPlaceholders.length === 0 && !analyzingVars && (
+                            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Brain size={14} className="text-purple-600" />
+                                  <h3 className="text-sm font-semibold text-gray-800">Variables configuradas</h3>
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                    {variableMappings.length}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleAnalyzeVars}
+                                  className="text-xs text-purple-600 font-medium hover:underline"
+                                >
+                                  Re-analizar con IA
+                                </button>
+                              </div>
+                              <div className="divide-y divide-gray-50">
+                                {variableMappings.map((m, idx) => (
+                                  <div key={idx} className="px-5 py-3 flex items-center gap-3">
+                                    <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                      {idx + 1}
+                                    </span>
+                                    <span className="flex-1 text-xs text-gray-400 italic">
+                                      {VARIABLES.find((v) => v.id === m.variable)?.description?.split('.')[0] || `Placeholder #${idx + 1}`}
+                                    </span>
+                                    <select
+                                      value={m.variable || ''}
+                                      onChange={(e) => updateVarMapping(idx, e.target.value)}
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 shrink-0 max-w-[170px]"
+                                    >
+                                      <option value="">— Sin variable —</option>
+                                      {VARIABLES.map((v) => (
+                                        <option key={v.id} value={v.id}>{v.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
 
