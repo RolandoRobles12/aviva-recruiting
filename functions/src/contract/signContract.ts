@@ -130,6 +130,28 @@ export const signContract = onRequest(
       date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
     };
 
+    // Enrich vars with OCR-extracted data from validated documents
+    const docs = (candidate.documents ?? {}) as Record<string, {
+      status?: string;
+      ocrResult?: { extractedData?: Record<string, string> };
+    }>;
+    const ocr = (docType: string) => docs[docType]?.status === 'valid'
+      ? (docs[docType].ocrResult?.extractedData ?? {})
+      : {};
+
+    const ineData            = ocr('ine');
+    const curpData           = ocr('curp');
+    const constanciaData     = ocr('constancia_fiscal');
+    const caratulaData       = ocr('caratula_bancaria');
+    const nssData            = ocr('nss');
+
+    if (!vars.curp)     vars.curp     = curpData.curp || ineData.curp || '';
+    if (!vars.rfc)      vars.rfc      = constanciaData.rfc || '';
+    if (!vars.domicilio)vars.domicilio = ineData.domicilio || '';
+    if (!vars.clabe)    vars.clabe    = caratulaData.clabe || '';
+    if (!vars.banco)    vars.banco    = caratulaData.banco || '';
+    if (!vars.nss)      vars.nss      = nssData.nss || '';
+
     // Get signer info for evidence
     const signerIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
       || req.socket.remoteAddress
