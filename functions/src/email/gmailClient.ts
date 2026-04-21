@@ -73,13 +73,31 @@ function getServiceAccountGmailClient(senderEmail: string) {
 }
 
 /**
+ * Fallback: find any recruiter who has connected their Gmail via OAuth.
+ * Used for automated emails (webhooks, signOffer) where there's no specific recruiter context.
+ */
+async function findAnyConnectedRecruiterUid(): Promise<string | null> {
+  try {
+    const usersSnap = await db.collection('users').limit(20).get();
+    for (const userDoc of usersSnap.docs) {
+      const tokenSnap = await db.doc(`users/${userDoc.id}/private/gmailTokens`).get();
+      if (tokenSnap.exists) return userDoc.id;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
  * Send an email via Gmail API.
  *
  * Strategy:
  * 1. If recruiterUid is provided and has OAuth tokens → use their tokens (email from their inbox)
- * 2. If senderEmail is provided and SA credentials exist → use SA impersonation (legacy)
- * 3. If GMAIL_DEFAULT_SENDER is configured → use SA with default sender (legacy)
- * 4. Otherwise → throw error
+ * 2. If no recruiterUid, find any recruiter with OAuth tokens → use theirs
+ * 3. If senderEmail is provided and SA credentials exist → use SA impersonation (legacy)
+ * 4. If GMAIL_DEFAULT_SENDER is configured → use SA with default sender (legacy)
+ * 5. Otherwise → throw error
  */
 export async function sendEmail(options: {
   to: string;
@@ -91,11 +109,10 @@ export async function sendEmail(options: {
   let gmail: ReturnType<typeof google.gmail> | null = null;
   let sender: string | undefined = options.senderEmail;
 
-  // Strategy 1: OAuth tokens for the recruiter
+  // Strategy 1: OAuth tokens for the specific recruiter
   if (options.recruiterUid) {
     gmail = await getOAuthGmailClient(options.recruiterUid);
     if (gmail) {
-      // Fetch recruiter email for the From header
       const recruiterSnap = await db.collection('users').doc(options.recruiterUid).get();
       if (recruiterSnap.exists) {
         sender = (recruiterSnap.data() as { email?: string }).email ?? sender;
@@ -103,7 +120,21 @@ export async function sendEmail(options: {
     }
   }
 
-  // Strategy 2/3: Service Account fallback
+  // Strategy 2: No specific recruiter — fall back to any connected recruiter
+  if (!gmail) {
+    const fallbackUid = await findAnyConnectedRecruiterUid();
+    if (fallbackUid) {
+      gmail = await getOAuthGmailClient(fallbackUid);
+      if (gmail) {
+        const recruiterSnap = await db.collection('users').doc(fallbackUid).get();
+        if (recruiterSnap.exists) {
+          sender = sender || (recruiterSnap.data() as { email?: string }).email;
+        }
+      }
+    }
+  }
+
+  // Strategy 3/4: Service Account fallback (legacy)
   if (!gmail) {
     sender = sender || GMAIL_DEFAULT_SENDER.value();
     if (!sender) {
