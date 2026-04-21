@@ -20,10 +20,14 @@ export const VARIABLES = [
   { id: 'name',              label: 'Nombre completo',   colorClass: 'var-blue',   group: 'candidato', description: 'Nombre y apellido del candidato. Ej: "María García López"' },
   { id: 'firstName',         label: 'Nombre',            colorClass: 'var-blue',   group: 'candidato', description: 'Solo el primer nombre. Ej: "María"' },
   { id: 'lastName',          label: 'Apellido',          colorClass: 'var-blue',   group: 'candidato', description: 'Apellidos del candidato. Ej: "García López"' },
+  { id: 'sexo',              label: 'Sexo',              colorClass: 'var-blue',   group: 'candidato', description: 'Sexo del candidato extraído del INE o acta de nacimiento. Ej: "Masculino"' },
+  { id: 'nacionalidad',      label: 'Nacionalidad',      colorClass: 'var-blue',   group: 'candidato', description: 'Nacionalidad extraída del acta de nacimiento. Ej: "Mexicana"' },
   { id: 'curp',              label: 'CURP',              colorClass: 'var-blue',   group: 'candidato', description: 'CURP extraído del documento validado. Ej: "GALM900101MDFRCR09"' },
   { id: 'rfc',               label: 'RFC',               colorClass: 'var-blue',   group: 'candidato', description: 'RFC extraído de la constancia fiscal validada. Ej: "GALM900101AB3"' },
   { id: 'nss',               label: 'NSS',               colorClass: 'var-blue',   group: 'candidato', description: 'Número de Seguridad Social extraído del documento NSS validado' },
   { id: 'domicilio',         label: 'Domicilio',         colorClass: 'var-blue',   group: 'candidato', description: 'Dirección completa extraída del INE validado' },
+  { id: 'beneficiario',      label: 'Beneficiario',      colorClass: 'var-blue',   group: 'candidato', description: 'Nombre del beneficiario registrado por el candidato en el formulario' },
+  { id: 'parentesco',        label: 'Parentesco',        colorClass: 'var-blue',   group: 'candidato', description: 'Parentesco del beneficiario. Ej: "Esposo/a", "Hijo/a"' },
   // Puesto
   { id: 'position',          label: 'Puesto',            colorClass: 'var-purple', group: 'puesto', description: 'Nombre del puesto al que aplica. Ej: "Ejecutivo de Ventas"' },
   { id: 'departmentProfile', label: 'Perfil del puesto', colorClass: 'var-purple', group: 'puesto', description: 'Descripción del departamento o perfil desde Viterbit' },
@@ -31,6 +35,7 @@ export const VARIABLES = [
   { id: 'company',           label: 'Empresa',           colorClass: 'var-purple', group: 'puesto', description: 'Nombre de la empresa. Por defecto: "Aviva"' },
   // Compensación
   { id: 'salary',            label: 'Salario',           colorClass: 'var-green',  group: 'compensacion', description: 'Salario acordado tal como viene de Viterbit. Ej: "$18,000 mensuales"' },
+  { id: 'salarioTexto',      label: 'Salario en letras', colorClass: 'var-green',  group: 'compensacion', description: 'Salario en letras. Ej: "dieciocho mil pesos 00/100 moneda nacional"' },
   { id: 'benefits',          label: 'Beneficios',        colorClass: 'var-amber',  group: 'compensacion', description: 'Paquete de beneficios registrado en Viterbit' },
   { id: 'clabe',             label: 'CLABE',             colorClass: 'var-green',  group: 'compensacion', description: 'CLABE interbancaria extraída de la carátula bancaria validada' },
   { id: 'banco',             label: 'Banco',             colorClass: 'var-green',  group: 'compensacion', description: 'Nombre del banco extraído de la carátula bancaria validada' },
@@ -59,6 +64,11 @@ const VITERBIT_VAR_MAP: Record<string, string> = {
   domicilio:                  'domicilio',
   clabe:                      'clabe',
   banco:                      'banco',
+  sexo:                       'sexo',
+  nacionalidad:               'nacionalidad',
+  beneficiario:               'beneficiario',
+  parentesco:                 'parentesco',
+  salario_texto:              'salarioTexto',
 };
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────

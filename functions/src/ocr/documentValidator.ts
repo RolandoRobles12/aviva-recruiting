@@ -29,7 +29,7 @@ Validaciones requeridas:
 3. ¿Se puede leer el nombre del titular? Es obligatorio — si no se puede leer el nombre, el documento no es válido.
 4. ¿La imagen es suficientemente clara para considerarse válida?
 
-Datos a extraer: curp, nombre_completo, clave_elector (si es visible), domicilio (dirección completa que aparece en la credencial, incluyendo calle, número, colonia, municipio y estado).`,
+Datos a extraer: curp, nombre_completo, clave_elector (si es visible), domicilio (dirección completa que aparece en la credencial, incluyendo calle, número, colonia, municipio y estado), sexo (la letra que aparece: H para hombre, M para mujer), nacionalidad (texto que aparece, normalmente "MEXICANA").`,
 
   curp: `Analiza esta imagen y determina si es una constancia de CURP oficial de México.
 
@@ -58,7 +58,7 @@ Validaciones requeridas:
 2. ¿Se puede leer el nombre completo del titular?
 3. ¿El documento parece ser una copia certificada o digital oficial (no una copia simple)?
 
-Datos a extraer: nombre_completo, curp (si visible), fecha_nacimiento, lugar_nacimiento.`,
+Datos a extraer: nombre_completo, curp (si visible), fecha_nacimiento, lugar_nacimiento, sexo (Masculino o Femenino), nacionalidad (normalmente "Mexicana").`,
 
   caratula_bancaria: `Analiza esta imagen y determina si es una carátula bancaria o estado de cuenta bancario de México.
 

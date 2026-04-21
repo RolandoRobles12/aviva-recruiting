@@ -8,6 +8,7 @@ import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
+import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -26,6 +27,69 @@ const VITERBIT_VAR_MAP: Record<string, string> = {
   date:                       'date',
   benefits:                   'benefits',
 };
+
+function buildContractVars(candidate: Record<string, unknown>, now: Date): Record<string, string> {
+  const firstName = (candidate.firstName as string) || '';
+  const lastName  = (candidate.lastName  as string) || '';
+  const rawSalary = (candidate.viterbitSalary as string) || '';
+
+  const vars: Record<string, string> = {
+    name:              `${firstName} ${lastName}`.trim(),
+    firstName,
+    lastName,
+    position:          (candidate.position as string) || '',
+    departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
+    hiringManager:     (candidate.viterbitHiringManager as string) || '',
+    company:           (candidate.viterbitCompany as string) || 'Aviva',
+    salary:            rawSalary,
+    salarioTexto:      salaryToSpanishWords(rawSalary),
+    startDate:         (candidate.viterbitStartDate as string) || 'a convenir',
+    benefits:          (candidate.benefits as string) || '',
+    date:              format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
+  };
+
+  // Form answers: beneficiario and parentesco
+  const fa = (candidate.formAnswers ?? {}) as Record<string, unknown>;
+  vars.beneficiario = (fa.beneficiarioNombre as string) || '';
+  const parentescoRaw = (fa.beneficiarioParentesco as string) || '';
+  const PARENTESCO_LABELS: Record<string, string> = {
+    padre_madre: 'Padre/Madre', hermano: 'Hermano/a', esposo: 'Esposo/a', hijo: 'Hijo/a',
+  };
+  vars.parentesco = PARENTESCO_LABELS[parentescoRaw] || parentescoRaw;
+
+  // OCR-extracted fields from validated documents
+  const docs = (candidate.documents ?? {}) as Record<string, {
+    status?: string;
+    ocrResult?: { extractedData?: Record<string, string> };
+  }>;
+  const ocr = (docType: string) => docs[docType]?.status === 'valid'
+    ? (docs[docType].ocrResult?.extractedData ?? {})
+    : {};
+
+  const ineData        = ocr('ine');
+  const actaData       = ocr('acta_nacimiento');
+  const curpData       = ocr('curp');
+  const constanciaData = ocr('constancia_fiscal');
+  const caratulaData   = ocr('caratula_bancaria');
+  const nssData        = ocr('nss');
+
+  vars.curp      = curpData.curp || ineData.curp || '';
+  vars.rfc       = constanciaData.rfc || '';
+  vars.domicilio = ineData.domicilio || '';
+  vars.clabe     = caratulaData.clabe || '';
+  vars.banco     = caratulaData.banco || '';
+  vars.nss       = nssData.nss || '';
+
+  // sexo: prefer acta (full word), fallback to INE (H/M) normalized
+  const sexoRaw = actaData.sexo || ineData.sexo || '';
+  if (sexoRaw === 'H' || sexoRaw.toLowerCase() === 'masculino') vars.sexo = 'Masculino';
+  else if (sexoRaw === 'M' || sexoRaw.toLowerCase() === 'femenino') vars.sexo = 'Femenino';
+  else vars.sexo = sexoRaw;
+
+  vars.nacionalidad = actaData.nacionalidad || ineData.nacionalidad || '';
+
+  return vars;
+}
 
 function interpolate(template: string, vars: Record<string, string>): string {
   // Replace {{variable}} patterns (system syntax)
@@ -116,41 +180,7 @@ export const signContract = onRequest(
     const candidateFullName = `${firstNameVal} ${lastNameVal}`.trim();
     const candidateInitials = extractInitials(candidateFullName);
 
-    const vars: Record<string, string> = {
-      name: candidateFullName,
-      firstName: firstNameVal,
-      lastName: lastNameVal,
-      position: candidate.position as string,
-      departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
-      hiringManager: (candidate.viterbitHiringManager as string) || '',
-      company: (candidate.viterbitCompany as string) || 'Aviva',
-      salary: (candidate.viterbitSalary as string) || '',
-      startDate: (candidate.viterbitStartDate as string) || 'a convenir',
-      benefits: (candidate.benefits as string) || '',
-      date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
-    };
-
-    // Enrich vars with OCR-extracted data from validated documents
-    const docs = (candidate.documents ?? {}) as Record<string, {
-      status?: string;
-      ocrResult?: { extractedData?: Record<string, string> };
-    }>;
-    const ocr = (docType: string) => docs[docType]?.status === 'valid'
-      ? (docs[docType].ocrResult?.extractedData ?? {})
-      : {};
-
-    const ineData            = ocr('ine');
-    const curpData           = ocr('curp');
-    const constanciaData     = ocr('constancia_fiscal');
-    const caratulaData       = ocr('caratula_bancaria');
-    const nssData            = ocr('nss');
-
-    if (!vars.curp)     vars.curp     = curpData.curp || ineData.curp || '';
-    if (!vars.rfc)      vars.rfc      = constanciaData.rfc || '';
-    if (!vars.domicilio)vars.domicilio = ineData.domicilio || '';
-    if (!vars.clabe)    vars.clabe    = caratulaData.clabe || '';
-    if (!vars.banco)    vars.banco    = caratulaData.banco || '';
-    if (!vars.nss)      vars.nss      = nssData.nss || '';
+    const vars = buildContractVars(candidate, now);
 
     // Get signer info for evidence
     const signerIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
@@ -360,21 +390,7 @@ export const getContract = onRequest(
       if (!allTemplates.empty) contractTemplate = allTemplates.docs[0].data() as Record<string, unknown>;
     }
 
-    const firstNameVal2 = (candidate.firstName as string) || '';
-    const lastNameVal2  = (candidate.lastName  as string) || '';
-    const vars: Record<string, string> = {
-      name: `${firstNameVal2} ${lastNameVal2}`.trim(),
-      firstName: firstNameVal2,
-      lastName: lastNameVal2,
-      position: candidate.position as string,
-      departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
-      hiringManager: (candidate.viterbitHiringManager as string) || '',
-      company: (candidate.viterbitCompany as string) || 'Aviva',
-      salary: (candidate.viterbitSalary as string) || '',
-      startDate: (candidate.viterbitStartDate as string) || 'a convenir',
-      benefits: (candidate.benefits as string) || '',
-      date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
-    };
+    const vars = buildContractVars(candidate, new Date());
 
     const templateType2 = (contractTemplate?.templateType as string) || 'html';
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
