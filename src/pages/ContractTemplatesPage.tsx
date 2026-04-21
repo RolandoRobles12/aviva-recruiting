@@ -190,6 +190,9 @@ export function ContractTemplatesPage() {
       const result = await analyzeContractVariables(pdfStoragePath);
       setDetectedPlaceholders(result.placeholders);
       setVariableMappings(result.variableMappings);
+      if (result.signatureFields.length > 0) {
+        setSignatureFields(result.signatureFields);
+      }
     } catch (err) {
       setVarAnalysisError(err instanceof Error ? err.message : 'Error al analizar variables');
     } finally {
