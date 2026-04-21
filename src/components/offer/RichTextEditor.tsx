@@ -4,6 +4,7 @@ import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import { Node, mergeAttributes } from '@tiptap/core';
+import type { Editor } from '@tiptap/core';
 import { useEffect, useRef, useState } from 'react';
 import mammoth from 'mammoth';
 import {
@@ -162,6 +163,7 @@ interface RichTextEditorProps {
 export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<Editor | null>(null);
   const [docxWarning, setDocxWarning] = useState<string[] | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -177,8 +179,19 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     onUpdate: ({ editor }) => onChange(htmlToTemplate(editor.getHTML())),
     editorProps: {
       attributes: { class: 'rich-editor-content' },
-      // Allow paste of images from clipboard
       handlePaste(view, event) {
+        // Convert ${variable} / {{variable}} patterns to chips when pasting text with placeholders
+        const html = event.clipboardData?.getData('text/html') ?? '';
+        const text = event.clipboardData?.getData('text/plain') ?? '';
+        const source = html || text;
+        if ((source.includes('${') || source.includes('{{')) && editorRef.current) {
+          event.preventDefault();
+          const converted = templateToHtml(convertViterbitVars(source));
+          editorRef.current.commands.insertContent(converted);
+          return true;
+        }
+
+        // Allow paste of images from clipboard
         const items = event.clipboardData?.items;
         if (!items) return false;
         for (const item of items) {
@@ -202,6 +215,11 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       },
     },
   });
+
+  // Keep editorRef in sync so handlePaste can access the editor instance
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Sync external value changes
   useEffect(() => {

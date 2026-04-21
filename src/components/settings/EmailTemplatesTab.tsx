@@ -9,7 +9,7 @@ interface Props {
   onSave: (t: EmailTemplatesSettings) => void;
 }
 
-type TemplateKey = 'invitation' | 'reminder';
+type TemplateKey = 'invitation' | 'reminder' | 'offer' | 'contract';
 
 const TEMPLATE_META: Record<TemplateKey, {
   title: string;
@@ -28,6 +28,18 @@ const TEMPLATE_META: Record<TemplateKey, {
     headerText: 'Documentos Pendientes',
     ctaText: 'Completar documentación →',
     headerColor: '#f59e0b',
+  },
+  offer: {
+    title: 'Carta oferta',
+    headerText: '¡Tienes una oferta!',
+    ctaText: 'Ver carta oferta →',
+    headerColor: '#16b877',
+  },
+  contract: {
+    title: 'Contrato',
+    headerText: 'Tu contrato está listo',
+    ctaText: 'Firmar contrato →',
+    headerColor: '#6366f1',
   },
 };
 

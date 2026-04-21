@@ -141,112 +141,132 @@ export function QuestionsTab() {
         </div>
       )}
 
-      {questions.map((q, idx) => (
-        <div key={q.id} className="card p-4 space-y-3">
-          {/* Header row */}
-          <div className="flex items-start gap-2">
-            <GripVertical size={16} className="text-gray-300 mt-1 shrink-0" />
+      {questions.map((q, idx) => {
+        const isBuiltin = Boolean(q.builtinKey);
+        return (
+          <div key={q.id} className="card p-4 space-y-3">
+            {/* Header row */}
+            <div className="flex items-start gap-2">
+              <GripVertical size={16} className="text-gray-300 mt-1 shrink-0" />
 
-            <div className="flex-1 space-y-2">
-              {/* Label */}
-              <input
-                type="text"
-                value={q.label}
-                onChange={(e) => update(q.id, { label: e.target.value })}
-                placeholder="Texto de la pregunta"
-                className="input-field text-sm"
-              />
-
-              {/* Type + required + enabled */}
-              <div className="flex flex-wrap gap-2 items-center">
-                <select
-                  value={q.type}
-                  onChange={(e) => update(q.id, { type: e.target.value as QuestionType, options: undefined })}
-                  className="input-field text-xs py-1.5 w-auto"
-                >
-                  {(Object.keys(TYPE_LABELS) as QuestionType[]).map((t) => (
-                    <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-                  ))}
-                </select>
-
-                <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+              <div className="flex-1 space-y-2">
+                {/* Label + builtin badge */}
+                <div className="flex items-center gap-2">
                   <input
-                    type="checkbox"
-                    checked={q.required}
-                    onChange={(e) => update(q.id, { required: e.target.checked })}
-                    className="rounded"
+                    type="text"
+                    value={q.label}
+                    onChange={(e) => update(q.id, { label: e.target.value })}
+                    placeholder="Texto de la pregunta"
+                    className="input-field text-sm flex-1"
                   />
-                  Obligatorio
-                </label>
+                  {isBuiltin && (
+                    <span className="shrink-0 px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full border border-gray-200">
+                      Sistema
+                    </span>
+                  )}
+                </div>
 
-                <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={q.enabled}
-                    onChange={(e) => update(q.id, { enabled: e.target.checked })}
-                    className="rounded"
-                  />
-                  Activo
-                </label>
+                {/* Type + required + enabled — hide type & required for builtins */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  {!isBuiltin && (
+                    <select
+                      value={q.type}
+                      onChange={(e) => update(q.id, { type: e.target.value as QuestionType, options: undefined })}
+                      className="input-field text-xs py-1.5 w-auto"
+                    >
+                      {(Object.keys(TYPE_LABELS) as QuestionType[]).map((t) => (
+                        <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  {isBuiltin && (
+                    <span className="text-xs text-gray-400 italic">{TYPE_LABELS[q.type]}</span>
+                  )}
+
+                  {!isBuiltin && (
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={q.required}
+                        onChange={(e) => update(q.id, { required: e.target.checked })}
+                        className="rounded"
+                      />
+                      Obligatorio
+                    </label>
+                  )}
+
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={q.enabled}
+                      onChange={(e) => update(q.id, { enabled: e.target.checked })}
+                      className="rounded"
+                    />
+                    Activo
+                  </label>
+                </div>
+
+                {/* Options for radio/select — only for custom questions */}
+                {!isBuiltin && (q.type === 'radio' || q.type === 'select') && (
+                  <div className="space-y-1.5 pl-1">
+                    <p className="text-xs text-gray-400 font-medium">Opciones:</p>
+                    {(q.options ?? []).map((opt, oi) => (
+                      <div key={oi} className="flex gap-1.5 items-center">
+                        <input
+                          type="text"
+                          value={opt}
+                          onChange={(e) => updateOption(q.id, oi, e.target.value)}
+                          placeholder={`Opción ${oi + 1}`}
+                          className="input-field text-xs py-1.5 flex-1"
+                        />
+                        <button
+                          onClick={() => removeOption(q.id, oi)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => addOption(q.id)}
+                      className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Agregar opción
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Options for radio/select */}
-              {(q.type === 'radio' || q.type === 'select') && (
-                <div className="space-y-1.5 pl-1">
-                  <p className="text-xs text-gray-400 font-medium">Opciones:</p>
-                  {(q.options ?? []).map((opt, oi) => (
-                    <div key={oi} className="flex gap-1.5 items-center">
-                      <input
-                        type="text"
-                        value={opt}
-                        onChange={(e) => updateOption(q.id, oi, e.target.value)}
-                        placeholder={`Opción ${oi + 1}`}
-                        className="input-field text-xs py-1.5 flex-1"
-                      />
-                      <button
-                        onClick={() => removeOption(q.id, oi)}
-                        className="text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
+              {/* Actions — no delete for builtins */}
+              <div className="flex flex-col gap-1 shrink-0">
+                <button
+                  onClick={() => move(q.id, -1)}
+                  disabled={idx === 0}
+                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronUp size={14} />
+                </button>
+                <button
+                  onClick={() => move(q.id, 1)}
+                  disabled={idx === questions.length - 1}
+                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronDown size={14} />
+                </button>
+                {!isBuiltin && (
                   <button
-                    onClick={() => addOption(q.id)}
-                    className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                    onClick={() => remove(q.id)}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
                   >
-                    <Plus size={12} /> Agregar opción
+                    <Trash2 size={14} />
                   </button>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-col gap-1 shrink-0">
-              <button
-                onClick={() => move(q.id, -1)}
-                disabled={idx === 0}
-                className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronUp size={14} />
-              </button>
-              <button
-                onClick={() => move(q.id, 1)}
-                disabled={idx === questions.length - 1}
-                className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronDown size={14} />
-              </button>
-              <button
-                onClick={() => remove(q.id)}
-                className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-              >
-                <Trash2 size={14} />
-              </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <button
         onClick={handleSave}
