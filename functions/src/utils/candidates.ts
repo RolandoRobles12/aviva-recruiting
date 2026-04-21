@@ -58,7 +58,7 @@ export async function updateCandidateCompletion(candidateId: string) {
   const newStatus =
     allValid && hasFormAnswers && !TERMINAL_STATUSES.includes(currentStatus)
       ? 'under_review'
-      : hasAnyUpload && currentStatus === 'invited'
+      : hasAnyUpload && (currentStatus === 'invited' || currentStatus === 'offer_signed')
       ? 'in_progress'
       : currentStatus;
 
