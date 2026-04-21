@@ -88,7 +88,19 @@ export const onCandidateUpdated = functions
       await updateCandidateCompletion(candidateId);
     }
 
-    // ── 1. offer_signed without formToken → generate form link + send invitation ──
+    // ── 1. offer_signed → move to Viterbit "Documentos" on status transition ──
+    // signOffer.ts also fires this as fire-and-forget; this acts as a reliable fallback.
+    if (prevStatus !== 'offer_signed' && newStatus === 'offer_signed') {
+      const viterbitApiKey = process.env.VITERBIT_API_KEY;
+      const viterbitCandidatureId = after.viterbitCandidatureId as string | undefined;
+      const viterbitStageIds = after.viterbitStageIds as Record<string, string> | undefined;
+      const documentosStageId = viterbitStageIds?.documentos;
+      if (viterbitApiKey && viterbitCandidatureId && documentosStageId) {
+        void moveToViterbitStage(viterbitCandidatureId, documentosStageId, viterbitApiKey);
+      }
+    }
+
+    // ── 1b. offer_signed without formToken → generate form link + send invitation ──
     if (newStatus === 'offer_signed' && !after.formToken) {
       try {
         const now = new Date();
@@ -196,20 +208,33 @@ export const onCandidateUpdated = functions
           contractExpiresAt: contractExpiresAtStr,
         });
 
-        await sendEmail({ to: after.email as string, subject, html });
-
-        await db.collection('email_logs').add({
-          candidateId,
-          templateType: 'contract',
-          sentTo: after.email,
-          sentAt: FieldValue.serverTimestamp(),
-          sentBy: 'onCandidateUpdated_under_review',
-          success: true,
-        });
+        // Send email separately so a failure does not prevent the Viterbit movement.
+        try {
+          await sendEmail({ to: after.email as string, subject, html });
+          await db.collection('email_logs').add({
+            candidateId,
+            templateType: 'contract',
+            sentTo: after.email,
+            sentAt: FieldValue.serverTimestamp(),
+            sentBy: 'onCandidateUpdated_under_review',
+            success: true,
+          });
+        } catch (emailErr) {
+          console.error(`[onCandidateUpdated] contract email error for ${candidateId}:`, emailErr);
+          await db.collection('email_logs').add({
+            candidateId,
+            templateType: 'contract',
+            sentTo: after.email,
+            sentAt: FieldValue.serverTimestamp(),
+            sentBy: 'onCandidateUpdated_under_review',
+            success: false,
+            error: String(emailErr),
+          });
+        }
 
         console.log(`[onCandidateUpdated] contractToken generated for ${candidateId}`);
 
-        // Move candidate to "Contrato" stage in Viterbit
+        // Move candidate to "Contrato" stage in Viterbit (always, regardless of email result).
         const viterbitApiKey = process.env.VITERBIT_API_KEY;
         const viterbitCandidatureId = after.viterbitCandidatureId as string | undefined;
         const viterbitStageIds = after.viterbitStageIds as Record<string, string> | undefined;

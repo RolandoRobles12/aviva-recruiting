@@ -4,6 +4,7 @@ import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import { Node, mergeAttributes } from '@tiptap/core';
+import type { Editor } from '@tiptap/core';
 import { useEffect, useRef, useState } from 'react';
 import mammoth from 'mammoth';
 import {
@@ -13,22 +14,30 @@ import {
 } from 'lucide-react';
 
 // ─── Variable definitions ─────────────────────────────────────────────────────
-// hidden = true → still rendered as chip in existing templates, but NOT shown
-// in the insertion palette (inserted automatically or not user-facing).
 
 export const VARIABLES = [
-  { id: 'name',              label: 'Nombre completo',  colorClass: 'var-blue'   },
-  { id: 'firstName',         label: 'Nombre',           colorClass: 'var-blue'   },
-  { id: 'lastName',          label: 'Apellido',         colorClass: 'var-blue'   },
-  { id: 'position',          label: 'Puesto',           colorClass: 'var-purple' },
-  { id: 'departmentProfile', label: 'Perfil del puesto',colorClass: 'var-purple' },
-  { id: 'hiringManager',     label: 'Líder',            colorClass: 'var-purple' },
-  { id: 'company',           label: 'Empresa',          colorClass: 'var-purple' },
-  { id: 'salary',            label: 'Salario',          colorClass: 'var-green'  },
-  { id: 'benefits',          label: 'Beneficios',       colorClass: 'var-amber', hidden: true },
-  { id: 'startDate',         label: 'Fecha de inicio',  colorClass: 'var-rose'   },
-  { id: 'date',              label: 'Fecha de hoy',     colorClass: 'var-rose'   },
-] as const satisfies Array<{ id: string; label: string; colorClass: string; hidden?: boolean }>;
+  // Candidato
+  { id: 'name',              label: 'Nombre completo',   colorClass: 'var-blue',   group: 'candidato', description: 'Nombre y apellido del candidato. Ej: "María García López"' },
+  { id: 'firstName',         label: 'Nombre',            colorClass: 'var-blue',   group: 'candidato', description: 'Solo el primer nombre. Ej: "María"' },
+  { id: 'lastName',          label: 'Apellido',          colorClass: 'var-blue',   group: 'candidato', description: 'Apellidos del candidato. Ej: "García López"' },
+  { id: 'curp',              label: 'CURP',              colorClass: 'var-blue',   group: 'candidato', description: 'CURP extraído del documento validado. Ej: "GALM900101MDFRCR09"' },
+  { id: 'rfc',               label: 'RFC',               colorClass: 'var-blue',   group: 'candidato', description: 'RFC extraído de la constancia fiscal validada. Ej: "GALM900101AB3"' },
+  { id: 'nss',               label: 'NSS',               colorClass: 'var-blue',   group: 'candidato', description: 'Número de Seguridad Social extraído del documento NSS validado' },
+  { id: 'domicilio',         label: 'Domicilio',         colorClass: 'var-blue',   group: 'candidato', description: 'Dirección completa extraída del INE validado' },
+  // Puesto
+  { id: 'position',          label: 'Puesto',            colorClass: 'var-purple', group: 'puesto', description: 'Nombre del puesto al que aplica. Ej: "Ejecutivo de Ventas"' },
+  { id: 'departmentProfile', label: 'Perfil del puesto', colorClass: 'var-purple', group: 'puesto', description: 'Descripción del departamento o perfil desde Viterbit' },
+  { id: 'hiringManager',     label: 'Líder directo',     colorClass: 'var-purple', group: 'puesto', description: 'Nombre del jefe inmediato registrado en Viterbit' },
+  { id: 'company',           label: 'Empresa',           colorClass: 'var-purple', group: 'puesto', description: 'Nombre de la empresa. Por defecto: "Aviva"' },
+  // Compensación
+  { id: 'salary',            label: 'Salario',           colorClass: 'var-green',  group: 'compensacion', description: 'Salario acordado tal como viene de Viterbit. Ej: "$18,000 mensuales"' },
+  { id: 'benefits',          label: 'Beneficios',        colorClass: 'var-amber',  group: 'compensacion', description: 'Paquete de beneficios registrado en Viterbit' },
+  { id: 'clabe',             label: 'CLABE',             colorClass: 'var-green',  group: 'compensacion', description: 'CLABE interbancaria extraída de la carátula bancaria validada' },
+  { id: 'banco',             label: 'Banco',             colorClass: 'var-green',  group: 'compensacion', description: 'Nombre del banco extraído de la carátula bancaria validada' },
+  // Fechas
+  { id: 'startDate',         label: 'Fecha de inicio',   colorClass: 'var-rose',   group: 'fechas', description: 'Fecha de inicio acordada. Por defecto: "a convenir"' },
+  { id: 'date',              label: 'Fecha de hoy',      colorClass: 'var-rose',   group: 'fechas', description: 'Fecha actual al momento de firmar. Ej: "21 de abril de 2026"' },
+] as const satisfies Array<{ id: string; label: string; colorClass: string; group: string; description: string }>;
 
 // ─── Viterbit → system variable mapping ──────────────────────────────────────
 // Maps ${viterbit_variable} names (used in Word templates) to {{systemVariable}}.
@@ -44,6 +53,12 @@ const VITERBIT_VAR_MAP: Record<string, string> = {
   position:                   'position',
   date:                       'date',
   benefits:                   'benefits',
+  curp:                       'curp',
+  rfc:                        'rfc',
+  nss:                        'nss',
+  domicilio:                  'domicilio',
+  clabe:                      'clabe',
+  banco:                      'banco',
 };
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
@@ -162,6 +177,7 @@ interface RichTextEditorProps {
 export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<Editor | null>(null);
   const [docxWarning, setDocxWarning] = useState<string[] | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -177,8 +193,19 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     onUpdate: ({ editor }) => onChange(htmlToTemplate(editor.getHTML())),
     editorProps: {
       attributes: { class: 'rich-editor-content' },
-      // Allow paste of images from clipboard
       handlePaste(view, event) {
+        // Convert ${variable} / {{variable}} patterns to chips when pasting text with placeholders
+        const html = event.clipboardData?.getData('text/html') ?? '';
+        const text = event.clipboardData?.getData('text/plain') ?? '';
+        const source = html || text;
+        if ((source.includes('${') || source.includes('{{')) && editorRef.current) {
+          event.preventDefault();
+          const converted = templateToHtml(convertViterbitVars(source));
+          editorRef.current.commands.insertContent(converted);
+          return true;
+        }
+
+        // Allow paste of images from clipboard
         const items = event.clipboardData?.items;
         if (!items) return false;
         for (const item of items) {
@@ -202,6 +229,11 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       },
     },
   });
+
+  // Keep editorRef in sync so handlePaste can access the editor instance
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Sync external value changes
   useEffect(() => {
@@ -261,7 +293,14 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   if (!editor) return null;
 
-  const visibleVariables = VARIABLES.filter((v) => !('hidden' in v && v.hidden));
+  const GROUP_LABELS: Record<string, string> = {
+    candidato:    'Candidato',
+    puesto:       'Puesto',
+    compensacion: 'Compensación',
+    fechas:       'Fechas',
+  };
+  const groups = Object.keys(GROUP_LABELS) as Array<keyof typeof GROUP_LABELS>;
+  const byGroup = (g: string) => VARIABLES.filter((v) => v.group === g);
 
   return (
     <div className="flex flex-col border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent h-full">
@@ -417,27 +456,30 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       )}
 
       {/* ── Variable palette ─────────────────────────────────────────────────── */}
-      <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/60 shrink-0">
-        <p className="text-xs text-gray-400 mb-2 font-medium">Insertar dato automático:</p>
-        <div className="flex flex-wrap gap-1.5">
-          {visibleVariables.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              title={`Insertar ${v.label}`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                editor.chain().focus().insertContent({
-                  type: 'variable',
-                  attrs: { id: v.id, label: v.label, colorClass: v.colorClass },
-                }).run();
-              }}
-              className={`variable-chip ${v.colorClass} cursor-pointer hover:opacity-75 transition-opacity`}
-            >
-              + {v.label}
-            </button>
-          ))}
-        </div>
+      <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/60 shrink-0 space-y-2">
+        <p className="text-xs text-gray-400 font-medium">Insertar dato automático:</p>
+        {groups.map((group) => (
+          <div key={group} className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-gray-400 w-20 shrink-0">{GROUP_LABELS[group]}</span>
+            {byGroup(group).map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                title={v.description}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  editor.chain().focus().insertContent({
+                    type: 'variable',
+                    attrs: { id: v.id, label: v.label, colorClass: v.colorClass },
+                  }).run();
+                }}
+                className={`variable-chip ${v.colorClass} cursor-pointer hover:opacity-75 transition-opacity`}
+              >
+                + {v.label}
+              </button>
+            ))}
+          </div>
+        ))}
       </div>
 
       {/* ── Editor area ──────────────────────────────────────────────────────── */}
