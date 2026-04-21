@@ -16,6 +16,13 @@ import type { ContractTemplate, PdfFieldPosition, PdfVariableMapping } from '../
 const COL = 'contract_templates';
 const API_BASE = import.meta.env.VITE_FUNCTIONS_URL ?? '';
 
+// Firestore rejects undefined values — strip them before writing.
+function stripUndefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Partial<T>;
+}
+
 export async function getContractTemplates(): Promise<ContractTemplate[]> {
   const q = query(collection(db, COL), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
@@ -25,19 +32,19 @@ export async function getContractTemplates(): Promise<ContractTemplate[]> {
 export async function createContractTemplate(
   data: Omit<ContractTemplate, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
-  const ref = await addDoc(collection(db, COL), {
-    ...data,
+  const docRef = await addDoc(collection(db, COL), {
+    ...stripUndefined(data),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  return ref.id;
+  return docRef.id;
 }
 
 export async function updateContractTemplate(
   id: string,
   data: Partial<Omit<ContractTemplate, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> {
-  await updateDoc(doc(db, COL, id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(doc(db, COL, id), { ...stripUndefined(data), updatedAt: serverTimestamp() });
 }
 
 export async function deleteContractTemplate(id: string): Promise<void> {
@@ -125,6 +132,7 @@ export interface DetectedPlaceholder {
 export async function analyzeContractVariables(storagePath: string): Promise<{
   placeholders: DetectedPlaceholder[];
   variableMappings: PdfVariableMapping[];
+  signatureFields: PdfFieldPosition[];
   pageDimensions: Array<{ width: number; height: number }>;
 }> {
   const resp = await fetch(`${API_BASE}/analyzeContractVariables`, {

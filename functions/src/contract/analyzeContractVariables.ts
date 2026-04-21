@@ -41,34 +41,54 @@ Available variables (use the exact id):
 `.trim();
 
 const SYSTEM_PROMPT = `You are a legal document analyzer specializing in Mexican employment contracts.
-Your task is to identify placeholder markers (***) in a contract PDF and determine what employee data each one represents.
+Your task has TWO parts:
 
+PART 1 — Identify every *** placeholder and map it to a variable.
 ${VARIABLES_DOC}
 
-Return ONLY a valid JSON object with this exact structure:
+PART 2 — Detect signature, initials, and date fields.
+Look for: lines where someone would physically sign (long underscores ____), boxes or spaces labeled "Firma", "Rúbrica", "Sello", "Iniciales", blank areas at section endings or page footers that appear to be for a signature, and date lines near signatures.
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
 {
   "placeholders": [
     {
       "occurrence": 1,
       "variable": "name",
-      "context": "...surrounding text...",
+      "context": "...~60 chars around the ***...",
       "pageIndex": 0,
       "xPercent": 55.2,
       "yPercent": 12.4,
       "fontSize": 10
     }
+  ],
+  "signatureFields": [
+    {
+      "type": "signature",
+      "label": "Firma del Trabajador",
+      "pageIndex": 5,
+      "xPercent": 10.5,
+      "yPercent": 87.0,
+      "widthPts": 200,
+      "heightPts": 55
+    }
   ]
 }
 
-Rules:
+Rules for placeholders:
 - occurrence is 1-based, counting *** from the top of the document
 - pageIndex is 0-based
-- xPercent and yPercent are the position of the *** on its page (0=left/top, 100=right/bottom)
-- fontSize: estimate from surrounding text (body text is usually 10-11pt, headings 12-14pt)
-- context: include ~60 characters around the *** to show what surrounds it
-- If a *** appears inside a monetary amount like "$***.00 M.N.", use variable "salary"
-- If a *** appears right after that as "( *** pesos 00/100...)", use variable "salarioTexto"
-- Return every *** occurrence, do not skip any`;
+- xPercent/yPercent: position on its page (0=left/top, 100=right/bottom)
+- fontSize: estimate from surrounding text (body ~10-11pt, headings ~12-14pt)
+- context: ~60 characters around the ***
+- "$***.00 M.N." → variable "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"
+- Return EVERY *** occurrence, do not skip any
+
+Rules for signatureFields:
+- type: "signature" for full signatures, "initials" for initials/rúbrica, "date" for date next to signature
+- widthPts: estimated width in PDF points (signature ~200, initials ~80, date ~120)
+- heightPts: estimated height in PDF points (signature ~55, initials ~30, date ~25)
+- Only include fields that are clearly for signing/initialing — do not include *** placeholders here`;
 
 export const analyzeContractVariables = onRequest(
   {
@@ -144,18 +164,29 @@ export const analyzeContractVariables = onRequest(
         throw new Error('Claude did not return valid JSON');
       }
 
-      const parsed = JSON.parse(jsonMatch[0]) as { placeholders: DetectedPlaceholder[] };
+      type RawSignatureField = {
+        type: string;
+        label?: string;
+        pageIndex: number;
+        xPercent: number;
+        yPercent: number;
+        widthPts?: number;
+        heightPts?: number;
+      };
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        placeholders: DetectedPlaceholder[];
+        signatureFields?: RawSignatureField[];
+      };
       const placeholders = parsed.placeholders ?? [];
+      const rawSigFields = parsed.signatureFields ?? [];
 
-      // Convert percentage positions to PDF points
+      // Convert placeholder positions to PDF points
       const mappings = placeholders.map((p) => {
         const dim = pageDimensions[p.pageIndex] ?? pageDimensions[0];
-        // PDF coordinate system: y=0 is bottom, so invert yPercent
         const x = (p.xPercent / 100) * dim.width;
         const yFromBottom = ((100 - p.yPercent) / 100) * dim.height;
-        // Estimate *** placeholder dimensions
         const approxCharWidth = p.fontSize * 0.6;
-        const placeholderWidth = approxCharWidth * 3; // three asterisks
+        const placeholderWidth = approxCharWidth * 3;
         const placeholderHeight = p.fontSize * 1.2;
 
         return {
@@ -167,11 +198,29 @@ export const analyzeContractVariables = onRequest(
           erasePlaceholder: true,
           placeholderWidth: Math.round(placeholderWidth),
           placeholderHeight: Math.round(placeholderHeight),
-          // Keep original percent coords for the review UI
-          _xPercent: p.xPercent,
-          _yPercent: p.yPercent,
-          _context: p.context,
-          _occurrence: p.occurrence,
+        };
+      });
+
+      // Convert signature field positions to PDF points
+      const signatureFields = rawSigFields.map((sf, i) => {
+        const dim = pageDimensions[sf.pageIndex] ?? pageDimensions[0];
+        const x = (sf.xPercent / 100) * dim.width;
+        const yFromBottom = ((100 - sf.yPercent) / 100) * dim.height;
+        const type = ['signature', 'initials', 'date'].includes(sf.type)
+          ? (sf.type as 'signature' | 'initials' | 'date')
+          : 'signature';
+        const defaultW = type === 'signature' ? 200 : type === 'initials' ? 80 : 120;
+        const defaultH = type === 'signature' ? 55 : type === 'initials' ? 30 : 25;
+        return {
+          id: `ai_sig_${i}`,
+          type,
+          pageIndex: sf.pageIndex,
+          x: Math.round(x),
+          y: Math.round(yFromBottom),
+          width: sf.widthPts || defaultW,
+          height: sf.heightPts || defaultH,
+          label: sf.label || (type === 'signature' ? 'Firma' : type === 'initials' ? 'Iniciales' : 'Fecha'),
+          required: true,
         };
       });
 
@@ -182,6 +231,7 @@ export const analyzeContractVariables = onRequest(
           pageDimensions: pageDimensions[p.pageIndex] ?? pageDimensions[0],
         })),
         variableMappings: mappings,
+        signatureFields,
         pageDimensions,
       });
     } catch (err) {
