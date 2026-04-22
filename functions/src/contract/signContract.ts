@@ -4,7 +4,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import pdfParse from 'pdf-parse';
+import pdfParseLib from 'pdf-parse';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pdfParse: (dataBuffer: Buffer) => Promise<{ text: string }> = (pdfParseLib as any).default ?? pdfParseLib;
 import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
@@ -411,9 +413,9 @@ export const getContract = onRequest(
       }
       finalHtml = text
         .split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 0)
-        .map(l => `<p>${l}</p>`)
+        .map((l: string) => l.trim())
+        .filter((l: string) => l.length > 0)
+        .map((l: string) => `<p>${l}</p>`)
         .join('');
     }
 
