@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import pdfParse from 'pdf-parse';
 import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
@@ -396,13 +397,24 @@ export const getContract = onRequest(
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
     const renderedHtml = interpolate(rawHtml, vars);
 
-    // For PDF templates, generate a public URL so the candidate can view the PDF
-    let pdfPreviewUrl: string | undefined;
+    // For PDF templates, extract text and fill variables so we render as HTML prose
+    let finalHtml = renderedHtml;
     if (templateType2 === 'pdf' && contractTemplate?.pdfStoragePath) {
       const bucket = getStorage().bucket();
-      const templateFile = bucket.file(contractTemplate.pdfStoragePath as string);
-      await templateFile.makePublic();
-      pdfPreviewUrl = templateFile.publicUrl();
+      const [pdfBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
+      const pdfData = await pdfParse(Buffer.from(pdfBytes));
+      let text = pdfData.text;
+      const mappings = (contractTemplate?.variableMappings as PdfVariableMapping[]) ?? [];
+      for (const mapping of mappings) {
+        const value = (vars[mapping.variableName] as string) || '';
+        text = text.replace('***', value);
+      }
+      finalHtml = text
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+        .map(l => `<p>${l}</p>`)
+        .join('');
     }
 
     res.status(200).json({
@@ -412,10 +424,8 @@ export const getContract = onRequest(
         position: candidate.position,
         salary: (candidate.viterbitSalary as string) || '',
         startDate: (candidate.viterbitStartDate as string) || 'a convenir',
-        templateType: templateType2,
-        bodyHtml: renderedHtml,
-        pdfPreviewUrl,
-        pdfPageCount: (contractTemplate?.pdfPageCount as number) || undefined,
+        templateType: 'html',
+        bodyHtml: finalHtml,
         expiresAt: expiresAt?.toISOString(),
       },
     });

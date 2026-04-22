@@ -9,10 +9,7 @@ interface ContractData {
   position: string;
   salary: string;
   startDate: string;
-  templateType: 'html' | 'pdf';
   bodyHtml: string;
-  pdfPreviewUrl?: string;
-  pdfPageCount?: number;
   expiresAt?: string;
 }
 
@@ -280,8 +277,6 @@ export function ContractPage() {
     return <TerminalCard icon="x" title="Enlace no encontrado" message="No pudimos encontrar tu contrato. Verifica el enlace o contacta a tu reclutador." />;
   }
 
-  const isPdf = contract?.templateType === 'pdf';
-
   // ── Main contract view ─────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 py-6 sm:py-8 px-4">
@@ -321,33 +316,14 @@ export function ContractPage() {
           </div>
         </div>
 
-        {/* Body content — PDF or HTML */}
-        {isPdf && contract?.pdfPreviewUrl ? (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-700">Contrato</h2>
-              <span className="text-xs text-gray-400">
-                {contract.pdfPageCount} página{(contract.pdfPageCount || 0) > 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="p-2">
-              <iframe
-                src={contract.pdfPreviewUrl}
-                className="w-full rounded-lg"
-                style={{ height: 'clamp(400px, 70vh, 700px)' }}
-                title="Contrato PDF"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Contrato</h2>
-            <div
-              className="prose prose-sm max-w-none text-gray-600 [&_p]:text-sm [&_li]:text-sm [&_strong]:text-gray-800"
-              dangerouslySetInnerHTML={{ __html: contract?.bodyHtml ?? '' }}
-            />
-          </div>
-        )}
+        {/* Body content */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Contrato</h2>
+          <div
+            className="prose prose-sm max-w-none text-gray-600 [&_p]:text-sm [&_li]:text-sm [&_strong]:text-gray-800"
+            dangerouslySetInnerHTML={{ __html: contract?.bodyHtml ?? '' }}
+          />
+        </div>
 
         {/* FES info */}
         <div className="bg-blue-50 rounded-2xl border border-blue-100 p-4 sm:p-5">
