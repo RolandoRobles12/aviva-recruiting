@@ -18,48 +18,47 @@ export interface DetectedPlaceholder {
 
 const VARIABLES_DOC = `
 Available variables (use the exact id):
-- name: Full name of the candidate (e.g. "María García López")
+- name: Full name (e.g. "María García López")
 - firstName: First name only
 - lastName: Last name(s) only
 - nacionalidad: Nationality (e.g. "Mexicana")
-- sexo: Sex/gender written out (e.g. "Masculino" or "Femenino")
+- sexo: Sex/gender (e.g. "Masculino" or "Femenino")
 - curp: CURP 18-character code
 - rfc: RFC tax ID with homoclave
 - nss: IMSS Social Security Number (11 digits)
 - domicilio: Full address
 - position: Job title / position
-- salary: Monthly salary as a number/currency (e.g. "$18,000")
-- salarioTexto: Monthly salary written in words (e.g. "dieciocho mil pesos 00/100 moneda nacional")
+- salary: Monthly salary as currency (e.g. "$18,000")
+- salarioTexto: Monthly salary in words (e.g. "dieciocho mil pesos 00/100 moneda nacional")
 - startDate: Employment start date
-- beneficiario: Full name of the designated beneficiary
-- parentesco: Relationship of the beneficiary (e.g. "Esposo/a", "Hijo/a", "Madre", "Padre")
+- beneficiario: Full name of designated beneficiary
+- parentesco: Beneficiary relationship (e.g. "Esposo/a", "Hijo/a")
 - date: Today's date (auto-filled when signing)
-- hiringManager: Direct manager / hiring manager name
+- hiringManager: Direct manager name
 - company: Company name (defaults to "Aviva")
 - clabe: 18-digit CLABE bank account number
 - banco: Bank name
 `.trim();
 
-const SYSTEM_PROMPT = `You are a legal document analyzer specializing in Mexican employment contracts.
+const SYSTEM_PROMPT = `You are a legal document analyzer for Mexican employment contracts.
+The document text below uses *** as placeholders for candidate-specific data.
 Your task has TWO parts:
 
-PART 1 — Identify every *** placeholder and map it to a variable.
+PART 1 — Map each *** to a variable.
 ${VARIABLES_DOC}
 
-PART 2 — Detect signature, initials, and date fields.
-Look for: lines where someone would physically sign (long underscores ____), boxes or spaces labeled "Firma", "Rúbrica", "Sello", "Iniciales", blank areas at section endings or page footers that appear to be for a signature, and date lines near signatures.
+PART 2 — Detect signature/initials/date fields from patterns like ________ lines, or labels "Firma", "Rúbrica", "Iniciales", "Sello".
 
-Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+Return ONLY valid JSON (no markdown, no explanation):
 {
-  "plainText": "The complete plain text of the document, preserving paragraph breaks as \\n\\n and keeping every *** exactly as-is",
   "placeholders": [
     {
       "occurrence": 1,
       "variable": "name",
-      "context": "...~60 chars around the ***...",
+      "context": "~60 chars around the ***",
       "pageIndex": 0,
-      "xPercent": 55.2,
-      "yPercent": 12.4,
+      "xPercent": 50,
+      "yPercent": 15,
       "fontSize": 10
     }
   ],
@@ -68,28 +67,22 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no expla
       "type": "signature",
       "label": "Firma del Trabajador",
       "pageIndex": 5,
-      "xPercent": 10.5,
-      "yPercent": 87.0,
+      "xPercent": 25,
+      "yPercent": 85,
       "widthPts": 200,
       "heightPts": 55
     }
   ]
 }
 
-Rules for placeholders:
-- occurrence is 1-based, counting *** from the top of the document
-- pageIndex is 0-based
-- xPercent/yPercent: position on its page (0=left/top, 100=right/bottom)
-- fontSize: estimate from surrounding text (body ~10-11pt, headings ~12-14pt)
-- context: ~60 characters around the ***
-- "$***.00 M.N." → variable "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"
-- Return EVERY *** occurrence, do not skip any
-
-Rules for signatureFields:
-- type: "signature" for full signatures, "initials" for initials/rúbrica, "date" for date next to signature
-- widthPts: estimated width in PDF points (signature ~200, initials ~80, date ~120)
-- heightPts: estimated height in PDF points (signature ~55, initials ~30, date ~25)
-- Only include fields that are clearly for signing/initialing — do not include *** placeholders here`;
+Rules:
+- occurrence: 1-based, counting *** from top of document
+- pageIndex: 0-based (use ---PAGE N--- markers in the text)
+- xPercent/yPercent: estimate position on its page (0=left/top, 100=right/bottom); use 50/50 if unsure
+- fontSize: estimate from context (body ~10-11, headings ~12-14)
+- "$***.00 M.N." → "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"
+- Return EVERY *** occurrence without skipping
+- signatureFields type: "signature" | "initials" | "date"`;
 
 export const analyzeContractVariables = onRequest(
   {
@@ -116,7 +109,14 @@ export const analyzeContractVariables = onRequest(
       const bucket = getStorage().bucket();
       const [pdfBytes] = await bucket.file(storagePath).download();
 
-      // Get page dimensions from pdf-lib (needed to convert % to points later)
+      // Extract plain text using pdf-parse lib path (avoids test-file bootstrap crash)
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const pdfParse: (b: Buffer) => Promise<{ text: string }> =
+        require('pdf-parse/lib/pdf-parse.js');
+      const pdfData = await pdfParse(Buffer.from(pdfBytes));
+      const extractedText = pdfData.text;
+
+      // Get page dimensions from pdf-lib (needed to convert % → PDF points)
       const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
       const pages = pdfDoc.getPages();
       const pageDimensions = pages.map((p) => {
@@ -124,43 +124,34 @@ export const analyzeContractVariables = onRequest(
         return { width, height };
       });
 
-      // Send the PDF to Claude for analysis
-      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+      // Split text by page (pdf-parse uses \f as page separator)
+      const pageTexts = extractedText.split('\f');
+      const textWithPageMarkers = pageTexts
+        .map((t, i) => `---PAGE ${i + 1}---\n${t.trim()}`)
+        .join('\n\n');
 
-      const pdfBase64 = pdfBytes.toString('base64');
+      // Send plain text to Claude — far fewer tokens than base64 PDF
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
 
       const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
+        max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [
           {
             role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: pdfBase64,
-                },
-              },
-              {
-                type: 'text',
-                text: 'Analyze this contract PDF and find all *** placeholders. Return the JSON as instructed.',
-              },
-            ],
+            content: `Analyze this contract and find all *** placeholders:\n\n${textWithPageMarkers}`,
           },
         ],
       });
 
       // Extract JSON from Claude response
-      const rawText = message.content
+      const claudeText = message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
         .join('');
 
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      const jsonMatch = claudeText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('Claude did not return valid JSON');
       }
@@ -175,11 +166,9 @@ export const analyzeContractVariables = onRequest(
         heightPts?: number;
       };
       const parsed = JSON.parse(jsonMatch[0]) as {
-        plainText?: string;
         placeholders: DetectedPlaceholder[];
         signatureFields?: RawSignatureField[];
       };
-      const extractedText = parsed.plainText ?? '';
       const placeholders = parsed.placeholders ?? [];
       const rawSigFields = parsed.signatureFields ?? [];
 
@@ -189,8 +178,6 @@ export const analyzeContractVariables = onRequest(
         const x = (p.xPercent / 100) * dim.width;
         const yFromBottom = ((100 - p.yPercent) / 100) * dim.height;
         const approxCharWidth = p.fontSize * 0.6;
-        const placeholderWidth = approxCharWidth * 3;
-        const placeholderHeight = p.fontSize * 1.2;
 
         return {
           variableName: p.variable,
@@ -199,8 +186,8 @@ export const analyzeContractVariables = onRequest(
           y: Math.round(yFromBottom),
           fontSize: p.fontSize || 10,
           erasePlaceholder: true,
-          placeholderWidth: Math.round(placeholderWidth),
-          placeholderHeight: Math.round(placeholderHeight),
+          placeholderWidth: Math.round(approxCharWidth * 3),
+          placeholderHeight: Math.round(p.fontSize * 1.2),
         };
       });
 
