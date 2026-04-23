@@ -401,10 +401,26 @@ export const getContract = onRequest(
     // and replace *** placeholders in order with candidate variable values.
     let finalHtml = renderedHtml;
     if (templateType2 === 'pdf') {
-      const storedText = (contractTemplate?.pdfExtractedText as string) ?? '';
-      if (storedText) {
+      let rawText = (contractTemplate?.pdfExtractedText as string) ?? '';
+
+      // Fallback: extract text on-the-fly if template was saved without extractedText
+      if (!rawText && contractTemplate?.pdfStoragePath) {
+        try {
+          const bucket = getStorage().bucket();
+          const [pdfBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const pdfParse: (b: Buffer) => Promise<{ text: string }> =
+            require('pdf-parse/lib/pdf-parse.js');
+          const pdfData = await pdfParse(Buffer.from(pdfBytes));
+          rawText = pdfData.text ?? '';
+        } catch (parseErr) {
+          console.warn('[getContract] pdf-parse fallback failed:', parseErr);
+        }
+      }
+
+      if (rawText) {
         const mappings = (contractTemplate?.variableMappings as PdfVariableMapping[]) ?? [];
-        let text = storedText;
+        let text = rawText;
         for (const mapping of mappings) {
           const value = (vars[mapping.variableName] as string) || '';
           text = text.replace('***', value);

@@ -41,13 +41,13 @@ Available variables (use the exact id):
 `.trim();
 
 const SYSTEM_PROMPT = `You are a legal document analyzer for Mexican employment contracts.
-The document text below uses *** as placeholders for candidate-specific data.
 Your task has TWO parts:
 
-PART 1 — Map each *** to a variable.
+PART 1 — Identify every *** placeholder and map it to a variable.
 ${VARIABLES_DOC}
 
-PART 2 — Detect signature/initials/date fields from patterns like ________ lines, or labels "Firma", "Rúbrica", "Iniciales", "Sello".
+PART 2 — Detect signature, initials, and date fields.
+Look for: long underscores ____, boxes/spaces labeled "Firma", "Rúbrica", "Sello", "Iniciales", blank areas at section endings or page footers for signatures.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -57,8 +57,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       "variable": "name",
       "context": "~60 chars around the ***",
       "pageIndex": 0,
-      "xPercent": 50,
-      "yPercent": 15,
+      "xPercent": 55.2,
+      "yPercent": 12.4,
       "fontSize": 10
     }
   ],
@@ -67,8 +67,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       "type": "signature",
       "label": "Firma del Trabajador",
       "pageIndex": 5,
-      "xPercent": 25,
-      "yPercent": 85,
+      "xPercent": 10.5,
+      "yPercent": 87.0,
       "widthPts": 200,
       "heightPts": 55
     }
@@ -77,12 +77,25 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 Rules:
 - occurrence: 1-based, counting *** from top of document
-- pageIndex: 0-based (use ---PAGE N--- markers in the text)
-- xPercent/yPercent: estimate position on its page (0=left/top, 100=right/bottom); use 50/50 if unsure
-- fontSize: estimate from context (body ~10-11, headings ~12-14)
+- pageIndex: 0-based
+- xPercent/yPercent: position on its page (0=left/top, 100=right/bottom)
+- fontSize: estimate from surrounding text (body ~10-11, headings ~12-14)
 - "$***.00 M.N." → "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"
 - Return EVERY *** occurrence without skipping
 - signatureFields type: "signature" | "initials" | "date"`;
+
+/** Extract plain text from PDF bytes using pdf-parse lib path (avoids test-file crash). */
+async function extractPdfText(pdfBytes: Buffer): Promise<string> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pdfParse: (b: Buffer) => Promise<{ text: string }> =
+      require('pdf-parse/lib/pdf-parse.js');
+    const result = await pdfParse(pdfBytes);
+    return result.text ?? '';
+  } catch {
+    return '';
+  }
+}
 
 export const analyzeContractVariables = onRequest(
   {
@@ -108,30 +121,22 @@ export const analyzeContractVariables = onRequest(
       // Download PDF from Firebase Storage
       const bucket = getStorage().bucket();
       const [pdfBytes] = await bucket.file(storagePath).download();
+      const pdfBuffer = Buffer.from(pdfBytes);
 
-      // Extract plain text using pdf-parse lib path (avoids test-file bootstrap crash)
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pdfParse: (b: Buffer) => Promise<{ text: string }> =
-        require('pdf-parse/lib/pdf-parse.js');
-      const pdfData = await pdfParse(Buffer.from(pdfBytes));
-      const extractedText = pdfData.text;
+      // Extract plain text locally (for storing as pdfExtractedText)
+      const extractedText = await extractPdfText(pdfBuffer);
 
       // Get page dimensions from pdf-lib (needed to convert % → PDF points)
-      const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
       const pages = pdfDoc.getPages();
       const pageDimensions = pages.map((p) => {
         const { width, height } = p.getSize();
         return { width, height };
       });
 
-      // Split text by page (pdf-parse uses \f as page separator)
-      const pageTexts = extractedText.split('\f');
-      const textWithPageMarkers = pageTexts
-        .map((t, i) => `---PAGE ${i + 1}---\n${t.trim()}`)
-        .join('\n\n');
-
-      // Send plain text to Claude — far fewer tokens than base64 PDF
+      // Send the PDF visually to Claude — base64 approach gives accurate placeholder positions
       const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+      const pdfBase64 = pdfBuffer.toString('base64');
 
       const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
@@ -140,7 +145,20 @@ export const analyzeContractVariables = onRequest(
         messages: [
           {
             role: 'user',
-            content: `Analyze this contract and find all *** placeholders:\n\n${textWithPageMarkers}`,
+            content: [
+              {
+                type: 'document',
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: pdfBase64,
+                },
+              },
+              {
+                type: 'text',
+                text: 'Analyze this contract PDF and find all *** placeholders. Return the JSON as instructed.',
+              },
+            ],
           },
         ],
       });
@@ -151,8 +169,11 @@ export const analyzeContractVariables = onRequest(
         .map((b) => b.text)
         .join('');
 
-      const jsonMatch = claudeText.match(/\{[\s\S]*\}/);
+      // Strip markdown code fences if present, then find the JSON object
+      const stripped = claudeText.replace(/```(?:json)?\s*/g, '').replace(/```\s*/g, '');
+      const jsonMatch = stripped.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
+        console.error('[analyzeContractVariables] Claude response:', claudeText);
         throw new Error('Claude did not return valid JSON');
       }
 
