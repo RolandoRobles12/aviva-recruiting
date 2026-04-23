@@ -349,6 +349,7 @@ export const getContract = onRequest(
       return;
     }
 
+    try {
     const snap = await db
       .collection('candidates')
       .where('contractToken', '==', token)
@@ -396,26 +397,27 @@ export const getContract = onRequest(
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
     const renderedHtml = interpolate(rawHtml, vars);
 
-    // For PDF templates, extract text and fill variables so we render as HTML prose
+    // For PDF templates, use the AI-extracted plain text stored on the template
+    // and replace *** placeholders in order with candidate variable values.
     let finalHtml = renderedHtml;
-    if (templateType2 === 'pdf' && contractTemplate?.pdfStoragePath) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pdfParse: (b: Buffer) => Promise<{ text: string }> = require('pdf-parse');
-      const bucket = getStorage().bucket();
-      const [pdfBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
-      const pdfData = await pdfParse(Buffer.from(pdfBytes));
-      let text = pdfData.text;
-      const mappings = (contractTemplate?.variableMappings as PdfVariableMapping[]) ?? [];
-      for (const mapping of mappings) {
-        const value = (vars[mapping.variableName] as string) || '';
-        text = text.replace('***', value);
+    if (templateType2 === 'pdf') {
+      const storedText = (contractTemplate?.pdfExtractedText as string) ?? '';
+      if (storedText) {
+        const mappings = (contractTemplate?.variableMappings as PdfVariableMapping[]) ?? [];
+        let text = storedText;
+        for (const mapping of mappings) {
+          const value = (vars[mapping.variableName] as string) || '';
+          text = text.replace('***', value);
+        }
+        finalHtml = text
+          .split('\n')
+          .map((l: string) => l.trim())
+          .filter((l: string) => l.length > 0)
+          .map((l: string) => `<p>${l}</p>`)
+          .join('');
+      } else {
+        finalHtml = '<p>El contrato está siendo preparado. Por favor contacta a tu reclutador.</p>';
       }
-      finalHtml = text
-        .split('\n')
-        .map((l: string) => l.trim())
-        .filter((l: string) => l.length > 0)
-        .map((l: string) => `<p>${l}</p>`)
-        .join('');
     }
 
     res.status(200).json({
@@ -430,5 +432,9 @@ export const getContract = onRequest(
         expiresAt: expiresAt?.toISOString(),
       },
     });
+    } catch (err) {
+      console.error('[getContract] Unhandled error:', err);
+      res.status(500).json({ ok: false, error: 'Error al cargar el contrato. Por favor intenta de nuevo.' });
+    }
   }
 );

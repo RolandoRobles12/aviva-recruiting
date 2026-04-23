@@ -130,6 +130,7 @@ export interface DetectedPlaceholder {
  * Sends the PDF to Claude, which detects each *** placeholder and identifies the variable.
  */
 export async function analyzeContractVariables(storagePath: string): Promise<{
+  extractedText: string;
   placeholders: DetectedPlaceholder[];
   variableMappings: PdfVariableMapping[];
   signatureFields: PdfFieldPosition[];

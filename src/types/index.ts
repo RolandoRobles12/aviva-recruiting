@@ -256,6 +256,7 @@ export interface ContractTemplate {
   pdfFileSize?: number;       // File size in bytes
   signatureFields?: PdfFieldPosition[];     // Where signatures/initials go
   variableMappings?: PdfVariableMapping[];  // Where to overlay variables
+  pdfExtractedText?: string;                // Plain text extracted by AI for HTML display
   // ── Initials configuration ──
   initialsOnEveryPage: boolean; // Place initials on every page
   initialsPosition?: {          // Default position for initials
