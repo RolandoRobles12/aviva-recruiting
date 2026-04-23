@@ -77,6 +77,7 @@ export function ContractTemplatesPage() {
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   // AI variable analysis
+  const [pdfExtractedText, setPdfExtractedText] = useState<string>('');
   const [variableMappings, setVariableMappings] = useState<PdfVariableMapping[]>([]);
   const [detectedPlaceholders, setDetectedPlaceholders] = useState<DetectedPlaceholder[]>([]);
   const [analyzingVars, setAnalyzingVars] = useState(false);
@@ -103,6 +104,7 @@ export function ContractTemplatesPage() {
     setSignatureFields([]);
     setInitialsOnEveryPage(true);
     setPdfError(null);
+    setPdfExtractedText('');
     setVariableMappings([]);
     setDetectedPlaceholders([]);
     setVarAnalysisError(null);
@@ -188,6 +190,7 @@ export function ContractTemplatesPage() {
     setVarAnalysisError(null);
     try {
       const result = await analyzeContractVariables(pdfStoragePath);
+      setPdfExtractedText(result.extractedText ?? '');
       setDetectedPlaceholders(result.placeholders);
       setVariableMappings(result.variableMappings);
       if ((result.signatureFields ?? []).length > 0) {
@@ -247,6 +250,7 @@ export function ContractTemplatesPage() {
       pdfFileSize: templateType === 'pdf' && pdfAnalysis ? pdfAnalysis.fileSize : undefined,
       signatureFields: templateType === 'pdf' ? signatureFields : undefined,
       variableMappings: templateType === 'pdf' && variableMappings.length > 0 ? variableMappings : undefined,
+      pdfExtractedText: templateType === 'pdf' && pdfExtractedText ? pdfExtractedText : undefined,
       initialsOnEveryPage,
       initialsPosition: undefined,
     };

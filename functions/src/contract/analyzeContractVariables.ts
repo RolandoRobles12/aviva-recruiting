@@ -51,6 +51,7 @@ Look for: lines where someone would physically sign (long underscores ____), box
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
 {
+  "plainText": "The complete plain text of the document, preserving paragraph breaks as \\n\\n and keeping every *** exactly as-is",
   "placeholders": [
     {
       "occurrence": 1,
@@ -130,7 +131,7 @@ export const analyzeContractVariables = onRequest(
 
       const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [
           {
@@ -174,9 +175,11 @@ export const analyzeContractVariables = onRequest(
         heightPts?: number;
       };
       const parsed = JSON.parse(jsonMatch[0]) as {
+        plainText?: string;
         placeholders: DetectedPlaceholder[];
         signatureFields?: RawSignatureField[];
       };
+      const extractedText = parsed.plainText ?? '';
       const placeholders = parsed.placeholders ?? [];
       const rawSigFields = parsed.signatureFields ?? [];
 
@@ -226,6 +229,7 @@ export const analyzeContractVariables = onRequest(
 
       res.status(200).json({
         ok: true,
+        extractedText,
         placeholders: placeholders.map((p) => ({
           ...p,
           pageDimensions: pageDimensions[p.pageIndex] ?? pageDimensions[0],
