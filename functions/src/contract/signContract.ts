@@ -4,9 +4,6 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import pdfParseLib from 'pdf-parse';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pdfParse: (dataBuffer: Buffer) => Promise<{ text: string }> = (pdfParseLib as any).default ?? pdfParseLib;
 import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
@@ -402,6 +399,8 @@ export const getContract = onRequest(
     // For PDF templates, extract text and fill variables so we render as HTML prose
     let finalHtml = renderedHtml;
     if (templateType2 === 'pdf' && contractTemplate?.pdfStoragePath) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const pdfParse: (b: Buffer) => Promise<{ text: string }> = require('pdf-parse');
       const bucket = getStorage().bucket();
       const [pdfBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
       const pdfData = await pdfParse(Buffer.from(pdfBytes));
