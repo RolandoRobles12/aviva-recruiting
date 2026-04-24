@@ -118,6 +118,26 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
             )}
           </div>
           <p className="text-xs text-gray-500">{config.description}</p>
+          {(documentType === 'constancia_fiscal') && (
+            <a
+              href="https://satid.sat.gob.mx/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary-600 hover:underline mt-0.5 inline-block"
+            >
+              ¿No sabes cómo obtenerla? Haz clic aquí →
+            </a>
+          )}
+          {documentType === 'nss' && (
+            <a
+              href="https://serviciosdigitales.imss.gob.mx/gestionAsegurados-web-externo/asignacionNSS"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary-600 hover:underline mt-0.5 inline-block"
+            >
+              ¿No sabes cómo obtenerlo? Haz clic aquí →
+            </a>
+          )}
         </div>
       </div>
 
@@ -138,7 +158,9 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
             <div className="py-2">
               <RefreshCw size={24} className="mx-auto text-primary-500 animate-spin mb-2" />
               <p className="text-sm text-gray-600 mb-2">
-                {document.status === 'uploaded' ? 'Validando con OCR...' : `Subiendo... ${uploadProgress}%`}
+                {document.status === 'uploaded'
+                ? (documentType === 'foto_profesional' ? 'Procesando foto...' : 'Validando con OCR...')
+                : `Subiendo... ${uploadProgress}%`}
               </p>
               {uploading && (
                 <div className="w-full bg-gray-200 rounded-full h-1.5">

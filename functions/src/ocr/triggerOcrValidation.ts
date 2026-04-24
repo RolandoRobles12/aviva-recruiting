@@ -124,6 +124,23 @@ export const onDocumentUploaded = onObjectFinalized(
       'estado_cuenta_fonacot',
     ];
 
+    // Photos are auto-approved — no OCR needed
+    if (documentType === 'foto_profesional') {
+      await updateCandidateDocument(candidateId, documentType, {
+        status: 'valid',
+        ocrResult: {
+          rawText: '',
+          extractedData: {},
+          confidence: 1,
+          validationPassed: true,
+          validationErrors: [],
+          processedAt: FieldValue.serverTimestamp(),
+        },
+      });
+      await updateCandidateCompletion(candidateId);
+      return;
+    }
+
     try {
       // Download file for Claude (PDFs sent natively, no conversion needed)
       const { buffer, mediaType } = await downloadFile(
