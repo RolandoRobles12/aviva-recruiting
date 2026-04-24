@@ -111,9 +111,52 @@ export const analyzeContractVariables = onRequest(
       return;
     }
 
-    const { storagePath } = req.body as { storagePath?: string };
-    if (!storagePath) {
-      res.status(400).json({ ok: false, error: 'storagePath is required' });
+    const { storagePath, text: inputText } = req.body as { storagePath?: string; text?: string };
+    if (!storagePath && !inputText) {
+      res.status(400).json({ ok: false, error: 'storagePath or text is required' });
+      return;
+    }
+
+    // ── Text-only mode: no PDF, just map *** occurrences to variables ──────────
+    if (inputText && !storagePath) {
+      try {
+        const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+        const message = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 2048,
+          system: `You are a legal document variable mapper for Mexican employment contracts.
+The text uses *** as placeholders. Map each *** (in order of appearance) to the correct variable.
+${VARIABLES_DOC}
+
+Return ONLY valid JSON (no markdown):
+{ "mappings": ["variable1", "variable2", ...] }
+
+Rules:
+- One entry per *** occurrence, in document order
+- "$***.00 M.N." → "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"`,
+          messages: [{ role: 'user', content: `Map each *** to a variable:\n\n${inputText}` }],
+        });
+
+        const claudeText = message.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text)
+          .join('');
+
+        const stripped = claudeText.replace(/```(?:json)?\s*/g, '').replace(/```\s*/g, '');
+        const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('Claude did not return valid JSON');
+
+        const parsed = JSON.parse(jsonMatch[0]) as { mappings: string[] };
+        const mappings = (parsed.mappings ?? []).map((variableName, i) => ({
+          variableName,
+          occurrence: i + 1,
+        }));
+
+        res.status(200).json({ ok: true, textMappings: mappings });
+      } catch (err) {
+        console.error('[analyzeContractVariables/text] error:', err);
+        res.status(500).json({ ok: false, error: err instanceof Error ? err.message : 'Error al analizar' });
+      }
       return;
     }
 
