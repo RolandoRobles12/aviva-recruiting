@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
@@ -11,6 +12,7 @@ import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcesso
 import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
+const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 // Maps Viterbit ${variable} names (from Word templates) to system variable names.
@@ -397,24 +399,55 @@ export const getContract = onRequest(
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
     const renderedHtml = interpolate(rawHtml, vars);
 
-    // For PDF templates, use the AI-extracted plain text stored on the template
-    // and replace *** placeholders in order with candidate variable values.
+    // For PDF templates: get plain text, replace *** with candidate data, render as HTML
     let finalHtml = renderedHtml;
     if (templateType2 === 'pdf') {
       let rawText = (contractTemplate?.pdfExtractedText as string) ?? '';
+      const templateDocId = candidate.contractTemplateId as string | undefined;
 
-      // Fallback: extract text on-the-fly if template was saved without extractedText
+      // If text not stored yet: try pdf-parse, then Claude as last resort
       if (!rawText && contractTemplate?.pdfStoragePath) {
+        const bucket = getStorage().bucket();
+        const [pdfBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
+        const pdfBuffer = Buffer.from(pdfBytes);
+
+        // Try pdf-parse first (fast, free)
         try {
-          const bucket = getStorage().bucket();
-          const [pdfBytes] = await bucket.file(contractTemplate.pdfStoragePath as string).download();
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const pdfParse: (b: Buffer) => Promise<{ text: string }> =
             require('pdf-parse/lib/pdf-parse.js');
-          const pdfData = await pdfParse(Buffer.from(pdfBytes));
+          const pdfData = await pdfParse(pdfBuffer);
           rawText = pdfData.text ?? '';
-        } catch (parseErr) {
-          console.warn('[getContract] pdf-parse fallback failed:', parseErr);
+        } catch { /* font encoding issue — fall through to Claude */ }
+
+        // Last resort: Claude text extraction (works for any PDF encoding)
+        if (!rawText) {
+          try {
+            const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+            const pdfBase64 = pdfBuffer.toString('base64');
+            const msg = await client.messages.create({
+              model: 'claude-sonnet-4-6',
+              max_tokens: 8192,
+              messages: [{
+                role: 'user',
+                content: [
+                  { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+                  { type: 'text', text: 'Extract all text from this PDF. Keep every *** placeholder exactly as written. Return ONLY the text, no commentary.' },
+                ],
+              }],
+            });
+            rawText = msg.content
+              .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+              .map((b) => b.text)
+              .join('');
+          } catch (claudeErr) {
+            console.error('[getContract] Claude text extraction failed:', claudeErr);
+          }
+        }
+
+        // Cache the extracted text on the template so future loads are instant
+        if (rawText && templateDocId) {
+          db.collection('contract_templates').doc(templateDocId).update({ pdfExtractedText: rawText }).catch(() => {});
         }
       }
 
