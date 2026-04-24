@@ -7,6 +7,7 @@ import { sendEmail } from './gmailClient';
 import { reminderTemplate, offerTemplate } from './templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { DOCUMENT_TYPES_REQUIRED, DOCUMENT_LABELS } from '../utils/documentTypes';
+import { getLogoUrl } from '../utils/branding';
 
 // Runs every day at 9:00 AM Mexico City time
 export const scheduleReminders = functions
@@ -109,6 +110,7 @@ export const scheduleReminders = functions
         // Fall back to default
       }
 
+      const logoUrl = await getLogoUrl();
       const { subject, html } = reminderTemplate(
         {
           firstName: candidate.firstName as string,
@@ -118,7 +120,8 @@ export const scheduleReminders = functions
           formExpiresAt: '',
         },
         missingDocs,
-        customBodyText
+        customBodyText,
+        logoUrl,
       );
 
       try {
@@ -198,12 +201,14 @@ export const scheduleReminders = functions
         ? format(offerExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es })
         : '—';
 
+      const logoUrlOffer = await getLogoUrl();
       const { subject, html } = offerTemplate({
         firstName: candidate.firstName as string,
         lastName: candidate.lastName as string,
         position: candidate.position as string,
         offerUrl,
         offerExpiresAt: offerExpiresAtStr,
+        logoUrl: logoUrlOffer,
       });
 
       try {

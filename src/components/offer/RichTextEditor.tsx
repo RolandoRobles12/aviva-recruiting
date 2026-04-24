@@ -10,8 +10,9 @@ import mammoth from 'mammoth';
 import {
   Bold, Italic, UnderlineIcon, List, ListOrdered, Undo, Redo,
   Heading1, Heading2, Heading3, AlignLeft, AlignCenter, AlignRight,
-  ImageIcon, FileUp, X,
+  ImageIcon, FileUp, X, Loader2,
 } from 'lucide-react';
+import { uploadAsset } from '../../services/storage';
 
 // ─── Variable definitions ─────────────────────────────────────────────────────
 
@@ -190,6 +191,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const editorRef = useRef<Editor | null>(null);
   const [docxWarning, setDocxWarning] = useState<string[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -215,23 +217,23 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           return true;
         }
 
-        // Allow paste of images from clipboard
+        // Allow paste of images from clipboard — upload to Storage
         const items = event.clipboardData?.items;
         if (!items) return false;
         for (const item of items) {
           if (item.type.startsWith('image/')) {
             const file = item.getAsFile();
             if (!file) continue;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const src = e.target?.result as string;
-              view.dispatch(
-                view.state.tr.replaceSelectionWith(
-                  view.state.schema.nodes.image.create({ src })
-                )
-              );
-            };
-            reader.readAsDataURL(file);
+            setUploadingImage(true);
+            uploadAsset(file, 'assets/images')
+              .then(({ downloadUrl }) => {
+                view.dispatch(
+                  view.state.tr.replaceSelectionWith(
+                    view.state.schema.nodes.image.create({ src: downloadUrl })
+                  )
+                );
+              })
+              .finally(() => setUploadingImage(false));
             return true;
           }
         }
@@ -254,19 +256,20 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   }, [value, editor]);
 
   const handleInsertImage = () => {
-    imageInputRef.current?.click();
+    if (!uploadingImage) imageInputRef.current?.click();
   };
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !editor) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const src = ev.target?.result as string;
-      editor.chain().focus().setImage({ src }).run();
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (!file || !editor) return;
+    setUploadingImage(true);
+    try {
+      const { downloadUrl } = await uploadAsset(file, 'assets/images');
+      editor.chain().focus().setImage({ src: downloadUrl }).run();
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleDocxImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -425,8 +428,8 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         <Divider />
 
         {/* Image */}
-        <ToolbarBtn onClick={handleInsertImage} title="Insertar imagen">
-          <ImageIcon size={14} />
+        <ToolbarBtn onClick={handleInsertImage} title={uploadingImage ? 'Subiendo imagen…' : 'Insertar imagen'}>
+          {uploadingImage ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
         </ToolbarBtn>
 
         {/* DOCX import — pushed to the right */}

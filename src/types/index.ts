@@ -337,6 +337,10 @@ export interface LinkDurationSettings {
   contractDays: number;
 }
 
+export interface BrandingSettings {
+  logoUrl?: string;
+}
+
 export interface DocumentSetting {
   label: string;
   description: string;

@@ -7,6 +7,7 @@ import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
 import { invitationTemplate, contractTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
+import { getLogoUrl } from '../utils/branding';
 import { getLinkDuration } from '../utils/linkDuration';
 import { updateCandidateCompletion } from '../utils/candidates';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
@@ -118,13 +119,14 @@ export const onCandidateUpdated = functions
         const formUrl = `${appUrl}/form/${formToken}`;
         const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
 
+        const logoUrl = await getLogoUrl();
         const { subject, html } = invitationTemplate({
           firstName: after.firstName as string,
           lastName: after.lastName as string,
           position: after.position as string,
           formUrl,
           formExpiresAt: formExpiresAtStr,
-        });
+        }, undefined, logoUrl);
 
         const createdBy = after.createdBy as string;
         const senderEmail = await getRecruiterEmail(createdBy);
@@ -200,12 +202,14 @@ export const onCandidateUpdated = functions
         const contractUrl = `${appUrl}/contract/${contractTokenValue}`;
         const contractExpiresAtStr = format(contractExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
 
+        const logoUrlContract = await getLogoUrl();
         const { subject, html } = contractTemplate({
           firstName: after.firstName as string,
           lastName: after.lastName as string,
           position: after.position as string,
           contractUrl,
           contractExpiresAt: contractExpiresAtStr,
+          logoUrl: logoUrlContract,
         });
 
         // Send email separately so a failure does not prevent the Viterbit movement.

@@ -7,6 +7,7 @@ import { invitationTemplate } from './templates';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getRecruiterEmail } from '../utils/recruiters';
+import { getLogoUrl } from '../utils/branding';
 
 export const sendInvitationEmail = onCall(
   { region: 'us-central1' },
@@ -43,6 +44,8 @@ export const sendInvitationEmail = onCall(
       // Fall back to default template text
     }
 
+    const logoUrl = await getLogoUrl();
+
     const { subject, html } = invitationTemplate(
       {
         firstName: candidate.firstName as string,
@@ -51,7 +54,8 @@ export const sendInvitationEmail = onCall(
         formUrl,
         formExpiresAt,
       },
-      customBodyText
+      customBodyText,
+      logoUrl,
     );
 
     await sendEmail({

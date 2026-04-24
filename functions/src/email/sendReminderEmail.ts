@@ -6,6 +6,7 @@ import { sendEmail } from './gmailClient';
 import { reminderTemplate } from './templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { DOCUMENT_TYPES_REQUIRED, DOCUMENT_LABELS } from '../utils/documentTypes';
+import { getLogoUrl } from '../utils/branding';
 
 export const sendReminderEmail = onCall(
   { region: 'us-central1' },
@@ -53,6 +54,8 @@ export const sendReminderEmail = onCall(
       // Fall back to default template text
     }
 
+    const logoUrl = await getLogoUrl();
+
     const { subject, html } = reminderTemplate(
       {
         firstName: candidate.firstName as string,
@@ -62,7 +65,8 @@ export const sendReminderEmail = onCall(
         formExpiresAt: '',
       },
       missingDocs,
-      customBodyText
+      customBodyText,
+      logoUrl,
     );
 
     await sendEmail({

@@ -8,6 +8,7 @@ import { contractTemplate } from './templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { getLogoUrl } from '../utils/branding';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 
@@ -34,12 +35,15 @@ export const sendContractEmail = onCall(
     const recruiterUid = request.auth.uid;
     const senderEmail = await getRecruiterEmail(recruiterUid);
 
+    const logoUrl = await getLogoUrl();
+
     const { subject, html } = contractTemplate({
       firstName: (candidate.firstName as string) || '',
       lastName:  (candidate.lastName  as string) || '',
       position:  (candidate.position  as string) || '',
       contractUrl,
       contractExpiresAt,
+      logoUrl,
     });
 
     await sendEmail({ to: candidate.email as string, subject, html, senderEmail, recruiterUid });

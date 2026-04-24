@@ -6,6 +6,15 @@ interface CandidateInfo {
   formExpiresAt: string;
 }
 
+function logoBlock(logoUrl?: string): string {
+  if (logoUrl) {
+    return `<img src="${logoUrl}" alt="Aviva" height="48" style="display:block;margin:0 auto 12px;max-height:48px;max-width:220px;object-fit:contain;" />`;
+  }
+  return `<div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
+          </div>`;
+}
+
 export function ocrErrorTemplate(
   c: Pick<CandidateInfo, 'firstName' | 'lastName' | 'position' | 'formUrl'>,
   documentLabel: string,
@@ -84,7 +93,8 @@ export function ocrErrorTemplate(
 
 export function invitationTemplate(
   c: CandidateInfo,
-  customBodyText?: string
+  customBodyText?: string,
+  logoUrl?: string,
 ): { subject: string; html: string } {
   const bodyText =
     customBodyText ??
@@ -101,9 +111,7 @@ export function invitationTemplate(
       <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
-          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
-            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
-          </div>
+          ${logoBlock(logoUrl)}
           <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">¡Bienvenido a Aviva!</h1>
           <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Proceso de ingreso · ${c.position}</p>
         </td></tr>
@@ -160,6 +168,7 @@ export function offerTemplate(c: {
   position: string;
   offerUrl: string;
   offerExpiresAt: string;
+  logoUrl?: string;
 }): { subject: string; html: string } {
   return {
     subject: `Aviva | Tu carta oferta está lista — ${c.position}`,
@@ -173,9 +182,7 @@ export function offerTemplate(c: {
       <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
-          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
-            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
-          </div>
+          ${logoBlock(c.logoUrl)}
           <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">¡Felicidades, ${c.firstName}!</h1>
           <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Tu carta oferta · ${c.position}</p>
         </td></tr>
@@ -216,6 +223,7 @@ export function onboardingTemplate(c: {
   firstName: string;
   lastName: string;
   position: string;
+  logoUrl?: string;
 }): { subject: string; html: string } {
   return {
     subject: `Aviva | ¡Bienvenido al equipo! Próximos pasos — ${c.position}`,
@@ -229,9 +237,7 @@ export function onboardingTemplate(c: {
       <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
-          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
-            <span style="color:#fff;font-size:28px;">🎉</span>
-          </div>
+          ${logoBlock(c.logoUrl)}
           <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">¡Bienvenido a Aviva!</h1>
           <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">${c.position}</p>
         </td></tr>
@@ -272,6 +278,7 @@ export function contractTemplate(c: {
   position: string;
   contractUrl: string;
   contractExpiresAt: string;
+  logoUrl?: string;
 }): { subject: string; html: string } {
   return {
     subject: `Aviva | Tu contrato laboral está listo para firmar — ${c.position}`,
@@ -285,9 +292,7 @@ export function contractTemplate(c: {
       <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
-          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
-            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
-          </div>
+          ${logoBlock(c.logoUrl)}
           <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">Contrato de Trabajo</h1>
           <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">${c.position}</p>
         </td></tr>
@@ -335,6 +340,7 @@ export function inductionTemplate(c: {
   lastName: string;
   position: string;
   corporateEmail: string;
+  logoUrl?: string;
 }): { subject: string; html: string } {
   return {
     subject: `Aviva | Tus cuentas están listas — Inducción y capacitación`,
@@ -348,9 +354,7 @@ export function inductionTemplate(c: {
       <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
-          <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
-            <span style="color:#fff;font-size:24px;font-weight:bold;">A</span>
-          </div>
+          ${logoBlock(c.logoUrl)}
           <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">¡Todo listo, ${c.firstName}!</h1>
           <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Inducción y Capacitación · ${c.position}</p>
         </td></tr>
@@ -412,7 +416,8 @@ export function inductionTemplate(c: {
 export function reminderTemplate(
   c: CandidateInfo,
   missingDocs: string[],
-  customBodyText?: string
+  customBodyText?: string,
+  logoUrl?: string,
 ): { subject: string; html: string } {
   const missingList = missingDocs.map((d) => `<li>${d}</li>`).join('');
   const bodyText =
