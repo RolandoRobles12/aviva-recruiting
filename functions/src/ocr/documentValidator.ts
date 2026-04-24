@@ -120,7 +120,7 @@ Validaciones requeridas:
 2. ¿Se puede leer una dirección (calle, colonia, código postal, ciudad/estado)?
 3. Vigencia: Lee la fecha del documento (fecha de emisión, período de facturación, o fecha de estado de cuenta). Si la fecha es anterior a 3 meses respecto a hoy ({{TODAY_DATE}}), el documento está vencido y debes rechazarlo indicando la fecha encontrada. Si no se puede leer ninguna fecha, rechaza el documento.
 {{#INE_ADDRESS}}
-4. Comparación de domicilio con INE: Compara la dirección del comprobante con la del INE ("{{INE_ADDRESS}}"). Deben corresponder al mismo domicilio (acepta variaciones menores como abreviaciones, diferente orden de palabras, o datos adicionales). Si son claramente distintas, rechaza e indica cuál es la diferencia.
+4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa). No importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
 {{/INE_ADDRESS}}
 
 Datos a extraer: direccion (lo más completa posible), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,

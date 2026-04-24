@@ -331,8 +331,8 @@ export function ContractPage() {
           <p className="text-xs text-blue-700 leading-relaxed">
             Al firmar este contrato, se generará evidencia criptográfica que incluye: hash SHA-256 del documento,
             tu dirección IP, fecha y hora exacta, y un certificado de firma. Tus iniciales se colocarán en cada
-            hoja del contrato como evidencia adicional. Esta firma tiene validez legal conforme a los artículos
-            89 a 94 del Código de Comercio de México y el artículo 1834 bis del Código Civil Federal.
+            hoja del contrato como evidencia adicional. Esta firma tiene validez legal conforme al artículo 1834
+            bis del Código Civil Federal.
           </p>
         </div>
 

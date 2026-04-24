@@ -394,8 +394,8 @@ export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description:
     required: true,
   },
   foto_profesional: {
-    label: 'Foto Profesional',
-    description: 'Sube una foto profesional tuya',
+    label: 'Fotografía',
+    description: 'Sube una fotografía para que te conozcamos',
     required: true,
   },
   aviso_retencion: {
