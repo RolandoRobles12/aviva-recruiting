@@ -10,6 +10,7 @@ import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractP
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
 import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
+import { getLogoUrl } from '../utils/branding';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
@@ -469,6 +470,8 @@ export const getContract = onRequest(
       }
     }
 
+    const logoUrl = await getLogoUrl();
+
     res.status(200).json({
       ok: true,
       contract: {
@@ -479,6 +482,7 @@ export const getContract = onRequest(
         templateType: 'html',
         bodyHtml: finalHtml,
         expiresAt: expiresAt?.toISOString(),
+        logoUrl,
       },
     });
     } catch (err) {

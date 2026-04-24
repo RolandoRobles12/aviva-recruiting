@@ -12,6 +12,7 @@ interface OfferData {
   startDate: string;
   bodyHtml: string;
   expiresAt?: string;
+  logoUrl?: string;
 }
 
 type PageState = 'loading' | 'ready' | 'signed' | 'expired' | 'already_signed' | 'error' | 'server_error';
@@ -261,9 +262,17 @@ export function OfferPage() {
       <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="bg-primary-600 rounded-2xl p-6 sm:p-8 text-white">
-          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-4">
-            <span className="font-bold text-lg">A</span>
-          </div>
+          {offer?.logoUrl ? (
+            <img
+              src={offer.logoUrl}
+              alt="Logo"
+              className="h-10 max-w-[180px] object-contain mb-4"
+            />
+          ) : (
+            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-4">
+              <span className="font-bold text-lg">A</span>
+            </div>
+          )}
           <h1 className="text-xl sm:text-2xl font-bold">Carta Oferta de Trabajo</h1>
           <p className="text-white/80 text-sm mt-1">{offer?.position}</p>
         </div>
