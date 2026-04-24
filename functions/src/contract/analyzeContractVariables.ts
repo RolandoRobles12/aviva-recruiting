@@ -51,7 +51,6 @@ Look for: long underscores ____, boxes/spaces labeled "Firma", "Rúbrica", "Sell
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "plainText": "The complete plain text of the contract with all *** kept exactly as-is, paragraph breaks as \\n",
   "placeholders": [
     {
       "occurrence": 1,
@@ -83,8 +82,7 @@ Rules:
 - fontSize: estimate from surrounding text (body ~10-11, headings ~12-14)
 - "$***.00 M.N." → "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"
 - Return EVERY *** occurrence without skipping
-- signatureFields type: "signature" | "initials" | "date"
-- plainText: full readable text of the document, *** preserved verbatim`;
+- signatureFields type: "signature" | "initials" | "date"`;
 
 /** Extract plain text from PDF bytes using pdf-parse lib path (avoids test-file crash). */
 async function extractPdfText(pdfBytes: Buffer): Promise<string> {
@@ -140,33 +138,58 @@ export const analyzeContractVariables = onRequest(
       const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
       const pdfBase64 = pdfBuffer.toString('base64');
 
-      const message = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8192,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: pdfBase64,
-                },
-              },
-              {
-                type: 'text',
-                text: 'Analyze this contract PDF and find all *** placeholders. Return the JSON as instructed.',
-              },
-            ],
+      // Run both calls concurrently: placeholder analysis + plain text extraction
+      const docContent = [
+        {
+          type: 'document' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: 'application/pdf' as const,
+            data: pdfBase64,
           },
-        ],
-      });
+        },
+      ];
 
-      // Extract JSON from Claude response
+      const [message, textMessage] = await Promise.all([
+        // Call 1: placeholder analysis → JSON output
+        client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          system: SYSTEM_PROMPT,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                ...docContent,
+                { type: 'text', text: 'Analyze this contract PDF and find all *** placeholders. Return the JSON as instructed.' },
+              ],
+            },
+          ],
+        }),
+        // Call 2: plain text extraction → plain text output (no JSON, no parsing issues)
+        client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8192,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                ...docContent,
+                { type: 'text', text: 'Extract all text from this PDF document. Keep every *** placeholder exactly as written. Return ONLY the extracted text, with paragraph breaks as newlines. No commentary, no JSON, no markdown.' },
+              ],
+            },
+          ],
+        }),
+      ]);
+
+      // Extract JSON from analysis call
       const claudeText = message.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+
+      // Extract plain text from the dedicated text extraction call
+      const claudePlainText = textMessage.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
         .join('');
@@ -189,14 +212,11 @@ export const analyzeContractVariables = onRequest(
         heightPts?: number;
       };
       const parsed = JSON.parse(jsonMatch[0]) as {
-        plainText?: string;
         placeholders: DetectedPlaceholder[];
         signatureFields?: RawSignatureField[];
       };
-      // Prefer Claude's extracted text (works for any encoding); pdf-parse as fallback
-      const extractedText = (parsed.plainText && parsed.plainText.trim())
-        ? parsed.plainText
-        : localText;
+      // Use dedicated text extraction call; fall back to local pdf-parse if empty
+      const extractedText = claudePlainText.trim() || localText;
       const placeholders = parsed.placeholders ?? [];
       const rawSigFields = parsed.signatureFields ?? [];
 
