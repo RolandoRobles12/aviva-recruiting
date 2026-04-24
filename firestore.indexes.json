@@ -9,13 +9,6 @@
       ]
     },
     {
-      "collectionGroup": "candidates",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "formToken", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "email_logs",
       "queryScope": "COLLECTION",
       "fields": [
