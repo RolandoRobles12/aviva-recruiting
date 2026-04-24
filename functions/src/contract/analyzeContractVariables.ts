@@ -51,6 +51,7 @@ Look for: long underscores ____, boxes/spaces labeled "Firma", "Rúbrica", "Sell
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
+  "plainText": "The complete plain text of the contract with all *** kept exactly as-is, paragraph breaks as \\n",
   "placeholders": [
     {
       "occurrence": 1,
@@ -82,7 +83,8 @@ Rules:
 - fontSize: estimate from surrounding text (body ~10-11, headings ~12-14)
 - "$***.00 M.N." → "salary"; "( *** pesos 00/100...)" right after → "salarioTexto"
 - Return EVERY *** occurrence without skipping
-- signatureFields type: "signature" | "initials" | "date"`;
+- signatureFields type: "signature" | "initials" | "date"
+- plainText: full readable text of the document, *** preserved verbatim`;
 
 /** Extract plain text from PDF bytes using pdf-parse lib path (avoids test-file crash). */
 async function extractPdfText(pdfBytes: Buffer): Promise<string> {
@@ -123,8 +125,8 @@ export const analyzeContractVariables = onRequest(
       const [pdfBytes] = await bucket.file(storagePath).download();
       const pdfBuffer = Buffer.from(pdfBytes);
 
-      // Extract plain text locally (for storing as pdfExtractedText)
-      const extractedText = await extractPdfText(pdfBuffer);
+      // Extract plain text locally as fallback (may be empty for some PDF encodings)
+      const localText = await extractPdfText(pdfBuffer);
 
       // Get page dimensions from pdf-lib (needed to convert % → PDF points)
       const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
@@ -140,7 +142,7 @@ export const analyzeContractVariables = onRequest(
 
       const message = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [
           {
@@ -187,9 +189,14 @@ export const analyzeContractVariables = onRequest(
         heightPts?: number;
       };
       const parsed = JSON.parse(jsonMatch[0]) as {
+        plainText?: string;
         placeholders: DetectedPlaceholder[];
         signatureFields?: RawSignatureField[];
       };
+      // Prefer Claude's extracted text (works for any encoding); pdf-parse as fallback
+      const extractedText = (parsed.plainText && parsed.plainText.trim())
+        ? parsed.plainText
+        : localText;
       const placeholders = parsed.placeholders ?? [];
       const rawSigFields = parsed.signatureFields ?? [];
 
