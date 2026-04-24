@@ -10,6 +10,7 @@ import {
   uploadContractPdf,
   analyzePdfTemplate,
   analyzeContractVariables,
+  analyzeContractText,
 } from '../services/contractTemplates';
 import type { DetectedPlaceholder } from '../services/contractTemplates';
 import { RichTextEditor, VARIABLES } from '../components/offer/RichTextEditor';
@@ -76,6 +77,11 @@ export function ContractTemplatesPage() {
   const [initialsOnEveryPage, setInitialsOnEveryPage] = useState(true);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
+  // HTML import-from-text state
+  const [importText, setImportText] = useState('');
+  const [importAnalyzing, setImportAnalyzing] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   // AI variable analysis
   const [pdfExtractedText, setPdfExtractedText] = useState<string>('');
   const [variableMappings, setVariableMappings] = useState<PdfVariableMapping[]>([]);
@@ -108,6 +114,8 @@ export function ContractTemplatesPage() {
     setVariableMappings([]);
     setDetectedPlaceholders([]);
     setVarAnalysisError(null);
+    setImportText('');
+    setImportError(null);
   };
 
   const openCreate = () => {
@@ -131,6 +139,7 @@ export function ContractTemplatesPage() {
     setPdfError(null);
     setPdfFile(null);
     setVariableMappings(t.variableMappings || []);
+    setPdfExtractedText((t as ContractTemplate & { pdfExtractedText?: string }).pdfExtractedText || '');
     setDetectedPlaceholders([]);
     setVarAnalysisError(null);
     reset({
@@ -183,6 +192,32 @@ export function ContractTemplatesPage() {
     const file = e.target.files?.[0];
     if (file) handlePdfUpload(file);
   }, [handlePdfUpload]);
+
+  const handleImportText = useCallback(async () => {
+    if (!importText.trim()) return;
+    setImportAnalyzing(true);
+    setImportError(null);
+    try {
+      const result = await analyzeContractText(importText);
+      // Replace each *** in order with {{variableName}}
+      const mappings = result.textMappings ?? [];
+      let converted = importText;
+      for (const m of mappings) {
+        converted = converted.replace('***', `{{${m.variableName}}}`);
+      }
+      // Wrap plain text lines in <p> tags if no HTML tags present
+      const isHtml = /<[a-z][\s\S]*>/i.test(converted);
+      const html = isHtml
+        ? converted
+        : converted.split('\n').map(l => l.trim()).filter(l => l.length > 0).map(l => `<p>${l}</p>`).join('\n');
+      setBodyHtml(html);
+      setImportText('');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Error al analizar');
+    } finally {
+      setImportAnalyzing(false);
+    }
+  }, [importText]);
 
   const handleAnalyzeVars = useCallback(async () => {
     if (!pdfStoragePath) return;
@@ -250,7 +285,7 @@ export function ContractTemplatesPage() {
       pdfFileSize: templateType === 'pdf' && pdfAnalysis ? pdfAnalysis.fileSize : undefined,
       signatureFields: templateType === 'pdf' ? signatureFields : undefined,
       variableMappings: templateType === 'pdf' && variableMappings.length > 0 ? variableMappings : undefined,
-      pdfExtractedText: templateType === 'pdf' && pdfExtractedText ? pdfExtractedText : undefined,
+      pdfExtractedText: templateType === 'pdf' ? (pdfExtractedText || undefined) : undefined,
       initialsOnEveryPage,
       initialsPosition: undefined,
     };
@@ -688,8 +723,39 @@ export function ContractTemplatesPage() {
                 {/* Right — editor / PDF upload */}
                 <div className="flex-1 flex flex-col overflow-hidden p-5">
                   {templateType === 'html' ? (
-                    <div className="flex-1 overflow-hidden">
-                      <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+                    <div className="flex-1 flex flex-col gap-4 overflow-y-auto">
+                      {/* Import from plain text / HTML with *** */}
+                      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Brain size={15} className="text-purple-500 shrink-0" />
+                          <span className="text-sm font-semibold text-purple-800">Importar texto con *** y detectar variables</span>
+                        </div>
+                        <p className="text-xs text-purple-600 mb-3">
+                          Pega aquí el texto o HTML del contrato con <code className="bg-purple-100 px-1 rounded">***</code> como marcadores. La IA detectará qué variable va en cada uno y lo cargará en el editor con <code className="bg-purple-100 px-1 rounded">{'{{variable}}'}</code>.
+                        </p>
+                        <textarea
+                          value={importText}
+                          onChange={(e) => setImportText(e.target.value)}
+                          placeholder={"Pega el texto del contrato aquí con *** como placeholders...\n\nEjemplo:\nEl trabajador *** acepta el puesto de *** con salario de $***."}
+                          rows={8}
+                          className="w-full text-xs font-mono text-gray-700 border border-purple-200 rounded-lg p-3 resize-y bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                        />
+                        {importError && (
+                          <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle size={12} />{importError}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleImportText}
+                          disabled={!importText.trim() || importAnalyzing}
+                          className="mt-2 flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <Brain size={13} />
+                          {importAnalyzing ? 'Detectando variables...' : 'Detectar variables con IA'}
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-hidden" style={{ minHeight: '300px' }}>
+                        <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+                      </div>
                     </div>
                   ) : (
                     <div className="flex-1 overflow-y-auto space-y-4">
@@ -979,6 +1045,32 @@ export function ContractTemplatesPage() {
                                     </button>
                                   </div>
                                 ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Manual plain text for mobile HTML display */}
+                          {pdfStoragePath && (
+                            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                              <div className="px-5 py-3 border-b border-gray-100">
+                                <h3 className="text-sm font-semibold text-gray-800">Texto del contrato (vista móvil)</h3>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Pega aquí el texto completo del contrato. Los candidatos lo verán en su teléfono con las variables ya llenas. Mantén los <code className="bg-gray-100 px-1 rounded">***</code> exactamente como están.
+                                </p>
+                              </div>
+                              <div className="p-3">
+                                <textarea
+                                  value={pdfExtractedText}
+                                  onChange={(e) => setPdfExtractedText(e.target.value)}
+                                  placeholder={"Abre el PDF, selecciona todo el texto (Ctrl+A), cópialo (Ctrl+C) y pégalo aquí (Ctrl+V).\nMantén los *** tal como aparecen en el PDF."}
+                                  rows={12}
+                                  className="w-full text-xs font-mono text-gray-700 border border-gray-200 rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                />
+                                {pdfExtractedText && (
+                                  <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                                    <Check size={12} /> Texto guardado — los candidatos verán el contrato correctamente en móvil.
+                                  </p>
+                                )}
                               </div>
                             </div>
                           )}

@@ -149,3 +149,24 @@ export async function analyzeContractVariables(storagePath: string): Promise<{
 
   return resp.json();
 }
+
+/**
+ * Send plain contract text to Claude. Returns the variable name for each *** in order.
+ * Uses minimal tokens (plain text only, no base64 PDF) — stays within any rate limit.
+ */
+export async function analyzeContractText(
+  text: string
+): Promise<{ textMappings: Array<{ variableName: string; occurrence: number }> }> {
+  const resp = await fetch(`${API_BASE}/analyzeContractVariables`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!resp.ok) {
+    const json = await resp.json().catch(() => ({}));
+    throw new Error((json as { error?: string }).error || `Error al analizar el contrato: HTTP ${resp.status}`);
+  }
+
+  return resp.json();
+}
