@@ -16,6 +16,11 @@ import type { DetectedPlaceholder } from '../services/contractTemplates';
 import { RichTextEditor, VARIABLES } from '../components/offer/RichTextEditor';
 import type { ContractTemplate, ContractTemplateType, PdfFieldPosition, PdfVariableMapping } from '../types';
 
+function isFullHtmlDocument(html: string): boolean {
+  const t = html.trimStart().toLowerCase();
+  return t.startsWith('<!doctype') || t.startsWith('<html');
+}
+
 type FormValues = {
   name: string;
   positionKeywordsRaw: string;
@@ -82,6 +87,9 @@ export function ContractTemplatesPage() {
   const [importAnalyzing, setImportAnalyzing] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
+  // Raw HTML mode: bypass TipTap and store the full document as-is
+  const [rawHtmlMode, setRawHtmlMode] = useState(false);
+
   // AI variable analysis
   const [pdfExtractedText, setPdfExtractedText] = useState<string>('');
   const [variableMappings, setVariableMappings] = useState<PdfVariableMapping[]>([]);
@@ -116,6 +124,7 @@ export function ContractTemplatesPage() {
     setVarAnalysisError(null);
     setImportText('');
     setImportError(null);
+    setRawHtmlMode(false);
   };
 
   const openCreate = () => {
@@ -129,6 +138,7 @@ export function ContractTemplatesPage() {
   const openEdit = (t: ContractTemplate) => {
     setEditingId(t.id);
     setBodyHtml(t.bodyHtml);
+    setRawHtmlMode(isFullHtmlDocument(t.bodyHtml));
     setTemplateType(t.templateType || 'html');
     setPdfStoragePath(t.pdfStoragePath || null);
     setPdfUrl(t.pdfUrl || null);
@@ -205,11 +215,21 @@ export function ContractTemplatesPage() {
       for (const m of mappings) {
         converted = converted.replace('***', `{{${m.variableName}}}`);
       }
+
+      // If it's a full HTML document (has <html>/<head>/<style>), store raw to preserve CSS
+      if (isFullHtmlDocument(converted)) {
+        setRawHtmlMode(true);
+        setBodyHtml(converted);
+        setImportText('');
+        return;
+      }
+
       // Wrap plain text lines in <p> tags if no HTML tags present
       const isHtml = /<[a-z][\s\S]*>/i.test(converted);
       const html = isHtml
         ? converted
         : converted.split('\n').map(l => l.trim()).filter(l => l.length > 0).map(l => `<p>${l}</p>`).join('\n');
+      setRawHtmlMode(false);
       setBodyHtml(html);
       setImportText('');
     } catch (err) {
@@ -453,10 +473,22 @@ export function ContractTemplatesPage() {
                       ) : (
                         <>
                           <p className="text-xs text-gray-400 font-medium mb-1">Contenido (HTML)</p>
-                          <div
-                            className="prose prose-sm max-w-none text-gray-600 bg-white rounded-lg p-4 border border-gray-100 text-xs"
-                            dangerouslySetInnerHTML={{ __html: t.bodyHtml }}
-                          />
+                          {isFullHtmlDocument(t.bodyHtml) ? (
+                            <div className="border border-gray-100 rounded-lg overflow-hidden bg-white" style={{ height: '300px' }}>
+                              <iframe
+                                srcDoc={t.bodyHtml}
+                                title="Vista previa del contrato"
+                                sandbox="allow-same-origin"
+                                className="w-full h-full border-0 block"
+                                style={{ pointerEvents: 'none' }}
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className="prose prose-sm max-w-none text-gray-600 bg-white rounded-lg p-4 border border-gray-100 text-xs"
+                              dangerouslySetInnerHTML={{ __html: t.bodyHtml }}
+                            />
+                          )}
                         </>
                       )}
                     </div>
@@ -732,6 +764,7 @@ export function ContractTemplatesPage() {
                         </div>
                         <p className="text-xs text-purple-600 mb-3">
                           Pega aquí el texto o HTML del contrato con <code className="bg-purple-100 px-1 rounded">***</code> como marcadores. La IA detectará qué variable va en cada uno y lo cargará en el editor con <code className="bg-purple-100 px-1 rounded">{'{{variable}}'}</code>.
+                          {' '}Si pegas un HTML completo con <code className="bg-purple-100 px-1 rounded">&lt;!DOCTYPE&gt;</code> y estilos CSS, se guardará en modo HTML puro preservando todo el formato.
                         </p>
                         <textarea
                           value={importText}
@@ -753,9 +786,58 @@ export function ContractTemplatesPage() {
                           {importAnalyzing ? 'Detectando variables...' : 'Detectar variables con IA'}
                         </button>
                       </div>
-                      <div className="flex-1 overflow-hidden" style={{ minHeight: '300px' }}>
-                        <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+
+                      {/* Mode toggle */}
+                      <div className="flex items-center justify-between shrink-0">
+                        <span className="text-xs text-gray-500 font-medium">Modo de edición:</span>
+                        <div className="flex bg-white rounded-lg border border-gray-200 overflow-hidden text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (rawHtmlMode && isFullHtmlDocument(bodyHtml)) {
+                                if (!window.confirm('¿Cambiar al editor visual? Los estilos CSS y el HTML avanzado se perderán. Solo se conservará el contenido del body.')) return;
+                              }
+                              setRawHtmlMode(false);
+                            }}
+                            className={`px-3 py-1.5 font-medium transition-colors flex items-center gap-1.5 ${
+                              !rawHtmlMode ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            <FileCode size={12} />
+                            Editor visual
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRawHtmlMode(true)}
+                            className={`px-3 py-1.5 font-medium transition-colors flex items-center gap-1.5 ${
+                              rawHtmlMode ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {'</>'}
+                            HTML puro
+                          </button>
+                        </div>
                       </div>
+
+                      {rawHtmlMode ? (
+                        <div className="flex-1 flex flex-col" style={{ minHeight: '400px' }}>
+                          <p className="text-xs text-gray-400 mb-2">
+                            Pega tu HTML completo aquí — incluyendo <code className="bg-gray-100 px-1 rounded">{'<!DOCTYPE>'}</code>, <code className="bg-gray-100 px-1 rounded">{'<head>'}</code> y <code className="bg-gray-100 px-1 rounded">{'<style>'}</code>. Usa <code className="bg-gray-100 px-1 rounded">{'{{variable}}'}</code> para datos dinámicos.
+                          </p>
+                          <textarea
+                            value={bodyHtml}
+                            onChange={(e) => setBodyHtml(e.target.value)}
+                            className="flex-1 text-xs font-mono text-gray-700 border border-gray-200 rounded-xl p-4 resize-none bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            style={{ minHeight: '400px' }}
+                            placeholder="<!DOCTYPE html>&#10;<html>&#10;<head><style>...</style></head>&#10;<body>...</body>&#10;</html>"
+                            spellCheck={false}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex-1 overflow-hidden" style={{ minHeight: '300px' }}>
+                          <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex-1 overflow-y-auto space-y-4">

@@ -4,6 +4,11 @@ import SignaturePad from 'signature_pad';
 
 const API_BASE = import.meta.env.VITE_FUNCTIONS_URL ?? '';
 
+function isFullHtmlDocument(html: string): boolean {
+  const t = html.trimStart().toLowerCase();
+  return t.startsWith('<!doctype') || t.startsWith('<html');
+}
+
 interface ContractData {
   candidateName: string;
   position: string;
@@ -41,6 +46,8 @@ export function ContractPage() {
   const signPadRef = useRef<SignaturePad | null>(null);
   const initCanvasRef = useRef<HTMLCanvasElement>(null);
   const initPadRef = useRef<SignaturePad | null>(null);
+  const contractIframeRef = useRef<HTMLIFrameElement>(null);
+  const [contractIframeHeight, setContractIframeHeight] = useState(1200);
 
   // ── Load contract data ────────────────────────────────────────────────────
   const loadContract = useCallback(() => {
@@ -140,6 +147,15 @@ export function ContractPage() {
     initPadRef.current?.clear();
     setInitialsEmpty(true);
   };
+
+  const handleContractIframeLoad = useCallback(() => {
+    const iframe = contractIframeRef.current;
+    if (!iframe?.contentDocument) return;
+    setTimeout(() => {
+      const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
+      if (h > 100) setContractIframeHeight(h + 32);
+    }, 150);
+  }, []);
 
   const handleSubmit = async () => {
     if (!token || !signPadRef.current || signPadRef.current.isEmpty()) return;
@@ -326,12 +342,26 @@ export function ContractPage() {
         </div>
 
         {/* Body content */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Contrato</h2>
-          <div
-            className="prose prose-sm max-w-none text-gray-600 [&_p]:text-sm [&_li]:text-sm [&_strong]:text-gray-800"
-            dangerouslySetInnerHTML={{ __html: contract?.bodyHtml ?? '' }}
-          />
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {isFullHtmlDocument(contract?.bodyHtml ?? '') ? (
+            <iframe
+              ref={contractIframeRef}
+              srcDoc={contract?.bodyHtml ?? ''}
+              onLoad={handleContractIframeLoad}
+              title="Contrato"
+              sandbox="allow-same-origin"
+              className="w-full block border-0"
+              style={{ height: `${contractIframeHeight}px` }}
+            />
+          ) : (
+            <div className="p-4 sm:p-6">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">Contrato</h2>
+              <div
+                className="prose prose-sm max-w-none text-gray-600 [&_p]:text-sm [&_li]:text-sm [&_strong]:text-gray-800"
+                dangerouslySetInnerHTML={{ __html: contract?.bodyHtml ?? '' }}
+              />
+            </div>
+          )}
         </div>
 
         {/* FES info */}
