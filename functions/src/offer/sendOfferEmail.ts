@@ -6,6 +6,7 @@ import { getCandidateById } from '../utils/candidates';
 import { sendEmail } from '../email/gmailClient';
 import { offerTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
+import { getLogoUrl } from '../utils/branding';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -36,12 +37,15 @@ export const sendOfferEmail = onCall(
     const recruiterUid = request.auth.uid;
     const senderEmail = await getRecruiterEmail(recruiterUid);
 
+    const logoUrl = await getLogoUrl();
+
     const { subject, html } = offerTemplate({
       firstName: (candidate.firstName as string) || '',
       lastName:  (candidate.lastName  as string) || '',
       position:  (candidate.position  as string) || '',
       offerUrl,
       offerExpiresAt,
+      logoUrl,
     });
 
     await sendEmail({

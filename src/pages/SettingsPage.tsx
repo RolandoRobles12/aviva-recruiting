@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { Bell, Settings, Link, Clock, Wrench, Mail, HelpCircle } from 'lucide-react';
+import { Bell, Settings, Link, Clock, Wrench, Mail, HelpCircle, Palette } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { LinkDurationTab } from '../components/settings/LinkDurationTab';
 import { EmailTemplatesTab } from '../components/settings/EmailTemplatesTab';
 import { QuestionsTab } from '../components/settings/QuestionsTab';
+import { BrandingTab } from '../components/settings/BrandingTab';
 import { useSettings } from '../hooks/useSettings';
 import { backfillCandidateDocuments } from '../services/functions';
 
-type Tab = 'gmail' | 'reminders' | 'links' | 'emails' | 'questions' | 'admin';
+type Tab = 'gmail' | 'reminders' | 'links' | 'emails' | 'questions' | 'branding' | 'admin';
 
 const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
@@ -17,6 +18,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
   { id: 'emails', label: 'Plantillas de correo', Icon: Mail },
   { id: 'questions', label: 'Preguntas del formulario', Icon: HelpCircle },
+  { id: 'branding', label: 'Marca', Icon: Palette },
   { id: 'admin', label: 'Admin', Icon: Wrench },
 ];
 
@@ -137,6 +139,7 @@ export function SettingsPage() {
                 />
               )}
               {activeTab === 'questions' && <QuestionsTab />}
+              {activeTab === 'branding' && <BrandingTab />}
               {activeTab === 'admin' && <AdminTab />}
             </>
           )}

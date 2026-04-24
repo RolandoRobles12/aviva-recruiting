@@ -6,6 +6,7 @@ import { createHubSpotUser } from './hubspotService';
 import { inviteSlackDual } from './slackService';
 import { sendEmail } from '../email/gmailClient';
 import { inductionTemplate } from '../email/templates';
+import { getLogoUrl } from '../utils/branding';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -118,11 +119,13 @@ export const provisionAccountsManual = onCall(
 
     // Send induction email
     try {
+      const logoUrl = await getLogoUrl();
       const { subject, html } = inductionTemplate({
         firstName: candidate.firstName as string,
         lastName: candidate.lastName as string,
         position: candidate.position as string,
         corporateEmail,
+        logoUrl,
       });
       await sendEmail({
         to: candidate.email as string,

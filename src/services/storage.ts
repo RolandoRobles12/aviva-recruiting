@@ -1,4 +1,4 @@
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 import type { DocumentType } from '../types';
 
@@ -52,4 +52,17 @@ export async function uploadDocument(
 export async function deleteDocument(storagePath: string): Promise<void> {
   const storageRef = ref(storage, storagePath);
   await deleteObject(storageRef);
+}
+
+export async function uploadAsset(
+  file: File,
+  folder = 'assets',
+): Promise<{ storagePath: string; downloadUrl: string }> {
+  const ext = file.name.split('.').pop() ?? 'bin';
+  const uuid = crypto.randomUUID();
+  const storagePath = `${folder}/${uuid}.${ext}`;
+  const storageRef = ref(storage, storagePath);
+  await uploadBytes(storageRef, file, { contentType: file.type });
+  const downloadUrl = await getDownloadURL(storageRef);
+  return { storagePath, downloadUrl };
 }

@@ -6,6 +6,7 @@ import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
 import { offerTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
+import { getLogoUrl } from '../utils/branding';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
@@ -37,12 +38,14 @@ export const onCandidateCreated = functions
       ? format(expiresAt, "d 'de' MMMM 'de' yyyy", { locale: es })
       : '—';
 
+    const logoUrl = await getLogoUrl();
     const { subject, html } = offerTemplate({
       firstName: (candidate.firstName as string) || '',
       lastName:  (candidate.lastName  as string) || '',
       position:  (candidate.position  as string) || '',
       offerUrl,
       offerExpiresAt: offerExpiresAtStr,
+      logoUrl,
     });
 
     try {
