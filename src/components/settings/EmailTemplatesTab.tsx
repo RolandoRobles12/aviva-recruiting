@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Check, Info } from 'lucide-react';
 import type { EmailTemplatesSettings } from '../../types';
+import { getBrandingSettings } from '../../services/settings';
 
 interface Props {
   templates: EmailTemplatesSettings;
@@ -46,8 +47,10 @@ const TEMPLATE_META: Record<TemplateKey, {
 export function EmailTemplatesTab({ templates, saving, saved, onSave }: Props) {
   const [selected, setSelected] = useState<TemplateKey>('invitation');
   const [local, setLocal] = useState(templates);
+  const [logoUrl, setLogoUrl] = useState<string | undefined>();
 
   useEffect(() => { setLocal(templates); }, [templates]);
+  useEffect(() => { getBrandingSettings().then((s) => setLogoUrl(s.logoUrl)); }, []);
 
   const current = local[selected];
   const meta = TEMPLATE_META[selected];
@@ -140,12 +143,20 @@ export function EmailTemplatesTab({ templates, saving, saved, onSave }: Props) {
               className="px-6 py-5 text-center"
               style={{ backgroundColor: meta.headerColor }}
             >
-              <div
-                className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.2)' }}
-              >
-                <span className="text-white font-bold text-lg">A</span>
-              </div>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Logo"
+                  className="h-8 max-w-[140px] object-contain mx-auto mb-2"
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.2)' }}
+                >
+                  <span className="text-white font-bold text-lg">A</span>
+                </div>
+              )}
               <p className="text-white font-bold text-base">{meta.headerText}</p>
               <p className="mt-1 text-xs" style={{ color: 'rgba(255,255,255,0.8)' }}>
                 Proceso de ingreso · Puesto ejemplo

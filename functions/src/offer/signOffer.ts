@@ -11,6 +11,7 @@ import { invitationTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLinkDuration } from '../utils/linkDuration';
 import { generateOfferPdf } from './pdfGenerator';
+import { getLogoUrl } from '../utils/branding';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -412,6 +413,7 @@ export const getOffer = onRequest(
       };
 
       const renderedHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
+      const logoUrl = await getLogoUrl();
 
       res.status(200).json({
         ok: true,
@@ -422,6 +424,7 @@ export const getOffer = onRequest(
           startDate: offerStartDate,
           bodyHtml: renderedHtml,
           expiresAt: expiresAt?.toISOString(),
+          logoUrl,
         },
       });
     } catch (err) {
