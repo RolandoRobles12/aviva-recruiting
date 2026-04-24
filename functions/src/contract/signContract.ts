@@ -338,6 +338,45 @@ export const signContract = onRequest(
 
 // ─── Get Contract ─────────────────────────────────────────────────────────────
 
+/**
+ * Strip CSS blocks and HTML boilerplate from text extracted from a PDF.
+ * PDFs exported from HTML often carry the full <style> block in their text layer.
+ */
+function sanitizeExtractedText(text: string): string {
+  let result = text;
+
+  // If it's a full HTML document, extract body content only
+  const bodyMatch = result.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) result = bodyMatch[1];
+
+  // Strip all HTML tags (including <style> blocks with their contents)
+  result = result.replace(/<style[\s\S]*?<\/style>/gi, '');
+  result = result.replace(/<[^>]+>/g, ' ');
+
+  // Strip CSS rule blocks — matches: optional-selector { any content }
+  result = result.replace(/[^{}\n]*\{[^{}]*\}/gs, '');
+
+  // Strip HTML entities
+  result = result.replace(/&[a-z#0-9]+;/gi, ' ');
+
+  // Strip lines that are purely CSS property declarations: "font-size: 12pt;"
+  // CSS properties are lowercase-kebab-only before the colon, end with ";"
+  result = result
+    .split('\n')
+    .filter((line: string) => {
+      const t = line.trim();
+      if (!t) return false;
+      if (t === '}' || t === '{') return false;
+      if (t.startsWith('@')) return false; // @media, @charset, etc.
+      // CSS property: no uppercase, no spaces in the key, ends with semicolon
+      if (/^[a-z][a-z-]*\s*:\s*\S[^;]*;?\s*$/.test(t) && !/[A-Z\s]/.test(t.split(':')[0] ?? '')) return false;
+      return true;
+    })
+    .join('\n');
+
+  return result.trim();
+}
+
 export const getContract = onRequest(
   { region: 'us-central1', cors: true, invoker: 'public' },
   async (req, res) => {
@@ -446,15 +485,25 @@ export const getContract = onRequest(
           }
         }
 
-        // Cache the extracted text on the template so future loads are instant
+        // Cache the sanitized text so future loads are instant and already clean
+        const sanitized = sanitizeExtractedText(rawText);
+        rawText = sanitized;
         if (rawText && templateDocId) {
           db.collection('contract_templates').doc(templateDocId).update({ pdfExtractedText: rawText }).catch(() => {});
         }
       }
 
       if (rawText) {
+        // Strip CSS/HTML boilerplate that appears when the PDF was generated from HTML
+        const cleanText = sanitizeExtractedText(rawText);
+
+        // Update the cached text if it was dirty (avoid re-stripping on every load)
+        if (cleanText !== rawText && templateDocId) {
+          db.collection('contract_templates').doc(templateDocId).update({ pdfExtractedText: cleanText }).catch(() => {});
+        }
+
         const mappings = (contractTemplate?.variableMappings as PdfVariableMapping[]) ?? [];
-        let text = rawText;
+        let text = cleanText;
         for (const mapping of mappings) {
           const value = (vars[mapping.variableName] as string) || '';
           text = text.replace('***', value);
