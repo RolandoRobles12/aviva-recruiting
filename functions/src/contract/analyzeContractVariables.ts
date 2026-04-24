@@ -139,7 +139,7 @@ export const analyzeContractVariables = onRequest(
       const pdfBase64 = pdfBuffer.toString('base64');
 
       const message = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [
