@@ -163,7 +163,7 @@ Rules:
     try {
       // Download PDF from Firebase Storage
       const bucket = getStorage().bucket();
-      const [pdfBytes] = await bucket.file(storagePath).download();
+      const [pdfBytes] = await bucket.file(storagePath as string).download();
       const pdfBuffer = Buffer.from(pdfBytes);
 
       // Extract plain text locally as fallback (may be empty for some PDF encodings)
