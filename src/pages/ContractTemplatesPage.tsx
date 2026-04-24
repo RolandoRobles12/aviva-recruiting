@@ -131,6 +131,7 @@ export function ContractTemplatesPage() {
     setPdfError(null);
     setPdfFile(null);
     setVariableMappings(t.variableMappings || []);
+    setPdfExtractedText((t as ContractTemplate & { pdfExtractedText?: string }).pdfExtractedText || '');
     setDetectedPlaceholders([]);
     setVarAnalysisError(null);
     reset({
@@ -250,7 +251,7 @@ export function ContractTemplatesPage() {
       pdfFileSize: templateType === 'pdf' && pdfAnalysis ? pdfAnalysis.fileSize : undefined,
       signatureFields: templateType === 'pdf' ? signatureFields : undefined,
       variableMappings: templateType === 'pdf' && variableMappings.length > 0 ? variableMappings : undefined,
-      pdfExtractedText: templateType === 'pdf' && pdfExtractedText ? pdfExtractedText : undefined,
+      pdfExtractedText: templateType === 'pdf' ? (pdfExtractedText || undefined) : undefined,
       initialsOnEveryPage,
       initialsPosition: undefined,
     };
@@ -979,6 +980,32 @@ export function ContractTemplatesPage() {
                                     </button>
                                   </div>
                                 ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Manual plain text for mobile HTML display */}
+                          {pdfStoragePath && (
+                            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                              <div className="px-5 py-3 border-b border-gray-100">
+                                <h3 className="text-sm font-semibold text-gray-800">Texto del contrato (vista móvil)</h3>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Pega aquí el texto completo del contrato. Los candidatos lo verán en su teléfono con las variables ya llenas. Mantén los <code className="bg-gray-100 px-1 rounded">***</code> exactamente como están.
+                                </p>
+                              </div>
+                              <div className="p-3">
+                                <textarea
+                                  value={pdfExtractedText}
+                                  onChange={(e) => setPdfExtractedText(e.target.value)}
+                                  placeholder={"Abre el PDF, selecciona todo el texto (Ctrl+A), cópialo (Ctrl+C) y pégalo aquí (Ctrl+V).\nMantén los *** tal como aparecen en el PDF."}
+                                  rows={12}
+                                  className="w-full text-xs font-mono text-gray-700 border border-gray-200 rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                />
+                                {pdfExtractedText && (
+                                  <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                                    <Check size={12} /> Texto guardado — los candidatos verán el contrato correctamente en móvil.
+                                  </p>
+                                )}
                               </div>
                             </div>
                           )}
