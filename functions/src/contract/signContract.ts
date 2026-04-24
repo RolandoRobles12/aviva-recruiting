@@ -354,7 +354,7 @@ function sanitizeExtractedText(text: string): string {
   result = result.replace(/<[^>]+>/g, ' ');
 
   // Strip CSS rule blocks — matches: optional-selector { any content }
-  result = result.replace(/[^{}\n]*\{[^{}]*\}/gs, '');
+  result = result.replace(/[^{}\n]*\{[^{}]*\}/g, '');
 
   // Strip HTML entities
   result = result.replace(/&[a-z#0-9]+;/gi, ' ');
