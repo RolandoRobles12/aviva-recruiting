@@ -10,7 +10,7 @@ import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractP
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
 import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
-import { getLogoUrl } from '../utils/branding';
+import { getLogoUrl, getCompanySignatureUrl } from '../utils/branding';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
@@ -434,6 +434,12 @@ export const getContract = onRequest(
     }
 
     const vars = buildContractVars(candidate, new Date());
+
+    // Add company signature as an injectable HTML img (use {{firmaEmpresa}} in the template)
+    const companySigUrl = await getCompanySignatureUrl();
+    vars.firmaEmpresa = companySigUrl
+      ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:220px;max-height:80px;display:block;margin:0 auto 4px;">`
+      : '';
 
     const templateType2 = (contractTemplate?.templateType as string) || 'html';
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';

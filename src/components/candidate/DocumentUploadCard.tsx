@@ -61,17 +61,27 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
           ({ percentage }) => setUploadProgress(percentage)
         );
 
-        // 2. Update Firestore with upload info
-        // The storage trigger (onDocumentUploaded) will automatically
-        // validate the document with Claude and update the status.
+        // 2. Update Firestore with upload info.
+        // For foto_profesional: mark as valid immediately (no OCR needed).
+        // For other docs: set 'uploaded' — the Storage trigger validates and updates to 'valid'/'invalid'.
+        const isPhoto = documentType === 'foto_profesional';
         await updateCandidateDocumentStatus(candidateId, documentType, {
           id: documentType,
           type: documentType,
-          status: 'uploaded',
+          status: isPhoto ? 'valid' : 'uploaded',
           fileName: file.name,
           storagePath,
           downloadUrl,
           uploadedAt: Timestamp.now(),
+          ...(isPhoto ? {
+            ocrResult: {
+              rawText: '',
+              extractedData: {},
+              confidence: 1,
+              validationPassed: true,
+              validationErrors: [],
+            },
+          } : {}),
         });
       } catch (err) {
         setLocalError('Error al subir el archivo. Intenta de nuevo.');
