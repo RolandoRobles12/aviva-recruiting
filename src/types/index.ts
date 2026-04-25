@@ -339,6 +339,7 @@ export interface LinkDurationSettings {
 
 export interface BrandingSettings {
   logoUrl?: string;
+  companySignatureUrl?: string;
 }
 
 export interface DocumentSetting {

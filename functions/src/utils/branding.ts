@@ -1,11 +1,21 @@
 import { db } from './admin';
 
-export async function getLogoUrl(): Promise<string | undefined> {
+type BrandingDoc = { logoUrl?: string; companySignatureUrl?: string };
+
+async function getBranding(): Promise<BrandingDoc> {
   try {
     const snap = await db.doc('settings/branding').get();
-    if (!snap.exists) return undefined;
-    return (snap.data() as { logoUrl?: string }).logoUrl;
+    if (!snap.exists) return {};
+    return (snap.data() as BrandingDoc) ?? {};
   } catch {
-    return undefined;
+    return {};
   }
+}
+
+export async function getLogoUrl(): Promise<string | undefined> {
+  return (await getBranding()).logoUrl;
+}
+
+export async function getCompanySignatureUrl(): Promise<string | undefined> {
+  return (await getBranding()).companySignatureUrl;
 }
