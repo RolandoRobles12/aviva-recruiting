@@ -80,6 +80,7 @@ export function DocumentUploadCard({ candidateId, documentType, document }: Prop
               confidence: 1,
               validationPassed: true,
               validationErrors: [],
+              processedAt: Timestamp.now(),
             },
           } : {}),
         });
