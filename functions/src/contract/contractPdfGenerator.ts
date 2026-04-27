@@ -6,6 +6,8 @@ export interface ContractPdfInput {
   position: string;
   bodyText: string;       // plain text, HTML already stripped
   signatureBase64: string; // data:image/png;base64,...
+  /** Company / legal rep signature image (base64 PNG) */
+  companySigBase64?: string;
   signedAt: Date;
   signerIp: string;
   signerUserAgent: string;
@@ -193,43 +195,67 @@ export async function generateContractPdf(
 
     // Signature block on last page
     if (pageIdx === pages.length - 1) {
-      const sigAreaTop = Math.min(y - 20, 155);
+      const sigAreaTop = Math.min(y - 20, 160);
+      const sigW = 200;
+      const col2 = margin + contentWidth / 2 + 10;
 
       page.drawLine({
-        start: { x: margin, y: sigAreaTop + 60 },
-        end: { x: pageWidth - margin, y: sigAreaTop + 60 },
+        start: { x: margin, y: sigAreaTop + 65 },
+        end: { x: pageWidth - margin, y: sigAreaTop + 65 },
         thickness: 0.5,
         color: rgb(0.88, 0.9, 0.93),
       });
 
-      // Embed signature image
-      const sigImageBytes = Buffer.from(sigBase64, 'base64');
-      const sigImage = await pdfDoc.embedPng(sigImageBytes);
-      const sigDims = sigImage.scale(0.35);
-      page.drawImage(sigImage, {
-        x: margin,
-        y: sigAreaTop + 4,
-        width: Math.min(sigDims.width, 200),
-        height: Math.min(sigDims.height, 52),
-      });
-
+      // ── Company signature (left column) ──────────────────────────────────────
+      if (input.companySigBase64) {
+        const compBase64 = input.companySigBase64.replace(/^data:image\/png;base64,/, '');
+        const compImage = await pdfDoc.embedPng(Buffer.from(compBase64, 'base64'));
+        const compDims = compImage.scale(Math.min(sigW / compImage.width, 52 / compImage.height, 0.4));
+        page.drawImage(compImage, {
+          x: margin,
+          y: sigAreaTop + 8,
+          width: compDims.width,
+          height: compDims.height,
+        });
+      }
       page.drawLine({
-        start: { x: margin, y: sigAreaTop + 2 },
-        end: { x: margin + 200, y: sigAreaTop + 2 },
+        start: { x: margin, y: sigAreaTop + 4 },
+        end: { x: margin + sigW, y: sigAreaTop + 4 },
         thickness: 0.5,
         color: dark,
       });
-      page.drawText('Firma del Trabajador', { x: margin, y: sigAreaTop - 12, size: 9, font: fontRegular, color: gray });
+      page.drawText('La Empresa', { x: margin, y: sigAreaTop - 10, size: 8, font: fontBold, color: dark });
+      page.drawText('Salvador Hernández Díaz de León', { x: margin, y: sigAreaTop - 22, size: 7, font: fontRegular, color: gray });
+      page.drawText('Representante Legal', { x: margin, y: sigAreaTop - 32, size: 7, font: fontRegular, color: gray });
 
-      const col2 = margin + contentWidth / 2;
+      // ── Candidate signature (right column) ───────────────────────────────────
+      const sigImageBytes = Buffer.from(sigBase64, 'base64');
+      const sigImage = await pdfDoc.embedPng(sigImageBytes);
+      const sigDims = sigImage.scale(Math.min(sigW / sigImage.width, 52 / sigImage.height, 0.35));
+      page.drawImage(sigImage, {
+        x: col2,
+        y: sigAreaTop + 8,
+        width: sigDims.width,
+        height: sigDims.height,
+      });
+      page.drawLine({
+        start: { x: col2, y: sigAreaTop + 4 },
+        end: { x: col2 + sigW, y: sigAreaTop + 4 },
+        thickness: 0.5,
+        color: dark,
+      });
+      page.drawText('El Empleado', { x: col2, y: sigAreaTop - 10, size: 8, font: fontBold, color: dark });
+      page.drawText(input.candidateName, { x: col2, y: sigAreaTop - 22, size: 7, font: fontRegular, color: gray });
+      page.drawText('Por mi propio derecho', { x: col2, y: sigAreaTop - 32, size: 7, font: fontRegular, color: gray });
+
       const dateStr = input.signedAt.toLocaleDateString('es-MX', {
         year: 'numeric', month: 'long', day: 'numeric',
       });
-      page.drawText(`Firmado el ${dateStr}`, { x: col2, y: sigAreaTop + 30, size: 9, font: fontRegular, color: gray });
+      page.drawText(`Firmado el ${dateStr}`, { x: margin, y: sigAreaTop - 48, size: 8, font: fontRegular, color: gray });
 
       // Evidence ID watermark
       page.drawText(`ID de firma: ${evidenceId}`, {
-        x: margin, y: sigAreaTop - 28, size: 7, font: fontRegular, color: rgb(0.7, 0.7, 0.7),
+        x: margin, y: sigAreaTop - 60, size: 7, font: fontRegular, color: rgb(0.7, 0.7, 0.7),
       });
     }
 
