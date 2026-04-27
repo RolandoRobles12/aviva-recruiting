@@ -242,7 +242,7 @@ export const signContract = onRequest(
       vars.firmaEmpleado = `<img src="${signatureBase64}" alt="Firma del Empleado" style="max-width:200px;max-height:70px;display:block;margin:4px auto;">`;
 
       // Render the complete HTML (both signatures already embedded) to PDF
-      const htmlPdfBuffer = await htmlToPdf(interpolate(bodyHtml, vars));
+      const htmlPdfBuffer = await htmlToPdf(interpolate(bodyHtml, vars), { initials: candidateInitials });
 
       const result = await generateContractPdf({
         candidateName: candidateFullName,
