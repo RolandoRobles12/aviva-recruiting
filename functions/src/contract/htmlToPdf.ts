@@ -1,11 +1,11 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
-/**
- * Renders a full HTML document to a PDF buffer using headless Chromium.
- * Used for HTML-based contract templates so the PDF looks exactly like the preview.
- */
-export async function htmlToPdf(html: string): Promise<Buffer> {
+export interface HtmlToPdfOptions {
+  initials?: string;
+}
+
+export async function htmlToPdf(html: string, options: HtmlToPdfOptions = {}): Promise<Buffer> {
   const executablePath = await chromium.executablePath();
 
   const browser = await puppeteer.launch({
@@ -16,11 +16,19 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage();
+    await page.emulateMediaType('print');
     await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    const safeInitials = (options.initials ?? '').replace(/[<>&"]/g, '');
+    const footerTemplate = `<div style="font-size:8pt;font-family:'Times New Roman',serif;color:#555;width:100%;padding:0 2.54cm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;"><span style="font-style:italic;">${safeInitials}</span><span><span class="pageNumber"></span>&nbsp;/&nbsp;<span class="totalPages"></span></span></div>`;
+
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      margin: { top: '0', right: '0', bottom: '14mm', left: '0' },
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate,
     });
     return Buffer.from(pdfBytes);
   } finally {
