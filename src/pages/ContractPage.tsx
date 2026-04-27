@@ -351,7 +351,8 @@ export function ContractPage() {
               title="Contrato"
               sandbox="allow-same-origin"
               className="w-full block border-0"
-              style={{ height: `${contractIframeHeight}px` }}
+              style={{ height: `${contractIframeHeight}px`, overflowX: 'hidden' }}
+              scrolling="no"
             />
           ) : (
             <div className="p-4 sm:p-6">
