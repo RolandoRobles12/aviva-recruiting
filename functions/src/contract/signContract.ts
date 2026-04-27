@@ -227,29 +227,31 @@ export const signContract = onRequest(
       pdfBuffer = result.pdfBuffer;
       evidence = result.evidence;
     } else {
-      // ── HTML-based template — render with Puppeteer to preserve all formatting ──
+      // ── HTML-based template — both signatures injected into the HTML, Puppeteer renders ──
       const companySigUrl = await getCompanySignatureUrl();
       vars.firmaEmpresa = companySigUrl
-        ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:220px;max-height:80px;display:block;margin:0 auto 4px;">`
+        ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:200px;max-height:70px;display:block;margin:4px auto;">`
         : '';
 
       const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
-      const renderedHtml = interpolate(bodyHtml, vars);
 
-      // Render the full HTML to PDF via headless Chromium
-      const htmlPdfBuffer = await htmlToPdf(renderedHtml);
+      // Hash contract content BEFORE candidate signature is added (cryptographic baseline)
+      const bodyTextForHash = stripHtml(interpolate(bodyHtml, { ...vars, firmaEmpleado: '' }));
 
-      // Overlay the candidate signature + evidence metadata on top using pdf-lib
+      // Inject candidate's drawn signature so it appears in the correct place in the HTML
+      vars.firmaEmpleado = `<img src="${signatureBase64}" alt="Firma del Empleado" style="max-width:200px;max-height:70px;display:block;margin:4px auto;">`;
+
+      // Render the complete HTML (both signatures already embedded) to PDF
+      const htmlPdfBuffer = await htmlToPdf(interpolate(bodyHtml, vars));
+
       const result = await generateContractPdf({
         candidateName: candidateFullName,
         position: candidate.position as string,
-        bodyText: stripHtml(renderedHtml), // used only for the hash / evidence
+        bodyText: bodyTextForHash,
         signatureBase64,
         signedAt: now,
         signerIp,
         signerUserAgent,
-        candidateInitials,
-        initialsBase64: initialsBase64 || undefined,
         htmlPdfBuffer,
       });
       pdfBuffer = result.pdfBuffer;
@@ -451,6 +453,8 @@ export const getContract = onRequest(
     vars.firmaEmpresa = companySigUrl
       ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:220px;max-height:80px;display:block;margin:0 auto 4px;">`
       : '';
+    // Candidate hasn't signed yet in preview — leave blank so the line shows
+    vars.firmaEmpleado = '';
 
     const templateType2 = (contractTemplate?.templateType as string) || 'html';
     const rawHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';

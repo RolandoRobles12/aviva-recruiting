@@ -91,68 +91,34 @@ export async function generateContractPdf(
     .update(sigBase64)
     .digest('hex');
 
-  // ── If we have a Puppeteer-rendered HTML PDF, overlay signature on it ──────
+  // ── Puppeteer-rendered HTML PDF: signatures are already embedded in the HTML.
+  //    Just stamp the evidence ID on the last page and return. ─────────────────
   if (input.htmlPdfBuffer) {
     const pdfDoc = await PDFDocument.load(input.htmlPdfBuffer);
-    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const dark = rgb(0.216, 0.255, 0.318);
-    const gray = rgb(0.42, 0.447, 0.502);
-
-    const sigImage = await pdfDoc.embedPng(Buffer.from(sigBase64, 'base64'));
-
-    // Embed initials image if provided
-    let initialsImage: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null;
-    if (input.initialsBase64) {
-      const initBase64 = input.initialsBase64.replace(/^data:image\/png;base64,/, '');
-      initialsImage = await pdfDoc.embedPng(Buffer.from(initBase64, 'base64'));
-    }
+    const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
+    const gray = rgb(0.6, 0.6, 0.6);
 
     const pages = pdfDoc.getPages();
-    const margin = 40;
-
-    // Place initials on every page (bottom-right)
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i];
-      const { width } = page.getSize();
-      const initX = width - margin - 50;
-      const initY = 30;
-      const initW = 46;
-      const initH = 20;
-
-      if (initialsImage) {
-        const d = initialsImage.scale(Math.min(initW / initialsImage.width, initH / initialsImage.height, 0.4));
-        page.drawImage(initialsImage, { x: initX + (initW - d.width) / 2, y: initY, width: d.width, height: d.height });
-      } else if (input.candidateInitials) {
-        const fs = 9;
-        const tw = fontBold.widthOfTextAtSize(input.candidateInitials, fs);
-        page.drawText(input.candidateInitials, { x: initX + (initW - tw) / 2, y: initY + 4, size: fs, font: fontBold, color: dark });
-      }
-    }
-
-    // Place candidate signature on the LAST page (bottom area)
     const lastPage = pages[pages.length - 1];
-    const { width: lw, height: lh } = lastPage.getSize();
-    const sigAreaY = 80;
-    const sigDims = sigImage.scale(Math.min(180 / sigImage.width, 50 / sigImage.height, 0.35));
-    lastPage.drawImage(sigImage, { x: margin, y: sigAreaY + 10, width: sigDims.width, height: sigDims.height });
-    lastPage.drawLine({ start: { x: margin, y: sigAreaY + 6 }, end: { x: margin + 200, y: sigAreaY + 6 }, thickness: 0.5, color: dark });
-    lastPage.drawText('El Empleado – Por mi propio derecho', { x: margin, y: sigAreaY - 8, size: 8, font: fontRegular, color: gray });
-    lastPage.drawText(input.candidateName, { x: margin, y: sigAreaY - 18, size: 7, font: fontBold, color: dark });
-
-    const dateStr = input.signedAt.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
-    lastPage.drawText(`Firmado el ${dateStr}`, { x: lw / 2, y: sigAreaY + 20, size: 8, font: fontRegular, color: gray });
-    lastPage.drawText(`ID de firma: ${evidenceId}`, { x: margin, y: sigAreaY - 28, size: 7, font: fontRegular, color: rgb(0.6, 0.6, 0.6) });
-
-    // Suppress unused var warning — lh used implicitly via lw
-    void lh;
+    lastPage.drawText(
+      `ID de firma: ${evidenceId}  |  ${input.signedAt.toISOString()}`,
+      { x: 40, y: 10, size: 6, font: fontMono, color: gray }
+    );
 
     const pdfBytes = await pdfDoc.save();
     const pdfBuffer = Buffer.from(pdfBytes);
     const documentHashAfter = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
     return {
       pdfBuffer,
-      evidence: { documentHashBefore, documentHashAfter, signatureHash, signedAt: input.signedAt.toISOString(), signerIp: input.signerIp, signerUserAgent: input.signerUserAgent, evidenceId },
+      evidence: {
+        documentHashBefore,
+        documentHashAfter,
+        signatureHash,
+        signedAt: input.signedAt.toISOString(),
+        signerIp: input.signerIp,
+        signerUserAgent: input.signerUserAgent,
+        evidenceId,
+      },
     };
   }
 
