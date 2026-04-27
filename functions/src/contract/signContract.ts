@@ -227,6 +227,23 @@ export const signContract = onRequest(
       evidence = result.evidence;
     } else {
       // ── HTML-based template (original flow) ──
+      const companySigUrl = await getCompanySignatureUrl();
+      vars.firmaEmpresa = companySigUrl
+        ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:220px;max-height:80px;display:block;margin:0 auto 4px;">`
+        : '';
+
+      // Download company signature bytes so we can embed it as an image in the PDF
+      let companySigBase64: string | undefined;
+      if (companySigUrl) {
+        try {
+          const sigResp = await fetch(companySigUrl);
+          const sigBuffer = await sigResp.arrayBuffer();
+          companySigBase64 = `data:image/png;base64,${Buffer.from(sigBuffer).toString('base64')}`;
+        } catch {
+          // Non-fatal — PDF will just omit the company signature image
+        }
+      }
+
       const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
       const bodyText = stripHtml(interpolate(bodyHtml, vars));
 
@@ -235,6 +252,7 @@ export const signContract = onRequest(
         position: candidate.position as string,
         bodyText,
         signatureBase64,
+        companySigBase64,
         signedAt: now,
         signerIp,
         signerUserAgent,
