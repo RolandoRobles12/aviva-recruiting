@@ -4,10 +4,11 @@ import * as crypto from 'crypto';
 export interface ContractPdfInput {
   candidateName: string;
   position: string;
-  bodyText: string;       // plain text, HTML already stripped
+  bodyText: string;       // plain text used for hashing / evidence
   signatureBase64: string; // data:image/png;base64,...
-  /** Company / legal rep signature image (base64 PNG) */
-  companySigBase64?: string;
+  /** When provided, this Puppeteer-rendered PDF is used as the base instead of
+   *  generating a plain-text PDF from bodyText. The signature is overlaid on top. */
+  htmlPdfBuffer?: Buffer;
   signedAt: Date;
   signerIp: string;
   signerUserAgent: string;
@@ -30,6 +31,8 @@ export interface SigningEvidence {
 /** Strip basic HTML tags for plain-text PDF rendering */
 export function stripHtml(html: string): string {
   return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/li>/gi, '\n')
@@ -69,27 +72,57 @@ function wrapText(text: string, font: import('pdf-lib').PDFFont, fontSize: numbe
 
 /**
  * Generate a signed contract PDF with the candidate's signature embedded.
- * Returns the PDF buffer and cryptographic signing evidence.
+ * If input.htmlPdfBuffer is provided (Puppeteer-rendered HTML), the signature
+ * is overlaid on that PDF. Otherwise a plain-text PDF is built from bodyText.
  */
 export async function generateContractPdf(
   input: ContractPdfInput
 ): Promise<{ pdfBuffer: Buffer; evidence: SigningEvidence }> {
   const evidenceId = crypto.randomUUID();
 
-  // Hash the contract content before signing
   const documentHashBefore = crypto
     .createHash('sha256')
     .update(`${input.candidateName}|${input.position}|${input.bodyText}`)
     .digest('hex');
 
-  // Hash the signature image
   const sigBase64 = input.signatureBase64.replace(/^data:image\/png;base64,/, '');
   const signatureHash = crypto
     .createHash('sha256')
     .update(sigBase64)
     .digest('hex');
 
-  // ── Build PDF ──────────────────────────────────────────────────────────────
+  // ── Puppeteer-rendered HTML PDF: signatures are already embedded in the HTML.
+  //    Just stamp the evidence ID on the last page and return. ─────────────────
+  if (input.htmlPdfBuffer) {
+    const pdfDoc = await PDFDocument.load(input.htmlPdfBuffer);
+    const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
+    const gray = rgb(0.6, 0.6, 0.6);
+
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1];
+    lastPage.drawText(
+      `ID de firma: ${evidenceId}  |  ${input.signedAt.toISOString()}`,
+      { x: 40, y: 10, size: 6, font: fontMono, color: gray }
+    );
+
+    const pdfBytes = await pdfDoc.save();
+    const pdfBuffer = Buffer.from(pdfBytes);
+    const documentHashAfter = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
+    return {
+      pdfBuffer,
+      evidence: {
+        documentHashBefore,
+        documentHashAfter,
+        signatureHash,
+        signedAt: input.signedAt.toISOString(),
+        signerIp: input.signerIp,
+        signerUserAgent: input.signerUserAgent,
+        evidenceId,
+      },
+    };
+  }
+
+  // ── Fallback: plain-text PDF (PDF-based templates or legacy) ─────────────
   const pdfDoc = await PDFDocument.create();
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -206,18 +239,7 @@ export async function generateContractPdf(
         color: rgb(0.88, 0.9, 0.93),
       });
 
-      // ── Company signature (left column) ──────────────────────────────────────
-      if (input.companySigBase64) {
-        const compBase64 = input.companySigBase64.replace(/^data:image\/png;base64,/, '');
-        const compImage = await pdfDoc.embedPng(Buffer.from(compBase64, 'base64'));
-        const compDims = compImage.scale(Math.min(sigW / compImage.width, 52 / compImage.height, 0.4));
-        page.drawImage(compImage, {
-          x: margin,
-          y: sigAreaTop + 8,
-          width: compDims.width,
-          height: compDims.height,
-        });
-      }
+      // ── Company signature line (left column — image is in the HTML via {{firmaEmpresa}}) ──
       page.drawLine({
         start: { x: margin, y: sigAreaTop + 4 },
         end: { x: margin + sigW, y: sigAreaTop + 4 },
