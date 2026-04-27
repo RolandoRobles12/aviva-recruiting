@@ -61,6 +61,12 @@ function buildContractVars(candidate: Record<string, unknown>, now: Date): Recor
   };
   vars.parentesco = PARENTESCO_LABELS[parentescoRaw] || parentescoRaw;
 
+  // Carta de No Inhabilitación — depends on whether candidate worked at a financial institution
+  const trabajoFinanciera = fa.trabajoEntidadFinanciera as boolean | undefined;
+  vars.marcaNoLaboro = !trabajoFinanciera ? 'X' : '';
+  vars.marcaSiLaboro = trabajoFinanciera ? 'X' : '';
+  vars.nombreEntidadFinanciera = (fa.nombreEntidadFinanciera as string) || '';
+
   // OCR-extracted fields from validated documents
   const docs = (candidate.documents ?? {}) as Record<string, {
     status?: string;
