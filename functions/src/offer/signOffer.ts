@@ -191,6 +191,7 @@ export const signOffer = onRequest(
         date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
       };
       const bodyHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
+      const logoUrl = await getLogoUrl();
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
       console.log('[signOffer] Starting PDF generation...');
@@ -204,6 +205,7 @@ export const signOffer = onRequest(
             bodyHtml,
             signatureBase64,
             signedAt: now,
+            logoUrl,
           }),
           30_000,
           'PDF generation'

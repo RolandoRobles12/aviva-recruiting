@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../utils/admin';
 import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
+import { htmlToPdf } from './htmlToPdf';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
 import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
 import { getLogoUrl, getCompanySignatureUrl } from '../utils/branding';
@@ -120,7 +121,7 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
 // ─── Sign Contract ────────────────────────────────────────────────────────────
 
 export const signContract = onRequest(
-  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300 },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300, memory: '1GiB' },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -226,38 +227,30 @@ export const signContract = onRequest(
       pdfBuffer = result.pdfBuffer;
       evidence = result.evidence;
     } else {
-      // ── HTML-based template (original flow) ──
+      // ── HTML-based template — render with Puppeteer to preserve all formatting ──
       const companySigUrl = await getCompanySignatureUrl();
       vars.firmaEmpresa = companySigUrl
         ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:220px;max-height:80px;display:block;margin:0 auto 4px;">`
         : '';
 
-      // Download company signature bytes so we can embed it as an image in the PDF
-      let companySigBase64: string | undefined;
-      if (companySigUrl) {
-        try {
-          const sigResp = await fetch(companySigUrl);
-          const sigBuffer = await sigResp.arrayBuffer();
-          companySigBase64 = `data:image/png;base64,${Buffer.from(sigBuffer).toString('base64')}`;
-        } catch {
-          // Non-fatal — PDF will just omit the company signature image
-        }
-      }
-
       const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
-      const bodyText = stripHtml(interpolate(bodyHtml, vars));
+      const renderedHtml = interpolate(bodyHtml, vars);
 
+      // Render the full HTML to PDF via headless Chromium
+      const htmlPdfBuffer = await htmlToPdf(renderedHtml);
+
+      // Overlay the candidate signature + evidence metadata on top using pdf-lib
       const result = await generateContractPdf({
         candidateName: candidateFullName,
         position: candidate.position as string,
-        bodyText,
+        bodyText: stripHtml(renderedHtml), // used only for the hash / evidence
         signatureBase64,
-        companySigBase64,
         signedAt: now,
         signerIp,
         signerUserAgent,
         candidateInitials,
         initialsBase64: initialsBase64 || undefined,
+        htmlPdfBuffer,
       });
       pdfBuffer = result.pdfBuffer;
       evidence = result.evidence;

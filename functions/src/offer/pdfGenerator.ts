@@ -6,11 +6,15 @@ export interface OfferPdfInput {
   bodyHtml:        string;  // HTML string — stripped to plain text for rendering
   signatureBase64: string;
   signedAt:        Date;
+  /** Company logo URL — embedded as image in the header if provided */
+  logoUrl?:        string;
 }
 
 /** Strip HTML tags, preserving structure as plain text */
 function stripHtml(html: string): string {
   return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/li>/gi, '\n')
@@ -142,58 +146,52 @@ export async function generateOfferPdf(input: OfferPdfInput): Promise<Buffer> {
     if (pageIdx === 0) {
       page.drawRectangle({ x: 0, y: height - 72, width, height: 72, color: green });
 
-      // Logo icon
-      page.drawRectangle({ x: margin, y: height - 56, width: 32, height: 32, color: white });
-      page.drawText('A', {
-        x: margin + 9, y: height - 44, size: 18, font: fBold, color: green,
-      });
+      // Logo: try to embed the real logo image; fall back to the 'A' monogram
+      let logoEndX = margin;
+      if (input.logoUrl) {
+        try {
+          const resp = await fetch(input.logoUrl);
+          const logoBytes = Buffer.from(await resp.arrayBuffer());
+          const isJpeg = input.logoUrl.toLowerCase().includes('.jpg') || input.logoUrl.toLowerCase().includes('.jpeg');
+          const logoImg = isJpeg ? await pdfDoc.embedJpg(logoBytes) : await pdfDoc.embedPng(logoBytes);
+          const logoDims = logoImg.scale(Math.min(120 / logoImg.width, 40 / logoImg.height, 1));
+          page.drawImage(logoImg, { x: margin, y: height - 58, width: logoDims.width, height: logoDims.height });
+          logoEndX = margin + logoDims.width + 10;
+        } catch {
+          // Fall through to monogram
+          page.drawRectangle({ x: margin, y: height - 56, width: 32, height: 32, color: white });
+          page.drawText('A', { x: margin + 9, y: height - 44, size: 18, font: fBold, color: green });
+          logoEndX = margin + 42;
+        }
+      } else {
+        page.drawRectangle({ x: margin, y: height - 56, width: 32, height: 32, color: white });
+        page.drawText('A', { x: margin + 9, y: height - 44, size: 18, font: fBold, color: green });
+        logoEndX = margin + 42;
+      }
 
       // Aviva logotype
-      page.drawText('aviva', {
-        x: margin + 40, y: height - 40, size: 20, font: fBold, color: white,
-      });
-      page.drawText('Carta Oferta de Trabajo', {
-        x: margin + 40, y: height - 57, size: 9, font: fReg, color: lightMint,
-      });
+      page.drawText('aviva', { x: logoEndX, y: height - 40, size: 20, font: fBold, color: white });
+      page.drawText('Carta Oferta de Trabajo', { x: logoEndX, y: height - 57, size: 9, font: fReg, color: lightMint });
 
       // Company name right-aligned
       const company = 'Aviva';
       const compW = fBold.widthOfTextAtSize(company, 11);
-      page.drawText(company, {
-        x: width - margin - compW, y: height - 44, size: 11, font: fBold, color: white,
-      });
+      page.drawText(company, { x: width - margin - compW, y: height - 44, size: 11, font: fBold, color: white });
 
-      // Separator line
-      page.drawLine({
-        start: { x: 0, y: height - 72 },
-        end:   { x: width, y: height - 72 },
-        thickness: 2,
-        color: rgb(0.06, 0.6, 0.38),
-      });
-
-      // Candidate name + position
-      let y = height - 96;
+      // Candidate name + position below header
+      let nameY = height - 96;
       if (input.candidateName) {
-        page.drawText(input.candidateName, {
-          x: margin, y, size: 15, font: fBold, color: dark,
-        });
-        y -= 20;
+        page.drawText(input.candidateName, { x: margin, y: nameY, size: 15, font: fBold, color: dark });
+        nameY -= 20;
       }
-      page.drawText(input.position, {
-        x: margin, y, size: 11, font: fReg, color: gray,
-      });
-      y -= 28;
-
-      page.drawLine({
-        start: { x: margin, y },
-        end:   { x: width - margin, y },
-        thickness: 0.5,
-        color: rgb(0.88, 0.9, 0.93),
-      });
+      page.drawText(input.position, { x: margin, y: nameY, size: 11, font: fReg, color: gray });
+      nameY -= 28;
+      page.drawLine({ start: { x: margin, y: nameY }, end: { x: width - margin, y: nameY }, thickness: 0.5, color: rgb(0.88, 0.9, 0.93) });
     }
 
     // ── Body text ─────────────────────────────────────────────────────────────
-    let y = pageIdx === 0 ? FIRST_PAGE_START_Y - 18 : OTHER_PAGE_START_Y;
+    // First page: header=72px, name=20px, position=20px, gap=28px, sep=1px, pad=16px → 157px total
+    let y = pageIdx === 0 ? PAGE_H - 157 : OTHER_PAGE_START_Y;
 
     for (const line of pages[pageIdx]) {
       if (!line.text.trim()) {
