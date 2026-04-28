@@ -191,9 +191,9 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
       title,
       stages: (data.stages as ViterbitStage[]) ?? [],
       salary,
-      startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',
+      startDate:      getCustom('fecha_de_apertura_de_la_vacante') || getCustom('hired_start_date_job') || getCustom('start_date') || '',
       hiringManager:  getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '',
-      company:        getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || 'Aviva',
+      company:        getCustom('empresa') || getCustom('custom_job_empresa') || getCustom('company') || 'Aviva',
       departmentProfile,
     };
   } catch (err) {
