@@ -10,7 +10,7 @@ import { sendEmail } from '../email/gmailClient';
 import { invitationTemplate, signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLinkDuration } from '../utils/linkDuration';
-import { generateOfferPdf } from './pdfGenerator';
+import { htmlToPdf } from '../contract/htmlToPdf';
 import { getLogoUrl } from '../utils/branding';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
@@ -66,6 +66,154 @@ function interpolate(template: string, vars: Record<string, string>): string {
   });
   return result;
 }
+
+// ─── Full-page HTML template rendered by Puppeteer to produce the signed PDF ──
+// Uses {{key}} placeholders resolved by interpolate().
+// Logo is injected as an <img> tag via {{logoTag}} so no base64 is embedded here.
+
+const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Carta Oferta Aviva</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: #1a1a1a;
+      font-family: Roboto, Arial, Helvetica, sans-serif;
+      font-size: 15px;
+      line-height: 1.52;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0;
+      background: #ffffff;
+      position: relative;
+      padding: 17mm 25mm 18mm 25mm;
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 24px;
+      border-bottom: 1.3px solid #00664d;
+    }
+    .logo { width: 88px; height: auto; display: block; }
+    .company { color: #00664d; font-weight: 700; font-size: 18px; letter-spacing: .1px; padding-top: 4px; }
+    .date { text-align: right; margin: 20px 0 31px 0; font-size: 15px; }
+    p { margin: 0; }
+    .greeting { margin-bottom: 26px; font-size: 15px; }
+    .intro { margin-bottom: 26px; }
+    .presection { margin-bottom: 26px; }
+    .section-title {
+      color: #00664d;
+      font-weight: 700;
+      font-size: 18px;
+      margin: 0 0 5px 18px;
+      display: flex;
+      gap: 27px;
+      align-items: baseline;
+    }
+    .section-title .roman { min-width: 24px; text-align: right; }
+    .details { margin-bottom: 24px; }
+    .details p { margin: 0; line-height: 1.45; }
+    ul { margin: 3px 0 28px 28px; padding-left: 23px; list-style: disc; }
+    li { padding-left: 7px; margin: 0 0 3px 0; line-height: 1.5; }
+    li::marker { font-size: 1.55em; color: #000000; }
+    .comp-title { margin-top: 16px; margin-bottom: 31px; }
+    .comp-intro { margin-bottom: 31px; text-align: justify; }
+    .benefits p { margin: 0 0 4px 0; line-height: 1.38; }
+    .page2 { padding-top: 31mm; }
+    .closing { color: #00664d; font-weight: 700; font-size: 21px; text-align: center; margin-top: 50px; margin-bottom: 50px; }
+    .signature-area { padding-top: 20px; border-top: 1px solid #d0d0d0; }
+    .signature-area img { max-width: 200px; max-height: 70px; display: block; margin: 4px 0; }
+    .sig-line { border-bottom: 1.3px solid #1e293b; width: 260px; margin: 4px 0 0; }
+    .sig-name { margin: 4px 0 0 !important; font-size: 14px; font-weight: 700; color: #1a1a1a; }
+    .sig-label { margin: 2px 0 0 !important; font-size: 12px; color: #9ca3af; }
+    @media print { body { background: white; } }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <header class="header">
+      {{logoTag}}
+      <div class="company">Aviva Financial S.A. de C.V. SOFOM ENR</div>
+    </header>
+
+    <p class="date">Ciudad de México, <b>{{dateSlash}}</b></p>
+
+    <p class="greeting">Bienvenido/a <b>{{name}}</b>,</p>
+
+    <p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que&nbsp; tu talento</p>
+    <p>puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas.</p>
+    <p>Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de</p>
+    <p class="intro">ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología<br>de manera accesible.</p>
+
+    <p class="presection">Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
+
+    <div class="section-title"><span class="roman">I.</span><span>Posición y organización</span></div>
+    <div class="details">
+      <p><b>Puesto:</b> {{departmentProfile}}</p>
+      <p><b>Empresa:</b> {{company}}</p>
+      <p><b>Líder:</b> {{hiringManager}}</p>
+      <p><b>Fecha de inicio:</b> {{startDate}}</p>
+      <p><b>Horario:</b> Lunes a Domingo 10 a 19 con Descanso Jueves*</p>
+      <p>*Pueden cambiar de acuerdo a necesidades del negocio</p>
+    </div>
+
+    <div class="section-title"><span class="roman">II.</span><span>Responsabilidades clave</span></div>
+    <ul>
+      <li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
+      <li>Tener pleno conocimiento de las características de los productos que se venden en tienda física y digital.</li>
+      <li>Construir relaciones positivas y efectivas con gerentes, subgerentes y asociados de tienda.</li>
+      <li>Ejecutar estrategias de venta, activaciones y promociones dentro del punto de venta.</li>
+      <li>Proponer e implementar acciones comerciales en colaboración con el equipo de tienda, principalmente con el asociado de venta en línea.</li>
+      <li>En caso necesario, realizar actividades de cambaceo en zonas cercanas para impulsar el tráfico y las ventas.</li>
+      <li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
+      <li><b>El rol contempla operación durante temporadas clave como Hot Sale y Buen Fin, así como en otras fechas estratégicas del año.</b> Estos períodos representan una <b>oportunidad directa para maximizar ingresos</b>, ya que el incremento en la demanda y el flujo de clientes se traduce en un <b>mayor potencial de comisiones.</b></li>
+    </ul>
+
+    <div class="section-title comp-title"><span class="roman">III.</span><span>Compensación y beneficios iniciales</span></div>
+    <p class="comp-intro">El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
+    <div class="benefits">
+      <p><b>Sueldo Bruto:</b> {{salary}} (antes de impuestos)</p>
+      <p><b>Bono Garantía Bruto:</b> 1,750 MXN (pagado únicamente en las primeras 2 quincenas)*</p>
+    </div>
+  </section>
+
+  <section class="page page2">
+    <div class="benefits">
+      <p><b>Bono Mensual Bruto:</b> 0 a 14,373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*</p>
+      <p><b>Premios bimestral:</b> bono variable a los 3 primeros lugares de cada grupo de tienda*</p>
+      <p><b>Seguridad social:</b> IMSS</p>
+      <p><b>Prima vacacional:</b> 25%</p>
+      <p><b>Prima dominical:</b> 25%</p>
+      <p><b>Aguinaldo:</b> 15 días (proporcional a los días laborados en el año)</p>
+      <p><b>Días Aviva:</b> 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva</p>
+      <p><b>Día de cumpleaños:</b> 1 día al año para celebrar tu vida</p>
+      <p><b>Bono de Maternidad o paternidad:</b>&nbsp; 15 días de tu salario bruto mensual al nacer tu hijo/a</p>
+      <p>*La compensación variable y beneficios superiores&nbsp; están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</p>
+    </div>
+
+    <p class="closing">¡Nos encanta que estés a unos pasos de ser parte de Aviva!</p>
+
+    <div class="signature-area">
+      {{firmaEmpleado}}
+      <div class="sig-line"></div>
+      <p class="sig-name">{{name}}</p>
+      <p class="sig-label">El Candidato / La Candidata</p>
+      <p class="sig-label">{{signedAtDate}}</p>
+    </div>
+  </section>
+</body>
+</html>`;
 
 // ─── Default offer letter body (matches Carta Oferta design) ─────────────────
 
@@ -190,8 +338,13 @@ export const signOffer = onRequest(
         startDate,
         date: format(now, "d 'de' MMMM 'de' yyyy", { locale: es }),
       };
-      const bodyHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
       const logoUrl = await getLogoUrl();
+
+      // Extra vars for Puppeteer PDF rendering
+      vars.dateSlash     = format(now, 'dd/MM/yyyy');
+      vars.logoTag       = logoUrl ? `<img class="logo" src="${logoUrl}" alt="Aviva" />` : '';
+      vars.signedAtDate  = format(now, "d 'de' MMMM 'de' yyyy", { locale: es });
+      vars.firmaEmpleado = `<img src="${signatureBase64}" alt="Firma" style="max-width:200px;max-height:70px;display:block;margin:4px 0;">`;
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
       console.log('[signOffer] Starting PDF generation...');
@@ -199,15 +352,8 @@ export const signOffer = onRequest(
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await withTimeout(
-          generateOfferPdf({
-            candidateName: candidateFullName,
-            position: positionVal,
-            bodyHtml,
-            signatureBase64,
-            signedAt: now,
-            logoUrl,
-          }),
-          30_000,
+          htmlToPdf(interpolate(OFFER_PDF_HTML_TEMPLATE, vars), {}),
+          90_000,
           'PDF generation'
         );
         console.log(`[signOffer] PDF generated in ${Date.now() - t0}ms`);
