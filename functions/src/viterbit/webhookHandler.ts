@@ -220,7 +220,7 @@ async function fetchViterbitCandidature(
     const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
     const stageId   = (currentStage.id   as string) ?? '';
     const stageName = (currentStage.name as string) ?? '';
-    if (!stageId) return null;
+    const jobId = (data.job_id as string) ?? '';
 
     const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
     const salaryAmount = hiredInfo.salary as number | undefined;
@@ -228,7 +228,7 @@ async function fetchViterbitCandidature(
     const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
     const startDate = (hiredInfo.start_at as string) ?? '';
 
-    const jobId = (data.job_id as string) ?? '';
+    if (!stageId && !jobId) return null;
     return { stageId, stageName, salary, startDate, jobId };
   } catch (err) {
     console.error('[viterbit] fetchViterbitCandidature error:', err);
@@ -388,8 +388,11 @@ async function handleAprobado(
   const viterbitHiringManager = hiringManagerId
     ? await fetchViterbitUser(hiringManagerId, apiKey)
     : '';
-  const viterbitSalary   = candidatureInfo?.salary   ?? '';
-  const viterbitStartDate = candidatureInfo?.startDate ?? '';
+  const viterbitSalary = candidatureInfo?.salary ?? '';
+  const rawStartDate   = candidatureInfo?.startDate ?? '';
+  const viterbitStartDate = rawStartDate
+    ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
+    : '';
 
   const findStage = (name: string) =>
     stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
@@ -863,7 +866,7 @@ export const viterbitWebhook = onRequest(
       let resolvedStageName = stageName;
       if (!resolvedStageName && parsed.candidatureId) {
         const resolved = await fetchViterbitCandidature(parsed.candidatureId, apiKey);
-        if (resolved) {
+        if (resolved?.stageName) {
           resolvedStageName = resolved.stageName;
           console.info(`[webhook] resolved stage name "${resolvedStageName}" from candidature ${parsed.candidatureId}`);
         }
