@@ -356,7 +356,7 @@ export type DocumentSettings = Record<DocumentType, DocumentSetting>;
 
 // ─── Document Config ──────────────────────────────────────────────────────────
 
-export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description: string; required: boolean }> = {
+export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description: string; required: boolean; condition?: { questionBuiltinKey: string; value: boolean } }> = {
   acta_nacimiento: {
     label: 'Acta de Nacimiento',
     description: 'Copia de tu acta de nacimiento',
