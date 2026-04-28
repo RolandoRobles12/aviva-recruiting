@@ -22,7 +22,7 @@ const STAGE_APROBADO     = defineString('STAGE_APROBADO',     { default: 'Aproba
 const STAGE_DOCUMENTOS   = defineString('STAGE_DOCUMENTOS',   { default: 'Documentos' });
 const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contrato' });
 const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correo corporativo' });
-const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducción' });
+const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Onboarding' });
 
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
@@ -870,7 +870,7 @@ export const viterbitWebhook = onRequest(
       } else if (matches(STAGE_CORREOS.value())) {
         const result = await handleCorreos(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
-      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion')) {
+      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion') || matches('onboarding')) {
         const result = await handleInduccion(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
       } else {
