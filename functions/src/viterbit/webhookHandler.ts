@@ -21,8 +21,8 @@ const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
 const STAGE_APROBADO     = defineString('STAGE_APROBADO',     { default: 'Aprobado' });
 const STAGE_DOCUMENTOS   = defineString('STAGE_DOCUMENTOS',   { default: 'Documentos' });
 const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contrato' });
-const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correos' });
-const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducción' });
+const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correo corporativo' });
+const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Onboarding' });
 
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
@@ -112,12 +112,16 @@ interface ViterbitCandidate {
 interface ViterbitJobInfo {
   title: string;
   stages: ViterbitStage[];
-  // Fields from the Viterbit job endpoint
-  salary: string;
-  startDate: string;
-  hiringManager: string;
+  hiringManagerId: string;
   company: string;
   departmentProfile: string;
+}
+
+interface ViterbitCandidatureInfo {
+  stageId: string;
+  stageName: string;
+  salary: string;
+  startDate: string;
 }
 
 /**
@@ -134,8 +138,7 @@ interface ViterbitJobInfo {
  */
 async function fetchViterbitJob(jobId: string, apiKey: string): Promise<ViterbitJobInfo> {
   const empty: ViterbitJobInfo = {
-    title: '', stages: [],
-    salary: '', startDate: '', hiringManager: '', company: '', departmentProfile: '',
+    title: '', stages: [], hiringManagerId: '', company: '', departmentProfile: '',
   };
   try {
     const resp = await fetch(
@@ -145,21 +148,6 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     if (!resp.ok) return empty;
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
-
-    // Parse salary from salary_min / salary_max objects
-    const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
-    const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
-    let salary = '';
-    if (salaryMin?.amount && salaryMax?.amount) {
-      const currency = salaryMin.currency ?? 'MXN';
-      salary = salaryMin.amount === salaryMax.amount
-        ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
-        : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
-    } else if (salaryMin?.amount) {
-      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
-    } else if (salaryMax?.amount) {
-      salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
-    }
 
     // Viterbit returns custom fields under custom_field_values (requires includes[]=custom_field_values)
     const custom = (data.custom_field_values as Record<string, unknown>)
@@ -190,10 +178,8 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     return {
       title,
       stages: (data.stages as ViterbitStage[]) ?? [],
-      salary,
-      startDate:      getCustom('hired_start_date_job') || getCustom('start_date') || '',
-      hiringManager:  getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '',
-      company:        getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || 'Aviva',
+      hiringManagerId: getCustom('hiring_manager'),
+      company:         getCustom('empresa') || getCustom('custom_job_empresa') || getCustom('company') || 'Aviva',
       departmentProfile,
     };
   } catch (err) {
@@ -214,33 +200,52 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
-/**
- * Fetch candidature details to resolve the current stage name.
- * Used when Format A webhooks only provide stage_id without a name.
- */
-async function fetchViterbitCandidatureStage(
+async function fetchViterbitCandidature(
   candidatureId: string,
   apiKey: string
-): Promise<{ stageId: string; stageName: string } | null> {
+): Promise<ViterbitCandidatureInfo | null> {
   try {
     const resp = await fetch(
-      `${VITERBIT_API_BASE}/candidatures/${candidatureId}?includes[]=custom_field_values`,
+      `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
       { headers: { 'X-API-Key': apiKey } },
     );
     if (!resp.ok) {
-      console.error(`[viterbit] fetchCandidatureStage ${candidatureId} → HTTP ${resp.status}`);
+      console.error(`[viterbit] fetchViterbitCandidature ${candidatureId} → HTTP ${resp.status}`);
       return null;
     }
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
+
     const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
     const stageId   = (currentStage.id   as string) ?? '';
     const stageName = (currentStage.name as string) ?? '';
     if (!stageId) return null;
-    return { stageId, stageName };
+
+    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
+    const salaryAmount = hiredInfo.salary as number | undefined;
+    const currency = (hiredInfo.currency as string) ?? 'MXN';
+    const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
+    const startDate = (hiredInfo.start_at as string) ?? '';
+
+    return { stageId, stageName, salary, startDate };
   } catch (err) {
-    console.error('[viterbit] fetchCandidatureStage error:', err);
+    console.error('[viterbit] fetchViterbitCandidature error:', err);
     return null;
+  }
+}
+
+async function fetchViterbitUser(userId: string, apiKey: string): Promise<string> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/users/${userId}`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) return '';
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    return (data.full_name as string) ?? '';
+  } catch (err) {
+    console.error('[viterbit] fetchViterbitUser error:', err);
+    return '';
   }
 }
 
@@ -285,8 +290,8 @@ async function fetchViterbitCandidate(
       (data.apellidos as string) ||
       '';
     const name =
-      (data.name as string) ||
       (data.full_name as string) ||
+      (data.name as string) ||
       (data.fullname as string) ||
       `${firstName} ${lastName}`.trim();
 
@@ -361,15 +366,21 @@ async function handleAprobado(
     }
   }
 
-  // Fetch job info (stages + custom fields) and candidate in parallel
-  const [viterbitCandidate, jobInfo] = await Promise.all([
+  // Fetch candidate, job, and candidature in parallel
+  const [viterbitCandidate, jobInfo, candidatureInfo] = await Promise.all([
     fetchViterbitCandidate(candidateViterbitId, apiKey),
     fetchViterbitJob(jobId, apiKey),
+    fetchViterbitCandidature(candidatureId, apiKey),
   ]);
 
-  const { title: jobTitle, stages, salary: viterbitSalary, startDate: viterbitStartDate,
-    hiringManager: viterbitHiringManager, company: viterbitCompany,
-    departmentProfile: viterbitDepartmentProfile } = jobInfo;
+  const { title: jobTitle, stages, hiringManagerId,
+    company: viterbitCompany, departmentProfile: viterbitDepartmentProfile } = jobInfo;
+
+  const viterbitHiringManager = hiringManagerId
+    ? await fetchViterbitUser(hiringManagerId, apiKey)
+    : '';
+  const viterbitSalary   = candidatureInfo?.salary   ?? '';
+  const viterbitStartDate = candidatureInfo?.startDate ?? '';
 
   const findStage = (name: string) =>
     stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
@@ -842,7 +853,7 @@ export const viterbitWebhook = onRequest(
       // Resolve the name by fetching the candidature (recommended flow per Viterbit docs).
       let resolvedStageName = stageName;
       if (!resolvedStageName && parsed.candidatureId) {
-        const resolved = await fetchViterbitCandidatureStage(parsed.candidatureId, apiKey);
+        const resolved = await fetchViterbitCandidature(parsed.candidatureId, apiKey);
         if (resolved) {
           resolvedStageName = resolved.stageName;
           console.info(`[webhook] resolved stage name "${resolvedStageName}" from candidature ${parsed.candidatureId}`);
@@ -870,7 +881,7 @@ export const viterbitWebhook = onRequest(
       } else if (matches(STAGE_CORREOS.value())) {
         const result = await handleCorreos(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
-      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion')) {
+      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion') || matches('onboarding')) {
         const result = await handleInduccion(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
       } else {
