@@ -25,10 +25,11 @@ export const sendReminderEmail = onCall(
     const formAnswers = candidate.formAnswers as Record<string, unknown> | undefined;
 
     // Read document settings from Firestore for dynamic conditions
-    let docSettingsData: Record<string, { required?: boolean; condition?: { questionBuiltinKey: string; value: boolean } }> | null = null;
+    type DocSetting = { required?: boolean; condition?: { questionBuiltinKey: string; value: boolean } };
+    let docSettingsData: Record<string, DocSetting> | null = null;
     try {
       const docSnap = await db.doc('settings/documents').get();
-      if (docSnap.exists) docSettingsData = docSnap.data() as typeof docSettingsData;
+      if (docSnap.exists) docSettingsData = docSnap.data() as Record<string, DocSetting>;
     } catch {}
 
     const ALL_TYPES = [...DOCUMENT_TYPES_REQUIRED, 'aviso_retencion', 'estado_cuenta_fonacot'];
