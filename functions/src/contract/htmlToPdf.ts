@@ -4,6 +4,8 @@ import puppeteer from 'puppeteer-core';
 export interface HtmlToPdfOptions {
   initials?: string;
   initialsBase64?: string;
+  /** Page margins applied by Puppeteer — override when the HTML template removes its own print padding */
+  pageMargins?: { top?: string; right?: string; bottom?: string; left?: string };
 }
 
 export async function htmlToPdf(html: string, options: HtmlToPdfOptions = {}): Promise<Buffer> {
@@ -31,7 +33,12 @@ export async function htmlToPdf(html: string, options: HtmlToPdfOptions = {}): P
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '0', right: '0', bottom: '14mm', left: '0' },
+      margin: {
+        top:    options.pageMargins?.top    ?? '0',
+        right:  options.pageMargins?.right  ?? '0',
+        bottom: options.pageMargins?.bottom ?? '14mm',
+        left:   options.pageMargins?.left   ?? '0',
+      },
       displayHeaderFooter: true,
       headerTemplate: '<div></div>',
       footerTemplate,

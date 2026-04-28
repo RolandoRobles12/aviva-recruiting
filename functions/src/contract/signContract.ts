@@ -260,9 +260,13 @@ export const signContract = onRequest(
       vars.firmaEmpleado = `<img src="${signatureBase64}" alt="Firma del Empleado" style="max-width:200px;max-height:70px;display:block;margin:4px auto;">`;
 
       // Render the complete HTML (both signatures already embedded) to PDF
+      // pageMargins are handled by Puppeteer so they apply consistently to every page,
+      // including pages 2+ after section breaks. The HTML template must set padding: 0
+      // in @media print so these don't compound with the CSS padding.
       const htmlPdfBuffer = await htmlToPdf(interpolate(bodyHtml, vars), {
         initials: candidateInitials,
         initialsBase64: initialsBase64 || undefined,
+        pageMargins: { top: '20mm', right: '20mm', bottom: '16mm', left: '20mm' },
       });
 
       const result = await generateContractPdf({
