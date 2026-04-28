@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
-import type { DocumentSettings, DocumentType } from '../../types';
+import type { DocumentSettings, DocumentType, DocumentSetting, FormQuestion } from '../../types';
 import { DOCUMENT_TYPES } from '../../types';
+import { getFormQuestions } from '../../services/formQuestions';
 
 interface Props {
   settings: DocumentSettings;
@@ -13,8 +14,10 @@ interface Props {
 export function DocumentsTab({ settings, saving, saved, onSave }: Props) {
   const [local, setLocal] = useState(settings);
   const [expanded, setExpanded] = useState<DocumentType | null>(null);
+  const [formQuestions, setFormQuestions] = useState<FormQuestion[]>([]);
 
   useEffect(() => { setLocal(settings); }, [settings]);
+  useEffect(() => { getFormQuestions().then(qs => setFormQuestions(qs.filter(q => q.type === 'yes_no' && q.enabled))); }, []);
 
   const update = (type: DocumentType, field: 'label' | 'description', value: string) => {
     setLocal(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
@@ -22,6 +25,10 @@ export function DocumentsTab({ settings, saving, saved, onSave }: Props) {
 
   const toggleRequired = (type: DocumentType) => {
     setLocal(prev => ({ ...prev, [type]: { ...prev[type], required: !prev[type].required } }));
+  };
+
+  const updateCondition = (type: DocumentType, condition: DocumentSetting['condition']) => {
+    setLocal(prev => ({ ...prev, [type]: { ...prev[type], condition } }));
   };
 
   return (
@@ -96,6 +103,41 @@ export function DocumentsTab({ settings, saving, saved, onSave }: Props) {
                       rows={2}
                       className="input-field text-sm resize-none"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Mostrar solo si
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={doc.condition?.questionBuiltinKey ?? ''}
+                        onChange={(e) => {
+                          const key = e.target.value;
+                          updateCondition(type, key ? { questionBuiltinKey: key, value: doc.condition?.value ?? true } : undefined);
+                        }}
+                        className="input-field text-sm flex-1"
+                      >
+                        <option value="">Siempre mostrar</option>
+                        {formQuestions.map(q => (
+                          <option key={q.id} value={q.builtinKey ?? q.id}>{q.label}</option>
+                        ))}
+                      </select>
+                      {doc.condition && (
+                        <select
+                          value={doc.condition.value ? 'true' : 'false'}
+                          onChange={(e) => updateCondition(type, { ...doc.condition!, value: e.target.value === 'true' })}
+                          className="input-field text-sm w-24"
+                        >
+                          <option value="true">Sí</option>
+                          <option value="false">No</option>
+                        </select>
+                      )}
+                    </div>
+                    {doc.condition && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Solo se mostrará si la respuesta a "{formQuestions.find(q => (q.builtinKey ?? q.id) === doc.condition?.questionBuiltinKey)?.label}" es {doc.condition.value ? 'Sí' : 'No'}.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

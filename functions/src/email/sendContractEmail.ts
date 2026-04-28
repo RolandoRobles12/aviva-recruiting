@@ -35,9 +35,23 @@ export const sendContractEmail = onCall(
     const recruiterUid = request.auth.uid;
     const senderEmail = await getRecruiterEmail(recruiterUid);
 
+    // Read custom email subject from Firestore settings if configured
+    let customSubject: string | undefined;
+    try {
+      const settingsSnap = await db.doc('settings/emailTemplates').get();
+      if (settingsSnap.exists) {
+        const data = settingsSnap.data() as Record<string, { subject?: string; bodyText?: string }>;
+        if (data?.contract?.subject) {
+          customSubject = data.contract.subject.replace('{position}', (candidate.position as string) || '');
+        }
+      }
+    } catch {
+      // Fall back to default template subject
+    }
+
     const logoUrl = await getLogoUrl();
 
-    const { subject, html } = contractTemplate({
+    const { subject: defaultSubject, html } = contractTemplate({
       firstName: (candidate.firstName as string) || '',
       lastName:  (candidate.lastName  as string) || '',
       position:  (candidate.position  as string) || '',
@@ -45,6 +59,7 @@ export const sendContractEmail = onCall(
       contractExpiresAt,
       logoUrl,
     });
+    const subject = customSubject ?? defaultSubject;
 
     await sendEmail({ to: candidate.email as string, subject, html, senderEmail, recruiterUid });
 

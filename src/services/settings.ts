@@ -1,7 +1,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { BrandingSettings, EmailTemplatesSettings, ReminderSettings, DocumentSettings, LinkDurationSettings } from '../types';
-import { DOCUMENT_CONFIG } from '../types';
+import type { BrandingSettings, EmailTemplatesSettings, ReminderSettings, DocumentSettings, LinkDurationSettings, DocumentSetting, DocumentType } from '../types';
+import { DOCUMENT_CONFIG, DOCUMENT_TYPES } from '../types';
 
 export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
   enabled: true,
@@ -61,7 +61,15 @@ export async function saveEmailTemplates(templates: EmailTemplatesSettings): Pro
 export async function getDocumentSettings(): Promise<DocumentSettings> {
   const snap = await getDoc(doc(db, 'settings', 'documents'));
   if (!snap.exists()) return DOCUMENT_CONFIG as DocumentSettings;
-  return snap.data() as DocumentSettings;
+  const data = snap.data() as Partial<Record<string, Partial<DocumentSetting>>>;
+  const result = {} as DocumentSettings;
+  for (const type of DOCUMENT_TYPES) {
+    result[type as DocumentType] = {
+      ...(DOCUMENT_CONFIG as Record<string, { label: string; description: string; required: boolean }>)[type],
+      ...(data[type] ?? {}),
+    } as DocumentSetting;
+  }
+  return result;
 }
 
 export async function saveDocumentSettings(settings: DocumentSettings): Promise<void> {

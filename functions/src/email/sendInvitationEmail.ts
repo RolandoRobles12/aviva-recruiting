@@ -28,12 +28,16 @@ export const sendInvitationEmail = onCall(
       ? format(expiresAt, "d 'de' MMMM 'de' yyyy", { locale: es })
       : '7 días';
 
-    // Read custom email body from Firestore settings if configured
+    // Read custom email subject and body from Firestore settings if configured
+    let customSubject: string | undefined;
     let customBodyText: string | undefined;
     try {
       const settingsSnap = await db.doc('settings/emailTemplates').get();
       if (settingsSnap.exists) {
-        const data = settingsSnap.data() as Record<string, { bodyText?: string }>;
+        const data = settingsSnap.data() as Record<string, { subject?: string; bodyText?: string }>;
+        if (data?.invitation?.subject) {
+          customSubject = data.invitation.subject.replace('{position}', candidate.position as string);
+        }
         if (data?.invitation?.bodyText) {
           customBodyText = data.invitation.bodyText
             .replace('{firstName}', candidate.firstName as string)
@@ -46,7 +50,7 @@ export const sendInvitationEmail = onCall(
 
     const logoUrl = await getLogoUrl();
 
-    const { subject, html } = invitationTemplate(
+    const { subject: defaultSubject, html } = invitationTemplate(
       {
         firstName: candidate.firstName as string,
         lastName: candidate.lastName as string,
@@ -57,6 +61,7 @@ export const sendInvitationEmail = onCall(
       customBodyText,
       logoUrl,
     );
+    const subject = customSubject ?? defaultSubject;
 
     await sendEmail({
       to: candidate.email as string,

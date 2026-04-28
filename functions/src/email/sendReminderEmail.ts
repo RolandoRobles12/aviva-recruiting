@@ -21,11 +21,34 @@ export const sendReminderEmail = onCall(
     const senderEmail = await getRecruiterEmail(recruiterUid);
 
     const docs = candidate.documents as Record<string, { status: string }>;
-    // Build candidate-specific required types
+    // Build candidate-specific required types using dynamic Firestore settings
     const formAnswers = candidate.formAnswers as Record<string, unknown> | undefined;
-    const requiredTypes = [...DOCUMENT_TYPES_REQUIRED];
-    if (formAnswers?.tieneInfonavit) requiredTypes.push('aviso_retencion');
-    if (formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
+
+    // Read document settings from Firestore for dynamic conditions
+    let docSettingsData: Record<string, { required?: boolean; condition?: { questionBuiltinKey: string; value: boolean } }> | null = null;
+    try {
+      const docSnap = await db.doc('settings/documents').get();
+      if (docSnap.exists) docSettingsData = docSnap.data() as typeof docSettingsData;
+    } catch {}
+
+    const ALL_TYPES = [...DOCUMENT_TYPES_REQUIRED, 'aviso_retencion', 'estado_cuenta_fonacot'];
+    const requiredTypes: string[] = [];
+    const toAnswerKey = (s: string) => s.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+
+    for (const type of ALL_TYPES) {
+      const setting = docSettingsData?.[type];
+      if (setting?.condition) {
+        const key = toAnswerKey(setting.condition.questionBuiltinKey);
+        if ((formAnswers as Record<string, unknown>)?.[key] === setting.condition.value) {
+          requiredTypes.push(type);
+        }
+      } else if (setting?.required !== false) {
+        requiredTypes.push(type);
+      } else if (!setting) {
+        // No Firestore data: use hardcoded fallbacks
+        requiredTypes.push(type);
+      }
+    }
 
     const missingDocs = requiredTypes
       .filter((t) => !docs[t] || docs[t].status === 'pending' || docs[t].status === 'invalid')
@@ -38,12 +61,16 @@ export const sendReminderEmail = onCall(
     const appUrl = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
     const formUrl = `${appUrl}/form/${candidate.formToken}`;
 
-    // Read custom email body from Firestore settings if configured
+    // Read custom email subject and body from Firestore settings if configured
+    let customSubject: string | undefined;
     let customBodyText: string | undefined;
     try {
       const settingsSnap = await db.doc('settings/emailTemplates').get();
       if (settingsSnap.exists) {
-        const data = settingsSnap.data() as Record<string, { bodyText?: string }>;
+        const data = settingsSnap.data() as Record<string, { subject?: string; bodyText?: string }>;
+        if (data?.reminder?.subject) {
+          customSubject = data.reminder.subject.replace('{position}', candidate.position as string);
+        }
         if (data?.reminder?.bodyText) {
           customBodyText = data.reminder.bodyText
             .replace('{firstName}', candidate.firstName as string)
@@ -56,7 +83,7 @@ export const sendReminderEmail = onCall(
 
     const logoUrl = await getLogoUrl();
 
-    const { subject, html } = reminderTemplate(
+    const { subject: defaultSubject, html } = reminderTemplate(
       {
         firstName: candidate.firstName as string,
         lastName: candidate.lastName as string,
@@ -68,6 +95,7 @@ export const sendReminderEmail = onCall(
       customBodyText,
       logoUrl,
     );
+    const subject = customSubject ?? defaultSubject;
 
     await sendEmail({
       to: candidate.email as string,

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Check, Info, Mail } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { useSettings } from '../hooks/useSettings';
+import { getBrandingSettings } from '../services/settings';
 import type { EmailTemplatesSettings } from '../types';
 
 type TemplateKey = 'invitation' | 'reminder' | 'offer' | 'contract';
@@ -47,8 +48,10 @@ export function EmailTemplatesPage() {
   const { emailTemplates, saving, savedKey, saveEmailTemplates, loading } = useSettings();
   const [selected, setSelected] = useState<TemplateKey>('invitation');
   const [local, setLocal] = useState<EmailTemplatesSettings>(emailTemplates);
+  const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => { setLocal(emailTemplates); }, [emailTemplates]);
+  useEffect(() => { getBrandingSettings().then(s => setLogoUrl(s.logoUrl)); }, []);
 
   const current = local[selected];
   const meta = TEMPLATE_META[selected];
@@ -161,12 +164,13 @@ export function EmailTemplatesPage() {
                     className="px-6 py-5 text-center"
                     style={{ backgroundColor: meta.headerColor }}
                   >
-                    <div
-                      className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center"
-                      style={{ background: 'rgba(255,255,255,0.2)' }}
-                    >
-                      <span className="text-white font-bold text-lg">A</span>
-                    </div>
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Logo" style={{ height: '36px', maxWidth: '160px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.2)' }}>
+                        <span className="text-white font-bold text-lg">A</span>
+                      </div>
+                    )}
                     <p className="text-white font-bold text-base">{meta.headerText}</p>
                     <p className="mt-1 text-xs" style={{ color: 'rgba(255,255,255,0.8)' }}>
                       Proceso de ingreso · Puesto ejemplo
