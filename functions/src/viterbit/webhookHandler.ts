@@ -21,7 +21,7 @@ const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
 const STAGE_APROBADO     = defineString('STAGE_APROBADO',     { default: 'Aprobado' });
 const STAGE_DOCUMENTOS   = defineString('STAGE_DOCUMENTOS',   { default: 'Documentos' });
 const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contrato' });
-const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correos' });
+const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correo corporativo' });
 const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Inducción' });
 
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
