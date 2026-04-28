@@ -164,7 +164,7 @@ export function DocumentUploadCard({ candidateId, documentType, document, settin
             ${document.status === 'invalid' ? 'border-red-200' : ''}
           `}
         >
-          <input {...getInputProps()} />
+          <input {...getInputProps()} accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png" />
 
           {isUploading ? (
             <div className="py-2">
