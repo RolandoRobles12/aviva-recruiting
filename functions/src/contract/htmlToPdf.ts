@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer-core';
 
 export interface HtmlToPdfOptions {
   initials?: string;
+  initialsBase64?: string;
 }
 
 export async function htmlToPdf(html: string, options: HtmlToPdfOptions = {}): Promise<Buffer> {
@@ -20,9 +21,11 @@ export async function htmlToPdf(html: string, options: HtmlToPdfOptions = {}): P
     await page.setContent(html, { waitUntil: 'networkidle0' });
 
     const safeInitials = (options.initials ?? '').replace(/[<>&"]/g, '');
-    const initialsHtml = safeInitials
-      ? `<span style="font-size:11pt;font-weight:bold;color:#111;border:1.5px solid #333;padding:1pt 6pt;font-family:'Times New Roman',serif;letter-spacing:1pt;">${safeInitials}</span>`
-      : '<span></span>';
+    const initialsHtml = options.initialsBase64
+      ? `<img src="${options.initialsBase64}" style="height:24pt;max-width:70pt;display:block;object-fit:contain;" />`
+      : safeInitials
+        ? `<span style="font-size:11pt;font-weight:bold;color:#111;border:1.5px solid #333;padding:1pt 6pt;font-family:'Times New Roman',serif;letter-spacing:1pt;">${safeInitials}</span>`
+        : '<span></span>';
     const footerTemplate = `<div style="font-size:8pt;font-family:'Times New Roman',serif;color:#555;width:100%;padding:0 2.54cm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;">${initialsHtml}<span><span class="pageNumber"></span>&nbsp;/&nbsp;<span class="totalPages"></span></span></div>`;
 
     const pdfBytes = await page.pdf({
