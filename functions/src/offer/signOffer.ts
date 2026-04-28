@@ -200,7 +200,7 @@ async function fetchOfferBodyHtml(candidateData: Record<string, unknown>): Promi
 // ─── Cloud Function ────────────────────────────────────────────────────────────
 
 export const signOffer = onRequest(
-  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300 },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300, memory: '1GiB' },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
