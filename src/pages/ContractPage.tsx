@@ -123,13 +123,22 @@ export function ContractPage() {
     // Slight delay to ensure DOM is laid out (important on mobile)
     const timer = setTimeout(init, 100);
 
+    // Only reinitialize (which clears the canvas) if the user hasn't drawn anything yet.
+    // On Android, the keyboard and browser chrome trigger resize events constantly.
+    const safeInit = () => {
+      const hasContent =
+        !(signPadRef.current?.isEmpty() ?? true) ||
+        !(initPadRef.current?.isEmpty() ?? true);
+      if (!hasContent) init();
+    };
+
     let resizeTimer: ReturnType<typeof setTimeout>;
     const handleResize = () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(init, 200);
+      resizeTimer = setTimeout(safeInit, 300);
     };
     window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', () => setTimeout(init, 300));
+    window.addEventListener('orientationchange', () => setTimeout(safeInit, 400));
 
     return () => {
       clearTimeout(timer);
@@ -346,7 +355,19 @@ export function ContractPage() {
           {isFullHtmlDocument(contract?.bodyHtml ?? '') ? (
             <iframe
               ref={contractIframeRef}
-              srcDoc={contract?.bodyHtml ?? ''}
+              srcDoc={
+                contract?.bodyHtml
+                  ? contract.bodyHtml.replace(
+                      '</head>',
+                      '<style>' +
+                      '.page{width:100%!important;max-width:100%!important;' +
+                      'padding:5vw!important;margin:0!important;box-shadow:none!important;}' +
+                      'body{background:#fff!important;overflow-x:hidden!important;}' +
+                      'table{max-width:100%!important;word-break:break-word;}' +
+                      '</style></head>'
+                    )
+                  : ''
+              }
               onLoad={handleContractIframeLoad}
               title="Contrato"
               sandbox="allow-same-origin"
@@ -378,40 +399,39 @@ export function ContractPage() {
 
         {/* Initials */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-1">Iniciales (siglas)</h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Dibuja tus iniciales en el recuadro. Se colocarán en cada hoja del contrato como evidencia de lectura.
-          </p>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3 sm:gap-4">
-            <div className="flex-1">
-              <div
-                className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative"
-                style={{ height: 'clamp(70px, 15vw, 90px)' }}
-              >
-                <canvas
-                  ref={initCanvasRef}
-                  className="absolute inset-0 w-full h-full cursor-crosshair"
-                  style={{ touchAction: 'none' }}
-                />
-                {initialsEmpty && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <p className="text-gray-300 text-xs select-none">Tus iniciales aquí</p>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={clearInitials}
-                className="mt-1 text-xs text-gray-400 hover:text-gray-600 transition-colors active:text-gray-800 py-1"
-              >
-                Borrar iniciales
-              </button>
-            </div>
-            <div className="w-full sm:w-28 shrink-0 bg-blue-50 rounded-xl p-3 text-center">
-              <p className="text-[10px] text-blue-600 font-medium mb-1">Ejemplo</p>
-              <p className="text-2xl font-bold text-blue-700">JGR</p>
-              <p className="text-[10px] text-blue-500 mt-0.5">Juan García R.</p>
-            </div>
+          <div className="flex items-start justify-between mb-1">
+            <h2 className="text-sm font-semibold text-gray-700">Iniciales (siglas)</h2>
+            <span className="text-[10px] bg-blue-50 text-blue-600 rounded-lg px-2 py-1 font-bold tracking-wide shrink-0 ml-2">
+              Ejemplo: JGR
+            </span>
           </div>
+          <p className="text-xs text-gray-400 mb-3">
+            Dibuja tus iniciales con el dedo. Se colocarán en cada hoja como evidencia de lectura.
+          </p>
+          <div
+            className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative"
+            style={{ height: '140px' }}
+          >
+            <canvas
+              ref={initCanvasRef}
+              className="absolute inset-0 w-full h-full cursor-crosshair"
+              style={{ touchAction: 'none' }}
+            />
+            {initialsEmpty && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <p className="text-gray-300 text-base select-none">Tus iniciales aquí</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={clearInitials}
+            className="mt-3 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 active:bg-red-200 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Borrar iniciales
+          </button>
         </div>
 
         {/* Signature */}
@@ -421,10 +441,10 @@ export function ContractPage() {
             Dibuja tu firma completa en el recuadro de abajo para firmar este contrato de trabajo.
           </p>
 
-          {/* Signature canvas — responsive height */}
+          {/* Signature canvas */}
           <div
             className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative"
-            style={{ height: 'clamp(130px, 28vw, 180px)' }}
+            style={{ height: '220px' }}
           >
             <canvas
               ref={signCanvasRef}
@@ -439,8 +459,11 @@ export function ContractPage() {
           </div>
           <button
             onClick={clearSignature}
-            className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors active:text-gray-800 py-1"
+            className="mt-3 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 active:bg-red-200 transition-colors"
           >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
             Borrar firma
           </button>
 
