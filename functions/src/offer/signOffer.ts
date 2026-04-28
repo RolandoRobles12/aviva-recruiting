@@ -67,8 +67,8 @@ function interpolate(template: string, vars: Record<string, string>): string {
   return result;
 }
 
-// ─── Full-page HTML template rendered by Puppeteer to produce the signed PDF ──
-// Uses {{key}} placeholders resolved by interpolate().
+// ─── PDF scaffold: header + {{bodyContent}} slot + signature ──────────────────
+// The body content is loaded from Firestore offer_templates (or the fallback below).
 // Logo is injected as an <img> tag via {{logoTag}} so no base64 is embedded here.
 
 const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
@@ -87,16 +87,12 @@ const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
       font-size: 15px;
       line-height: 1.52;
     }
-    .page {
+    .page-wrapper {
       width: 210mm;
-      min-height: 297mm;
       margin: 0;
       background: #ffffff;
-      position: relative;
       padding: 17mm 25mm 18mm 25mm;
-      page-break-after: always;
     }
-    .page:last-child { page-break-after: auto; }
     .header {
       display: flex;
       align-items: center;
@@ -108,31 +104,12 @@ const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
     .logo { width: 88px; height: auto; display: block; }
     .company { color: #00664d; font-weight: 700; font-size: 18px; letter-spacing: .1px; padding-top: 4px; }
     .date { text-align: right; margin: 20px 0 31px 0; font-size: 15px; }
-    p { margin: 0; }
-    .greeting { margin-bottom: 26px; font-size: 15px; }
-    .intro { margin-bottom: 26px; }
-    .presection { margin-bottom: 26px; }
-    .section-title {
-      color: #00664d;
-      font-weight: 700;
-      font-size: 18px;
-      margin: 0 0 5px 18px;
-      display: flex;
-      gap: 27px;
-      align-items: baseline;
-    }
-    .section-title .roman { min-width: 24px; text-align: right; }
-    .details { margin-bottom: 24px; }
-    .details p { margin: 0; line-height: 1.45; }
+    p { margin: 0 0 16px 0; }
+    h2 { color: #00664d; font-weight: 700; font-size: 18px; margin: 24px 0 8px 18px; }
     ul { margin: 3px 0 28px 28px; padding-left: 23px; list-style: disc; }
     li { padding-left: 7px; margin: 0 0 3px 0; line-height: 1.5; }
     li::marker { font-size: 1.55em; color: #000000; }
-    .comp-title { margin-top: 16px; margin-bottom: 31px; }
-    .comp-intro { margin-bottom: 31px; text-align: justify; }
-    .benefits p { margin: 0 0 4px 0; line-height: 1.38; }
-    .page2 { padding-top: 31mm; }
-    .closing { color: #00664d; font-weight: 700; font-size: 21px; text-align: center; margin-top: 50px; margin-bottom: 50px; }
-    .signature-area { padding-top: 20px; border-top: 1px solid #d0d0d0; }
+    .signature-area { padding-top: 20px; border-top: 1px solid #d0d0d0; margin-top: 20px; }
     .signature-area img { max-width: 200px; max-height: 70px; display: block; margin: 4px 0; }
     .sig-line { border-bottom: 1.3px solid #1e293b; width: 260px; margin: 4px 0 0; }
     .sig-name { margin: 4px 0 0 !important; font-size: 14px; font-weight: 700; color: #1a1a1a; }
@@ -141,7 +118,7 @@ const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <section class="page">
+  <div class="page-wrapper">
     <header class="header">
       {{logoTag}}
       <div class="company">Aviva Financial S.A. de C.V. SOFOM ENR</div>
@@ -149,60 +126,7 @@ const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
 
     <p class="date">Ciudad de México, <b>{{dateSlash}}</b></p>
 
-    <p class="greeting">Bienvenido/a <b>{{name}}</b>,</p>
-
-    <p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que&nbsp; tu talento</p>
-    <p>puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas.</p>
-    <p>Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de</p>
-    <p class="intro">ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología<br>de manera accesible.</p>
-
-    <p class="presection">Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
-
-    <div class="section-title"><span class="roman">I.</span><span>Posición y organización</span></div>
-    <div class="details">
-      <p><b>Puesto:</b> {{departmentProfile}}</p>
-      <p><b>Empresa:</b> {{company}}</p>
-      <p><b>Líder:</b> {{hiringManager}}</p>
-      <p><b>Fecha de inicio:</b> {{startDate}}</p>
-      <p><b>Horario:</b> Lunes a Domingo 10 a 19 con Descanso Jueves*</p>
-      <p>*Pueden cambiar de acuerdo a necesidades del negocio</p>
-    </div>
-
-    <div class="section-title"><span class="roman">II.</span><span>Responsabilidades clave</span></div>
-    <ul>
-      <li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
-      <li>Tener pleno conocimiento de las características de los productos que se venden en tienda física y digital.</li>
-      <li>Construir relaciones positivas y efectivas con gerentes, subgerentes y asociados de tienda.</li>
-      <li>Ejecutar estrategias de venta, activaciones y promociones dentro del punto de venta.</li>
-      <li>Proponer e implementar acciones comerciales en colaboración con el equipo de tienda, principalmente con el asociado de venta en línea.</li>
-      <li>En caso necesario, realizar actividades de cambaceo en zonas cercanas para impulsar el tráfico y las ventas.</li>
-      <li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
-      <li><b>El rol contempla operación durante temporadas clave como Hot Sale y Buen Fin, así como en otras fechas estratégicas del año.</b> Estos períodos representan una <b>oportunidad directa para maximizar ingresos</b>, ya que el incremento en la demanda y el flujo de clientes se traduce en un <b>mayor potencial de comisiones.</b></li>
-    </ul>
-
-    <div class="section-title comp-title"><span class="roman">III.</span><span>Compensación y beneficios iniciales</span></div>
-    <p class="comp-intro">El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
-    <div class="benefits">
-      <p><b>Sueldo Bruto:</b> {{salary}} (antes de impuestos)</p>
-      <p><b>Bono Garantía Bruto:</b> 1,750 MXN (pagado únicamente en las primeras 2 quincenas)*</p>
-    </div>
-  </section>
-
-  <section class="page page2">
-    <div class="benefits">
-      <p><b>Bono Mensual Bruto:</b> 0 a 14,373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*</p>
-      <p><b>Premios bimestral:</b> bono variable a los 3 primeros lugares de cada grupo de tienda*</p>
-      <p><b>Seguridad social:</b> IMSS</p>
-      <p><b>Prima vacacional:</b> 25%</p>
-      <p><b>Prima dominical:</b> 25%</p>
-      <p><b>Aguinaldo:</b> 15 días (proporcional a los días laborados en el año)</p>
-      <p><b>Días Aviva:</b> 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva</p>
-      <p><b>Día de cumpleaños:</b> 1 día al año para celebrar tu vida</p>
-      <p><b>Bono de Maternidad o paternidad:</b>&nbsp; 15 días de tu salario bruto mensual al nacer tu hijo/a</p>
-      <p>*La compensación variable y beneficios superiores&nbsp; están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</p>
-    </div>
-
-    <p class="closing">¡Nos encanta que estés a unos pasos de ser parte de Aviva!</p>
+    {{bodyContent}}
 
     <div class="signature-area">
       {{firmaEmpleado}}
@@ -211,23 +135,22 @@ const OFFER_PDF_HTML_TEMPLATE = `<!DOCTYPE html>
       <p class="sig-label">El Candidato / La Candidata</p>
       <p class="sig-label">{{signedAtDate}}</p>
     </div>
-  </section>
+  </div>
 </body>
 </html>`;
 
-// ─── Default offer letter body (matches Carta Oferta design) ─────────────────
+// ─── Fallback body used when no Firestore offer_templates doc exists ──────────
 
-const DEFAULT_OFFER_BODY_HTML = `
-<p>Bienvenido/a <strong>\${name}</strong>,</p>
-<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que  tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas. Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
+const DEFAULT_OFFER_BODY_HTML = `<p>Bienvenido/a <strong>{{name}}</strong>,</p>
+<p>Después de escuchar tu historia, tu trayectoria y lo que te mueve, estamos convencidos de que tu talento puede ayudarnos a hacer realidad nuestra historia en más comunidades y transformar muchas vidas. Hoy queremos dar un paso más contigo y compartirte nuestra carta oferta, y te unas a nuestra misión de ofrecer productos financieros de calidad mediante una experiencia confiable y digna, acercando la tecnología de manera accesible.</p>
 <p>Ahora déjanos contarte cómo tu posición nos ayudará en esta misión;</p>
 <h2>I. Posición y organización</h2>
-<p><strong>Puesto:</strong> \${job_department_profile}<br>
-<strong>Empresa:</strong> \${custom_job_empresa}<br>
-<strong>Líder:</strong> \${custom_job_hiring_manager}<br>
-<strong>Fecha de inicio:</strong> \${hired_start_date_job}<br>
-<strong>Horario:</strong> Lunes a Domingo 10 a 19 con Descanso Jueves*<br>
-<em>*Pueden cambiar de acuerdo a necesidades del negocio</em></p>
+<p><strong>Puesto:</strong> {{departmentProfile}}<br>
+<strong>Empresa:</strong> {{company}}<br>
+<strong>Líder:</strong> {{hiringManager}}<br>
+<strong>Fecha de inicio:</strong> {{startDate}}<br>
+<strong>Horario:</strong> Lunes a Domingo 10 a 19 con Descanso Jueves*</p>
+<p><em>*Pueden cambiar de acuerdo a necesidades del negocio</em></p>
 <h2>II. Responsabilidades clave</h2>
 <ul>
 <li>Atender a clientes en piso de venta, identificar sus necesidades y cerrar ventas de forma inmediata.</li>
@@ -237,12 +160,13 @@ const DEFAULT_OFFER_BODY_HTML = `
 <li>Proponer e implementar acciones comerciales en colaboración con el equipo de tienda, principalmente con el asociado de venta en línea.</li>
 <li>En caso necesario, realizar actividades de cambaceo en zonas cercanas para impulsar el tráfico y las ventas.</li>
 <li>Cuidar la imagen y representación de AVIVA en el punto de venta.</li>
+<li><strong>El rol contempla operación durante temporadas clave como Hot Sale y Buen Fin, así como en otras fechas estratégicas del año.</strong> Estos períodos representan una <strong>oportunidad directa para maximizar ingresos</strong>, ya que el incremento en la demanda y el flujo de clientes se traduce en un <strong>mayor potencial de comisiones.</strong></li>
 </ul>
 <h2>III. Compensación y beneficios iniciales</h2>
 <p>El plan de compensación de Aviva será dinámico, y evolucionará conforme logremos objetivos por ello te ofrecemos lo siguiente:</p>
-<p><strong>Sueldo Bruto:</strong> \${hired_salary_job} (antes de impuestos)<br>
-<strong>Bono Garantía Bruto:</strong> 1750 MXN (pagado únicamente en las primeras 2 quincenas)*<br>
-<strong>Bono Mensual Bruto:</strong> 0 a 14373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*<br>
+<p><strong>Sueldo Bruto:</strong> {{salary}} (antes de impuestos)<br>
+<strong>Bono Garantía Bruto:</strong> 1,750 MXN (pagado únicamente en las primeras 2 quincenas)*<br>
+<strong>Bono Mensual Bruto:</strong> 0 a 14,373 MXN (acuerdo al cumplimiento de metas de venta, pagado a quincena vencida)*<br>
 <strong>Premios bimestral:</strong> bono variable a los 3 primeros lugares de cada grupo de tienda*<br>
 <strong>Seguridad social:</strong> IMSS<br>
 <strong>Prima vacacional:</strong> 25%<br>
@@ -251,9 +175,27 @@ const DEFAULT_OFFER_BODY_HTML = `
 <strong>Días Aviva:</strong> 7 días personales al año para reavivar tu energía, después de los 4 meses en Aviva<br>
 <strong>Día de cumpleaños:</strong> 1 día al año para celebrar tu vida<br>
 <strong>Bono de Maternidad o paternidad:</strong> 15 días de tu salario bruto mensual al nacer tu hijo/a</p>
-<p><em>*La compensación variable y beneficios superiores  están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
-<p><strong>¡Nos encanta que estés a unos pasos de ser parte de Aviva!</strong></p>
-`;
+<p><em>*La compensación variable y beneficios superiores están sujetos a ajustes conforme a la evolución y necesidades de la operación, garantizando siempre esquemas claros, medibles y alineados al desempeño.</em></p>
+<p><strong>¡Nos encanta que estés a unos pasos de ser parte de Aviva!</strong></p>`;
+
+// ─── Fetch offer body HTML from Firestore, falling back to the default ────────
+
+async function fetchOfferBodyHtml(candidateData: Record<string, unknown>): Promise<string> {
+  const templateId = candidateData.offerTemplateId as string | undefined;
+  if (templateId) {
+    const tSnap = await db.collection('offer_templates').doc(templateId).get();
+    if (tSnap.exists) {
+      const html = (tSnap.data() as Record<string, unknown>).bodyHtml as string | undefined;
+      if (html) return html;
+    }
+  }
+  const allSnap = await db.collection('offer_templates').limit(1).get();
+  if (!allSnap.empty) {
+    const html = (allSnap.docs[0].data() as Record<string, unknown>).bodyHtml as string | undefined;
+    if (html) return html;
+  }
+  return DEFAULT_OFFER_BODY_HTML;
+}
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
 
@@ -345,6 +287,10 @@ export const signOffer = onRequest(
       vars.logoTag       = logoUrl ? `<img class="logo" src="${logoUrl}" alt="Aviva" />` : '';
       vars.signedAtDate  = format(now, "d 'de' MMMM 'de' yyyy", { locale: es });
       vars.firmaEmpleado = `<img src="${signatureBase64}" alt="Firma" style="max-width:200px;max-height:70px;display:block;margin:4px 0;">`;
+
+      // Fetch body content from Firestore offer_templates (falls back to hardcoded default)
+      const rawBodyHtml = await withTimeout(fetchOfferBodyHtml(candidate), 8_000, 'fetch offer template');
+      vars.bodyContent = interpolate(rawBodyHtml, vars);
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
       console.log('[signOffer] Starting PDF generation...');
@@ -587,7 +533,8 @@ export const getOffer = onRequest(
         date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
       };
 
-      const renderedHtml = interpolate(DEFAULT_OFFER_BODY_HTML, vars);
+      const rawBodyHtml = await fetchOfferBodyHtml(candidate);
+      const renderedHtml = interpolate(rawBodyHtml, vars);
       const logoUrl = await getLogoUrl();
 
       res.status(200).json({
