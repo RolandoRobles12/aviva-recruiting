@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Eye,
 } from 'lucide-react';
-import type { DocumentType, CandidateDocument } from '../../types';
+import type { DocumentType, CandidateDocument, DocumentSetting } from '../../types';
 import { DOCUMENT_CONFIG } from '../../types';
 import { uploadDocument } from '../../services/storage';
 import { updateCandidateDocumentStatus } from '../../services/candidates';
@@ -20,6 +20,7 @@ interface Props {
   candidateId: string;
   documentType: DocumentType;
   document: CandidateDocument;
+  setting?: Partial<DocumentSetting>;
 }
 
 const STATUS_ICONS = {
@@ -36,12 +37,12 @@ const ACCEPTED_TYPES = {
   'application/pdf': ['.pdf'],
 };
 
-export function DocumentUploadCard({ candidateId, documentType, document }: Props) {
+export function DocumentUploadCard({ candidateId, documentType, document, setting }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const config = DOCUMENT_CONFIG[documentType];
+  const config = { ...DOCUMENT_CONFIG[documentType], ...(setting ?? {}) };
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {

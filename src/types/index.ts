@@ -346,6 +346,10 @@ export interface DocumentSetting {
   label: string;
   description: string;
   required: boolean;
+  condition?: {
+    questionBuiltinKey: string; // e.g. 'tiene_infonavit'
+    value: boolean;
+  };
 }
 
 export type DocumentSettings = Record<DocumentType, DocumentSetting>;
@@ -407,11 +411,13 @@ export const DOCUMENT_CONFIG: Record<DocumentType, { label: string; description:
     label: 'Aviso de Retención (INFONAVIT)',
     description: 'Documento de aviso de retención del INFONAVIT',
     required: false, // conditional on tieneInfonavit
+    condition: { questionBuiltinKey: 'tiene_infonavit', value: true },
   },
   estado_cuenta_fonacot: {
     label: 'Estado de Cuenta (FONACOT)',
     description: 'Estado de cuenta del crédito FONACOT',
     required: false, // conditional on tieneFonacot
+    condition: { questionBuiltinKey: 'tiene_fonacot', value: true },
   },
 };
 

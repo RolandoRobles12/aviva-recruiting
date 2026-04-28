@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle, Clock, AlertTriangle, ChevronRight } from 'lucide-react';
 import { useCandidateForm } from '../hooks/useCandidateForm';
 import { CandidateFormHeader } from '../components/candidate/CandidateFormHeader';
 import { DocumentUploadCard } from '../components/candidate/DocumentUploadCard';
 import { CandidateQuestionnaire } from '../components/candidate/CandidateQuestionnaire';
-import { DOCUMENT_TYPES_REQUIRED } from '../types';
-import type { Candidate } from '../types';
+import { getDocumentSettings } from '../services/settings';
+import { DOCUMENT_TYPES_REQUIRED, DOCUMENT_TYPES } from '../types';
+import type { Candidate, DocumentSettings, DocumentType } from '../types';
 
 type Section = 'questions' | 'documents';
 
@@ -14,6 +15,8 @@ export function CandidateFormPage() {
   const { token } = useParams<{ token: string }>();
   const { candidate, loading, error } = useCandidateForm(token);
   const [activeSection, setActiveSection] = useState<Section>('questions');
+  const [docSettings, setDocSettings] = useState<DocumentSettings | null>(null);
+  useEffect(() => { getDocumentSettings().then(setDocSettings); }, []);
 
   if (loading) {
     return (
@@ -108,7 +111,7 @@ export function CandidateFormPage() {
         )}
 
         {activeSection === 'documents' && (
-          <DocumentsSection candidate={candidate} />
+          <DocumentsSection candidate={candidate} docSettings={docSettings} />
         )}
 
         {/* Footer */}
@@ -146,11 +149,34 @@ function SectionTab({ label, active, completed, onClick }: {
 
 /* ─── Documents Section ──────────────────────────────────────────────────── */
 
-function DocumentsSection({ candidate }: { candidate: Candidate }) {
+// Helper to convert snake_case builtinKey to camelCase formAnswers key
+function toAnswerKey(builtinKey: string): string {
+  return builtinKey.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+}
+
+function DocumentsSection({ candidate, docSettings }: { candidate: Candidate; docSettings: DocumentSettings | null }) {
   // Build doc types for this candidate
-  const docTypes = [...DOCUMENT_TYPES_REQUIRED];
-  if (candidate.formAnswers?.tieneInfonavit) docTypes.push('aviso_retencion');
-  if (candidate.formAnswers?.tieneFonacot) docTypes.push('estado_cuenta_fonacot');
+  const formAnswers = (candidate.formAnswers ?? {}) as Record<string, unknown>;
+  const docTypes: DocumentType[] = [];
+  for (const type of DOCUMENT_TYPES) {
+    if (!docSettings) break; // will use fallback below
+    const setting = docSettings[type];
+    if (!setting) continue;
+    if (setting.condition) {
+      const key = toAnswerKey(setting.condition.questionBuiltinKey);
+      if (formAnswers[key] === setting.condition.value) {
+        docTypes.push(type);
+      }
+    } else {
+      docTypes.push(type);
+    }
+  }
+  // Fallback to hardcoded list while settings load
+  if (docTypes.length === 0) {
+    docTypes.push(...DOCUMENT_TYPES_REQUIRED);
+    if (formAnswers.tieneInfonavit) docTypes.push('aviso_retencion' as DocumentType);
+    if (formAnswers.tieneFonacot) docTypes.push('estado_cuenta_fonacot' as DocumentType);
+  }
 
   const allDone = candidate.completionPercentage === 100;
 
@@ -176,6 +202,7 @@ function DocumentsSection({ candidate }: { candidate: Candidate }) {
           candidateId={candidate.id}
           documentType={type}
           document={candidate.documents[type] ?? { id: type, type, status: 'pending' }}
+          setting={docSettings?.[type]}
         />
       ))}
 

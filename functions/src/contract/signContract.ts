@@ -35,6 +35,15 @@ const VITERBIT_VAR_MAP: Record<string, string> = {
   benefits:                   'benefits',
 };
 
+function toTitleCase(str: string): string {
+  if (!str) return str;
+  const keep = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'a', 'en', 'al', 'con', 'por', 'sin']);
+  return str.toLowerCase().split(' ').map((word, i) => {
+    if (i === 0 || !keep.has(word)) return word.charAt(0).toUpperCase() + word.slice(1);
+    return word;
+  }).join(' ');
+}
+
 function buildContractVars(candidate: Record<string, unknown>, now: Date): Record<string, string> {
   const firstName = (candidate.firstName as string) || '';
   const lastName  = (candidate.lastName  as string) || '';
@@ -48,7 +57,7 @@ function buildContractVars(candidate: Record<string, unknown>, now: Date): Recor
     departmentProfile: (candidate.viterbitDepartmentProfile as string) || (candidate.position as string) || '',
     hiringManager:     (candidate.viterbitHiringManager as string) || '',
     company:           (candidate.viterbitCompany as string) || 'Aviva',
-    salary:            rawSalary,
+    salary:            rawSalary.replace(/^\$\s*/, ''),
     salarioTexto:      salaryToSpanishWords(rawSalary),
     startDate:         (candidate.viterbitStartDate as string) || 'a convenir',
     benefits:          (candidate.benefits as string) || '',
@@ -88,7 +97,7 @@ function buildContractVars(candidate: Record<string, unknown>, now: Date): Recor
 
   vars.curp      = curpData.curp || ineData.curp || '';
   vars.rfc       = constanciaData.rfc || '';
-  vars.domicilio = ineData.domicilio || '';
+  vars.domicilio = toTitleCase(ineData.domicilio || '');
   vars.clabe     = caratulaData.clabe || '';
   vars.banco     = caratulaData.banco || '';
   vars.nss       = nssData.nss || '';
