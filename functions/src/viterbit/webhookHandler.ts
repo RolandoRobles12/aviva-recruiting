@@ -6,7 +6,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
-import { offerTemplate, contractTemplate } from '../email/templates';
+import { offerTemplate, contractTemplate, invitationTemplate as _invitationTemplate } from '../email/templates';
+import { getLogoUrl } from '../utils/branding';
 import { createEmailTicket } from '../integrations/jiraService';
 import { getLinkDuration } from '../utils/linkDuration';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
@@ -478,12 +479,14 @@ async function handleAprobado(
   const offerUrl = `${appUrl}/offer/${offerToken}`;
   const offerExpiresAtStr = format(offerExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
 
+  const logoUrl = await getLogoUrl();
   const { subject, html } = offerTemplate({
     firstName,
     lastName,
     position: jobTitle,
     offerUrl,
     offerExpiresAt: offerExpiresAtStr,
+    logoUrl,
   });
 
   await sendEmail({ to: candidateEmail, subject, html });
@@ -574,13 +577,14 @@ async function handleDocumentos(
   const formUrl = `${appUrl}/form/${formToken}`;
   const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
 
-  const { subject, html } = (await import('../email/templates')).invitationTemplate({
+  const invLogoUrl = await getLogoUrl();
+  const { subject, html } = _invitationTemplate({
     firstName,
     lastName,
     position: jobTitle,
     formUrl,
     formExpiresAt: formExpiresAtStr,
-  });
+  }, undefined, invLogoUrl);
 
   await sendEmail({ to: candidateEmail, subject, html });
 
@@ -695,12 +699,14 @@ async function handleContrato(
   const contractUrl = `${appUrl}/contract/${contractTokenValue}`;
   const contractExpiresAtStr = format(contractExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
 
+  const contractLogoUrl = await getLogoUrl();
   const { subject, html } = contractTemplate({
     firstName: candidate.firstName as string,
     lastName: candidate.lastName as string,
     position: candidate.position as string,
     contractUrl,
     contractExpiresAt: contractExpiresAtStr,
+    logoUrl: contractLogoUrl,
   });
 
   await sendEmail({ to: candidate.email as string, subject, html });

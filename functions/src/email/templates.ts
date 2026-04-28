@@ -464,3 +464,70 @@ export function reminderTemplate(
 </html>`,
   };
 }
+
+export function signedCopyTemplate(c: {
+  firstName: string;
+  position: string;
+  type: 'contract' | 'offer';
+  pdfUrl: string;
+  evidenceUrl?: string;
+  logoUrl?: string;
+}): { subject: string; html: string } {
+  const isContract = c.type === 'contract';
+  const docName = isContract ? 'contrato laboral' : 'carta oferta';
+  const subject = isContract
+    ? `Aviva | Copia de tu contrato firmado — ${c.position}`
+    : `Aviva | Copia de tu carta oferta firmada — ${c.position}`;
+  return {
+    subject,
+    html: `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+        <!-- Header -->
+        <tr><td style="background:#16b877;padding:32px 40px;text-align:center;">
+          ${logoBlock(c.logoUrl)}
+          <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">Documento firmado</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">${c.position}</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:36px 40px;">
+          <p style="color:#374151;font-size:15px;margin:0 0 16px;">Hola <strong>${c.firstName}</strong>,</p>
+          <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px;">
+            Tu ${docName} ha sido firmado exitosamente. Aquí tienes tu copia para guardarla en un lugar seguro.
+          </p>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${c.pdfUrl}" style="background:#16b877;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;display:inline-block;margin-bottom:12px;">
+              Descargar ${isContract ? 'contrato firmado' : 'carta oferta firmada'}
+            </a>
+            ${c.evidenceUrl ? `
+            <br>
+            <a href="${c.evidenceUrl}" style="background:#f3f4f6;color:#374151;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;display:inline-block;border:1px solid #e5e7eb;margin-top:8px;">
+              Descargar certificado de firma
+            </a>` : ''}
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-top:8px;">
+            <p style="color:#15803d;font-size:13px;font-weight:600;margin:0 0 6px;">Documento con validez legal</p>
+            <p style="color:#166534;font-size:12px;margin:0;line-height:1.5;">
+              Este documento tiene la misma validez que una firma autógrafa conforme a los artículos 1803 y 1834 bis del Código Civil Federal.
+            </p>
+          </div>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">
+            Conserva este correo como comprobante de tu firma.<br>
+            © ${new Date().getFullYear()} Aviva · Equipo de Reclutamiento
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  };
+}
