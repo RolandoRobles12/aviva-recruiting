@@ -308,7 +308,7 @@ export function ContractPage() {
     <div className="min-h-screen bg-gray-50 py-6 sm:py-8 px-4">
       <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="bg-primary-600 rounded-2xl p-6 sm:p-8 text-white">
+        <div className="bg-[#16b877] rounded-2xl p-6 sm:p-8 text-white">
           {contract?.logoUrl ? (
             <img
               src={contract.logoUrl}

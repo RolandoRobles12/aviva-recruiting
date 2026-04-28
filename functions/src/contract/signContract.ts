@@ -12,6 +12,9 @@ import { htmlToPdf } from './htmlToPdf';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
 import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
 import { getLogoUrl, getCompanySignatureUrl } from '../utils/branding';
+import { sendEmail } from '../email/gmailClient';
+import { signedCopyTemplate } from '../email/templates';
+import { getRecruiterEmail } from '../utils/recruiters';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
@@ -345,6 +348,40 @@ export const signContract = onRequest(
     });
 
     res.status(200).json({ ok: true, pdfUrl, evidenceUrl });
+
+    // Fire-and-forget: send signed copy email to candidate
+    void (async () => {
+      try {
+        const copyLogoUrl = await getLogoUrl();
+        const createdBy = candidate.createdBy as string;
+        const senderEmail = await getRecruiterEmail(createdBy).catch(() => undefined);
+        const { subject, html } = signedCopyTemplate({
+          firstName: candidate.firstName as string,
+          position: candidate.position as string,
+          type: 'contract',
+          pdfUrl,
+          evidenceUrl,
+          logoUrl: copyLogoUrl,
+        });
+        await sendEmail({
+          to: candidate.email as string,
+          subject,
+          html,
+          senderEmail,
+          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+        });
+        await db.collection('email_logs').add({
+          candidateId,
+          templateType: 'contract_signed_copy',
+          sentTo: candidate.email,
+          sentAt: FieldValue.serverTimestamp(),
+          sentBy: 'sign_contract',
+          success: true,
+        });
+      } catch (emailErr) {
+        console.error('[signContract] send signed copy email error:', emailErr);
+      }
+    })();
     } catch (err) {
       console.error('[signContract] Unhandled error:', err);
       res.status(500).json({

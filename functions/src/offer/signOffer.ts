@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
-import { invitationTemplate } from '../email/templates';
+import { invitationTemplate, signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLinkDuration } from '../utils/linkDuration';
 import { generateOfferPdf } from './pdfGenerator';
@@ -299,22 +299,25 @@ export const signOffer = onRequest(
       const appUrl = APP_URL.value();
       const formUrl = `${appUrl}/form/${formToken}`;
       const formExpiresAtStr = format(formExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
-      const { subject, html } = invitationTemplate({
-        firstName: candidate.firstName as string,
-        lastName: candidate.lastName as string,
-        position: candidate.position as string,
-        formUrl,
-        formExpiresAt: formExpiresAtStr,
-      });
       const createdBy = candidate.createdBy as string;
 
       void (async () => {
         try {
-          const senderEmail = await getRecruiterEmail(createdBy);
+          const offerLogoUrl = await getLogoUrl();
+          const senderEmail = await getRecruiterEmail(createdBy).catch(() => undefined);
+
+          // Send invitation email (submit documents)
+          const { subject: invSubject, html: invHtml } = invitationTemplate({
+            firstName: candidate.firstName as string,
+            lastName: candidate.lastName as string,
+            position: candidate.position as string,
+            formUrl,
+            formExpiresAt: formExpiresAtStr,
+          }, undefined, offerLogoUrl);
           await sendEmail({
             to: candidate.email as string,
-            subject,
-            html,
+            subject: invSubject,
+            html: invHtml,
             senderEmail,
             recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
           });
@@ -326,8 +329,32 @@ export const signOffer = onRequest(
             sentBy: 'sign_offer',
             success: true,
           });
+
+          // Send signed copy email to candidate
+          const { subject: copySubject, html: copyHtml } = signedCopyTemplate({
+            firstName: candidate.firstName as string,
+            position: candidate.position as string,
+            type: 'offer',
+            pdfUrl,
+            logoUrl: offerLogoUrl,
+          });
+          await sendEmail({
+            to: candidate.email as string,
+            subject: copySubject,
+            html: copyHtml,
+            senderEmail,
+            recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+          });
+          await db.collection('email_logs').add({
+            candidateId,
+            templateType: 'offer_signed_copy',
+            sentTo: candidate.email,
+            sentAt: FieldValue.serverTimestamp(),
+            sentBy: 'sign_offer',
+            success: true,
+          });
         } catch (emailErr) {
-          console.error('[signOffer] send invitation email error:', emailErr);
+          console.error('[signOffer] send email error:', emailErr);
           void db.collection('email_logs').add({
             candidateId,
             templateType: 'invitation',

@@ -400,8 +400,7 @@ export async function generateEvidencePdf(
 
   const legalText = [
     'Este documento constituye evidencia de una firma electrónica simple',
-    'conforme a los artículos 89 a 94 del Código de Comercio de México',
-    'y los artículos 1803 y 1834 bis del Código Civil Federal.',
+    'conforme a los artículos 1803 y 1834 bis del Código Civil Federal.',
     '',
     'El hash SHA-256 del documento garantiza su integridad: cualquier',
     'modificación posterior al documento firmado invalidará este hash.',
