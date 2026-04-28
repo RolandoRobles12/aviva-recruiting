@@ -122,6 +122,7 @@ interface ViterbitCandidatureInfo {
   stageName: string;
   salary: string;
   startDate: string;
+  jobId: string;
 }
 
 /**
@@ -227,7 +228,8 @@ async function fetchViterbitCandidature(
     const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
     const startDate = (hiredInfo.start_at as string) ?? '';
 
-    return { stageId, stageName, salary, startDate };
+    const jobId = (data.job_id as string) ?? '';
+    return { stageId, stageName, salary, startDate, jobId };
   } catch (err) {
     console.error('[viterbit] fetchViterbitCandidature error:', err);
     return null;
@@ -366,11 +368,18 @@ async function handleAprobado(
     }
   }
 
-  // Fetch candidate, job, and candidature in parallel
-  const [viterbitCandidate, jobInfo, candidatureInfo] = await Promise.all([
+  // Fetch candidature first to resolve jobId if missing from webhook payload
+  const candidatureInfo = candidatureId
+    ? await fetchViterbitCandidature(candidatureId, apiKey)
+    : null;
+
+  const resolvedJobId = jobId || candidatureInfo?.jobId || '';
+  console.log(`[webhook] handleAprobado jobId="${jobId}" resolvedJobId="${resolvedJobId}"`);
+
+  // Fetch candidate and job in parallel with resolved jobId
+  const [viterbitCandidate, jobInfo] = await Promise.all([
     fetchViterbitCandidate(candidateViterbitId, apiKey),
-    fetchViterbitJob(jobId, apiKey),
-    fetchViterbitCandidature(candidatureId, apiKey),
+    fetchViterbitJob(resolvedJobId, apiKey),
   ]);
 
   const { title: jobTitle, stages, hiringManagerId,
