@@ -128,6 +128,9 @@ export function DocumentUploadCard({ candidateId, documentType, document, settin
             {config.required && (
               <span className="text-red-500 text-xs font-medium">*</span>
             )}
+            {!config.required && (
+              <span className="text-gray-400 text-xs">(Opcional)</span>
+            )}
           </div>
           <p className="text-xs text-gray-500">{config.description}</p>
           {(documentType === 'constancia_fiscal') && (
