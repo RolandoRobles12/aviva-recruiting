@@ -109,7 +109,8 @@ export type CandidateStatus =
   | 'contract_signed'  // candidate signed contract
   | 'email_pending'    // waiting for IT to create corporate email (Jira ticket)
   | 'email_ready'      // corporate email created, HubSpot/Slack accounts provisioned
-  | 'induction';       // induction email sent, training phase
+  | 'induction'        // induction email sent, training phase
+  | 'disqualified';    // manually disqualified at any stage
 
 export interface Candidate {
   id: string;
@@ -165,6 +166,8 @@ export interface Candidate {
     correos: string;
     induccion: string;
   };
+  // Disqualification
+  disqualificationReason?: string;
   // Viterbit job custom fields (populated from job API on webhook)
   viterbitSalary?: string;
   viterbitStartDate?: string;

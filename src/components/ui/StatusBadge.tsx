@@ -13,6 +13,7 @@ const CANDIDATE_STATUS_CONFIG: Record<CandidateStatus, { label: string; classNam
   email_pending:   { label: 'Correo pendiente', className: 'badge-review' },
   email_ready:     { label: 'Correo listo',     className: 'badge-valid' },
   induction:       { label: 'Inducción',        className: 'badge-valid' },
+  disqualified:    { label: 'Descalificado',    className: 'badge-invalid' },
 };
 
 const DOCUMENT_STATUS_CONFIG: Record<DocumentStatus, { label: string; className: string }> = {
