@@ -14,7 +14,7 @@ const schema = z.object({
   lastName: z.string().min(2, 'Mínimo 2 caracteres'),
   email: z.string().email('Correo electrónico inválido'),
   phone: z.string().optional(),
-  position: z.string().min(2, 'Escribe el puesto'),
+  position: z.string().min(2, 'Escribe la posición'),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -133,11 +133,11 @@ export function CreateCandidateModal({ isOpen, onClose }: Props) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Puesto <span className="text-red-500">*</span>
+              Posición <span className="text-red-500">*</span>
             </label>
             <input
               {...register('position')}
-              placeholder="Ej. Ejecutivo de Ventas"
+              placeholder="Ej. Promotor de crédito [TIENDA]"
               className="input-field"
             />
             {errors.position && (
