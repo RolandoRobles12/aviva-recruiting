@@ -1,70 +1,10 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { db } from '../utils/admin';
 import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
-import { sendEmail } from '../email/gmailClient';
-import { ocrErrorTemplate } from '../email/templates';
-import { getRecruiterEmail } from '../utils/recruiters';
 import { validateDocument } from './documentValidator';
 import { crossValidateNames, namesMatch } from './nameMatch';
 import { ALL_DOCUMENT_TYPES, DOCUMENT_LABELS } from '../utils/documentTypes';
-
-const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
-
-async function notifyOcrError(
-  candidateId: string,
-  documentType: string,
-  errors: string[],
-  details?: { documentTypeDetected?: string; confidence?: number }
-): Promise<void> {
-  try {
-    const candidate = await getCandidateById(candidateId);
-    if (!candidate) return;
-
-    const documentLabel = DOCUMENT_LABELS[documentType] ?? documentType;
-    const formToken = candidate.formToken as string | undefined;
-    if (!formToken) {
-      console.warn(`[notifyOcrError] candidate ${candidateId} has no formToken — skipping error email`);
-      return;
-    }
-    const formUrl = `${APP_URL}/form/${formToken}`;
-
-    const { subject, html } = ocrErrorTemplate(
-      {
-        firstName: candidate.firstName as string,
-        lastName: candidate.lastName as string,
-        position: candidate.position as string,
-        formUrl,
-      },
-      documentLabel,
-      errors,
-      details
-    );
-
-    const createdBy = candidate.createdBy as string;
-    const senderEmail = await getRecruiterEmail(createdBy);
-    await sendEmail({
-      to: candidate.email as string,
-      subject,
-      html,
-      senderEmail,
-      recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
-    });
-
-    await db.collection('email_logs').add({
-      candidateId,
-      templateType: 'ocr_error',
-      sentTo: candidate.email,
-      sentAt: FieldValue.serverTimestamp(),
-      sentBy: 'document_validator',
-      success: true,
-      metadata: { documentType, errors },
-    });
-  } catch (err) {
-    console.error('Failed to send validation error email:', err);
-  }
-}
 
 /**
  * Download a file from Cloud Storage and return its buffer and media type.
@@ -227,14 +167,6 @@ export const onDocumentUploaded = onObjectFinalized(
       });
 
       await updateCandidateCompletion(candidateId);
-
-      // Notify candidate by email when validation fails
-      if (!isValid && allErrors.length > 0) {
-        await notifyOcrError(candidateId, documentType, allErrors, {
-          documentTypeDetected: result.documentTypeDetected,
-          confidence: result.confidence,
-        });
-      }
     } catch (err) {
       console.error(`Document validation error for ${candidateId}/${documentType}:`, err);
 
@@ -265,12 +197,6 @@ export const onDocumentUploaded = onObjectFinalized(
       });
 
       await updateCandidateCompletion(candidateId);
-
-      // Only notify the candidate when the document itself is the problem,
-      // not when OCR failed due to a server configuration issue.
-      if (!isConfigError) {
-        await notifyOcrError(candidateId, documentType, [errorMessage]);
-      }
     }
   }
 );

@@ -19,6 +19,7 @@ import {
   FileSignature,
   ClipboardList,
   Users,
+  UserX,
 } from 'lucide-react';
 import { PARENTESCO_LABELS } from '../../types';
 import type { Candidate } from '../../types';
@@ -35,7 +36,7 @@ import {
   sendContractEmail,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
-import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid } from '../../services/candidates';
+import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -68,6 +69,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [provisioning, setProvisioning] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
   const [provisionError, setProvisionError] = useState('');
+  const [showDisqualifyModal, setShowDisqualifyModal] = useState(false);
 
   // Reset tab/notes when candidate changes
   useEffect(() => {
@@ -189,6 +191,18 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
           <X size={18} />
         </button>
       </div>
+
+      {/* ── Disqualification modal ─────────────────────────────────────────── */}
+      {showDisqualifyModal && (
+        <DisqualifyModal
+          candidateName={`${c.firstName} ${c.lastName}`}
+          onConfirm={async (reason) => {
+            await disqualifyCandidate(c.id, reason);
+            setShowDisqualifyModal(false);
+          }}
+          onCancel={() => setShowDisqualifyModal(false)}
+        />
+      )}
 
       {/* ── Two-column body ────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
@@ -364,7 +378,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             <h4 className="text-xs font-semibold text-gray-700 mb-2">Acciones rápidas</h4>
             <button
               onClick={handleSendReminder}
-              disabled={sendingReminder || c.status === 'approved' || c.status === 'rejected'}
+              disabled={sendingReminder || c.status === 'approved' || c.status === 'rejected' || c.status === 'disqualified'}
               className="w-full btn-secondary text-xs flex items-center justify-center gap-2 py-2"
             >
               <Send size={12} />
@@ -395,6 +409,14 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                   <XCircle size={12} /> Rechazar
                 </button>
               </div>
+            )}
+            {c.status !== 'disqualified' && (
+              <button
+                onClick={() => setShowDisqualifyModal(true)}
+                className="w-full flex items-center justify-center gap-1.5 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              >
+                <UserX size={12} /> Descalificar candidato
+              </button>
             )}
           </div>
 
@@ -450,6 +472,16 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
             {c.viterbitStartDate && (
               <DataCell icon={<Calendar size={12} />} label="Inicio" value={c.viterbitStartDate} />
             )}
+          </div>
+        </Section>
+      )}
+
+      {/* Disqualification reason */}
+      {c.status === 'disqualified' && c.disqualificationReason && (
+        <Section title="Motivo de descalificación">
+          <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+            <UserX size={13} className="shrink-0" />
+            <span className="font-medium">{c.disqualificationReason}</span>
           </div>
         </Section>
       )}
@@ -1106,6 +1138,87 @@ function LinkBox({ url, expired, copied, onCopy }: {
       <a href={url} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0" title="Abrir">
         <ExternalLink size={14} />
       </a>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Modal: Descalificar candidato
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DISQUALIFY_REASONS = [
+  'Rechazo oferta (2026)',
+  'Declino proceso (2026)',
+  'No subió documentos (2026)',
+];
+
+function DisqualifyModal({ candidateName, onConfirm, onCancel }: {
+  candidateName: string;
+  onConfirm: (reason: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    if (!selected) return;
+    setLoading(true);
+    try {
+      await onConfirm(selected);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <UserX size={18} className="text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Descalificar candidato</h3>
+            <p className="text-xs text-gray-500">{candidateName}</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-600 mb-4">Selecciona el motivo de descalificación:</p>
+
+        <div className="space-y-2 mb-5">
+          {DISQUALIFY_REASONS.map((reason) => (
+            <button
+              key={reason}
+              onClick={() => setSelected(reason)}
+              className={`w-full text-left px-4 py-2.5 rounded-xl border text-sm transition-colors ${
+                selected === reason
+                  ? 'border-red-400 bg-red-50 text-red-700 font-medium'
+                  : 'border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {reason}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!selected || loading}
+            className="flex-1 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            {loading ? <RefreshCw size={13} className="animate-spin" /> : <UserX size={13} />}
+            {loading ? 'Guardando...' : 'Descalificar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

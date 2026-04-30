@@ -10,15 +10,16 @@ import { computeCompletion } from '../../utils/candidateCompletion';
 
 // Pipeline stages matching Viterbit: Documentos → Contrato → Correos → Inducción
 // Each filter groups related sub-statuses together
-type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'offer';
+type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'offer' | 'descalificados';
 
 const STATUS_FILTERS: { value: FilterValue; label: string; statuses: CandidateStatus[] }[] = [
-  { value: 'all',        label: 'Todos',        statuses: [] },
-  { value: 'offer',      label: 'Carta oferta',  statuses: ['offer_sent', 'offer_signed'] },
-  { value: 'documentos', label: 'Documentos',   statuses: ['invited', 'in_progress', 'under_review', 'approved', 'rejected'] },
-  { value: 'contrato',   label: 'Contrato',     statuses: ['contract_sent', 'contract_signed'] },
-  { value: 'correos',    label: 'Correos',      statuses: ['email_pending', 'email_ready'] },
-  { value: 'induction',  label: 'Inducción',    statuses: ['induction'] },
+  { value: 'all',             label: 'Todos',           statuses: [] },
+  { value: 'offer',           label: 'Carta oferta',    statuses: ['offer_sent', 'offer_signed'] },
+  { value: 'documentos',      label: 'Documentos',      statuses: ['invited', 'in_progress', 'under_review', 'approved', 'rejected'] },
+  { value: 'contrato',        label: 'Contrato',        statuses: ['contract_sent', 'contract_signed'] },
+  { value: 'correos',         label: 'Correos',         statuses: ['email_pending', 'email_ready'] },
+  { value: 'induction',       label: 'Inducción',       statuses: ['induction'] },
+  { value: 'descalificados',  label: 'Descalificados',  statuses: ['disqualified'] },
 ];
 
 interface Props {

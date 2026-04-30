@@ -1,4 +1,4 @@
-import { Eye, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Eye, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { CandidateDocument, DocumentType } from '../../types';
@@ -25,10 +25,17 @@ const STATUS_LABEL: Record<CandidateDocument['status'], string> = {
   review:   'Revisión manual',
 };
 
+function isImage(fileName?: string): boolean {
+  if (!fileName) return false;
+  return /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+}
+
 export function CandidateDocumentCard({ type, doc }: Props) {
   const config = DOCUMENT_CONFIG[type];
   const style = STATUS_STYLES[doc.status];
   const uploadedAt = doc.uploadedAt?.toDate?.();
+  const hasFile = !!doc.downloadUrl;
+  const showThumbnail = hasFile && isImage(doc.fileName) && doc.status !== 'pending';
 
   return (
     <div className={`rounded-lg border ${style.border} ${style.bg} px-3 py-2.5`}>
@@ -41,34 +48,54 @@ export function CandidateDocumentCard({ type, doc }: Props) {
         </div>
       </div>
 
-      {/* Row 2: file info + view link (only if uploaded) */}
-      {doc.fileName && (
+      {/* Image thumbnail (for photos and image docs) */}
+      {showThumbnail && (
+        <a href={doc.downloadUrl} target="_blank" rel="noopener noreferrer" className="block mt-2">
+          <img
+            src={doc.downloadUrl}
+            alt={config.label}
+            className="w-full max-h-28 object-cover rounded-lg border border-gray-200 hover:opacity-90 transition-opacity"
+          />
+        </a>
+      )}
+
+      {/* File info row */}
+      {doc.fileName && doc.status !== 'pending' && (
         <div className="flex items-center justify-between mt-1.5 gap-2">
-          <span className="text-xs text-gray-400 truncate max-w-[160px]">{doc.fileName}</span>
-          <div className="flex items-center gap-2 shrink-0">
-            {uploadedAt && (
-              <span className="text-xs text-gray-400">
-                {format(uploadedAt, 'd MMM yyyy', { locale: es })}
-              </span>
-            )}
-            {doc.downloadUrl && (
-              <a
-                href={doc.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-600 hover:text-primary-700"
-                title="Ver documento"
-              >
-                <Eye size={14} />
-              </a>
-            )}
+          <div className="flex items-center gap-1 min-w-0">
+            <FileText size={11} className="text-gray-400 shrink-0" />
+            <span className="text-xs text-gray-400 truncate max-w-[140px]">{doc.fileName}</span>
           </div>
+          {uploadedAt && (
+            <span className="text-xs text-gray-400 shrink-0">
+              {format(uploadedAt, 'd MMM', { locale: es })}
+            </span>
+          )}
         </div>
+      )}
+
+      {/* View document button — prominent when there's a file */}
+      {hasFile && doc.status !== 'pending' && (
+        <a
+          href={doc.downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`mt-2 flex items-center justify-center gap-1.5 w-full px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            doc.status === 'valid'
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : doc.status === 'invalid'
+              ? 'bg-red-600 text-white hover:bg-red-700'
+              : 'bg-primary-600 text-white hover:bg-primary-700'
+          }`}
+        >
+          <Eye size={13} />
+          Ver documento
+        </a>
       )}
 
       {/* OCR confidence (valid only) */}
       {doc.status === 'valid' && doc.ocrResult && (
-        <p className="text-xs text-green-700 mt-1">
+        <p className="text-xs text-green-700 mt-1.5">
           OCR: {Math.round(doc.ocrResult.confidence * 100)}% confianza
         </p>
       )}
@@ -100,7 +127,6 @@ export function CandidateDocumentCard({ type, doc }: Props) {
       {doc.status === 'review' && (
         <p className="text-xs text-yellow-700 mt-1">OCR no disponible — revisar manualmente</p>
       )}
-
     </div>
   );
 }

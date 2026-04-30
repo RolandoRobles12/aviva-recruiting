@@ -129,6 +129,17 @@ export async function updateCandidateStatus(
   });
 }
 
+export async function disqualifyCandidate(
+  candidateId: string,
+  reason: string
+): Promise<void> {
+  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
+    status: 'disqualified',
+    disqualificationReason: reason,
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function updateCandidateNotes(
   candidateId: string,
   notes: string
