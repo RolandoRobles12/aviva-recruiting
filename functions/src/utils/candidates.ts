@@ -29,11 +29,39 @@ export async function updateCandidateCompletion(candidateId: string) {
   const candidate = await getCandidateById(candidateId);
   if (!candidate) return;
 
-  // Determine which doc types are required for this candidate
-  const requiredTypes = [...DOCUMENT_TYPES_REQUIRED];
   const formAnswers = candidate.formAnswers as Record<string, unknown> | undefined;
-  if (formAnswers?.tieneInfonavit) requiredTypes.push('aviso_retencion');
-  if (formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
+
+  // Read admin-configured document settings so optional docs are excluded
+  type DocSetting = { required?: boolean; condition?: { questionBuiltinKey: string; value: boolean } };
+  let docSettingsData: Record<string, DocSetting> | null = null;
+  try {
+    const snap = await db.doc('settings/documents').get();
+    if (snap.exists) docSettingsData = snap.data() as Record<string, DocSetting>;
+  } catch { /* fall back to hardcoded list */ }
+
+  const toAnswerKey = (s: string) => s.replace(/_([a-z])/g, (_: string, l: string) => l.toUpperCase());
+
+  // Build required types, honouring docSettings when available
+  const ALL_TYPES = [...DOCUMENT_TYPES_REQUIRED, 'aviso_retencion', 'estado_cuenta_fonacot'];
+  const requiredTypes: string[] = [];
+
+  if (docSettingsData) {
+    for (const type of ALL_TYPES) {
+      const setting = docSettingsData[type];
+      if (setting?.condition) {
+        const key = toAnswerKey(setting.condition.questionBuiltinKey);
+        if (formAnswers?.[key] === setting.condition.value) requiredTypes.push(type);
+      } else if (setting?.required !== false) {
+        // required=undefined falls back to required, required=false means optional
+        requiredTypes.push(type);
+      }
+    }
+  } else {
+    // Fallback: use hardcoded list
+    requiredTypes.push(...DOCUMENT_TYPES_REQUIRED);
+    if (formAnswers?.tieneInfonavit) requiredTypes.push('aviso_retencion');
+    if (formAnswers?.tieneFonacot) requiredTypes.push('estado_cuenta_fonacot');
+  }
 
   const docs = candidate.documents as Record<string, { status: string }>;
   const validCount = requiredTypes.filter((t) => docs[t]?.status === 'valid').length;

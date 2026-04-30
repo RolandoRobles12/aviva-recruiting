@@ -155,9 +155,11 @@ function toAnswerKey(builtinKey: string): string {
 }
 
 function DocumentsSection({ candidate, docSettings }: { candidate: Candidate; docSettings: DocumentSettings | null }) {
-  // Build doc types for this candidate
+  // Build doc types for this candidate, tracking which ones are required
   const formAnswers = (candidate.formAnswers ?? {}) as Record<string, unknown>;
   const docTypes: DocumentType[] = [];
+  const optionalTypes = new Set<DocumentType>();
+
   for (const type of DOCUMENT_TYPES) {
     if (!docSettings) break; // will use fallback below
     const setting = docSettings[type];
@@ -169,6 +171,7 @@ function DocumentsSection({ candidate, docSettings }: { candidate: Candidate; do
       }
     } else {
       docTypes.push(type);
+      if (setting.required === false) optionalTypes.add(type);
     }
   }
   // Fallback to hardcoded list while settings load
@@ -178,7 +181,11 @@ function DocumentsSection({ candidate, docSettings }: { candidate: Candidate; do
     if (formAnswers.tieneFonacot) docTypes.push('estado_cuenta_fonacot' as DocumentType);
   }
 
-  const allDone = candidate.completionPercentage === 100;
+  // Compute completion locally: only required docs need to be valid
+  const requiredDocTypes = docTypes.filter((t) => !optionalTypes.has(t));
+  const allDone =
+    candidate.formAnswers != null &&
+    requiredDocTypes.every((t) => candidate.documents[t]?.status === 'valid');
 
   return (
     <>

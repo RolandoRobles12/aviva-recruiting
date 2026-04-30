@@ -1,8 +1,11 @@
+import { useState, useEffect } from 'react';
+import { ref, getDownloadURL } from 'firebase/storage';
 import { Eye, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { CandidateDocument, DocumentType } from '../../types';
 import { DOCUMENT_CONFIG } from '../../types';
+import { storage } from '../../lib/firebase';
 
 interface Props {
   type: DocumentType;
@@ -34,7 +37,19 @@ export function CandidateDocumentCard({ type, doc }: Props) {
   const config = DOCUMENT_CONFIG[type];
   const style = STATUS_STYLES[doc.status];
   const uploadedAt = doc.uploadedAt?.toDate?.();
-  const hasFile = !!doc.downloadUrl;
+
+  // Resolve downloadUrl from storage when Firestore field is missing (legacy docs)
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(doc.downloadUrl ?? null);
+  useEffect(() => {
+    setResolvedUrl(doc.downloadUrl ?? null);
+    if (!doc.downloadUrl && doc.storagePath) {
+      getDownloadURL(ref(storage, doc.storagePath))
+        .then(setResolvedUrl)
+        .catch(() => {});
+    }
+  }, [doc.downloadUrl, doc.storagePath]);
+
+  const hasFile = !!resolvedUrl;
   const showThumbnail = hasFile && isImage(doc.fileName) && doc.status !== 'pending';
 
   return (
@@ -50,9 +65,9 @@ export function CandidateDocumentCard({ type, doc }: Props) {
 
       {/* Image thumbnail (for photos and image docs) */}
       {showThumbnail && (
-        <a href={doc.downloadUrl} target="_blank" rel="noopener noreferrer" className="block mt-2">
+        <a href={resolvedUrl!} target="_blank" rel="noopener noreferrer" className="block mt-2">
           <img
-            src={doc.downloadUrl}
+            src={resolvedUrl!}
             alt={config.label}
             className="w-full max-h-28 object-cover rounded-lg border border-gray-200 hover:opacity-90 transition-opacity"
           />
@@ -77,7 +92,7 @@ export function CandidateDocumentCard({ type, doc }: Props) {
       {/* View document button — prominent when there's a file */}
       {hasFile && doc.status !== 'pending' && (
         <a
-          href={doc.downloadUrl}
+          href={resolvedUrl!}
           target="_blank"
           rel="noopener noreferrer"
           className={`mt-2 flex items-center justify-center gap-1.5 w-full px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
