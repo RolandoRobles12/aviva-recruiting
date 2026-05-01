@@ -1,5 +1,19 @@
 import { Timestamp } from 'firebase/firestore';
 
+// ─── Candidate Profiles ───────────────────────────────────────────────────────
+
+export const CANDIDATE_PROFILES = [
+  'Promotor/a Aviva tu Compra',
+  'Promotor/a Aviva tu Compra CM',
+  'Promotor/a Aviva tu Casa',
+  'Promotor/a Aviva tu Compra (Comodín)',
+  'Promotor/a Aviva tu Negocio',
+  'Trainee Sucursal (Kiosk Trainee)',
+  'Gerente de Sucursal (Kiosk Manager)',
+] as const;
+
+export type CandidateProfile = typeof CANDIDATE_PROFILES[number];
+
 // ─── Document Types ───────────────────────────────────────────────────────────
 
 export type DocumentType =
@@ -166,6 +180,8 @@ export interface Candidate {
     correos: string;
     induccion: string;
   };
+  // Profile (canonical — set from Viterbit or manually on creation)
+  profile?: string;
   // Disqualification
   disqualificationReason?: string;
   // Viterbit job custom fields (populated from job API on webhook)
@@ -181,7 +197,8 @@ export interface Candidate {
 export interface OfferTemplate {
   id: string;
   name: string;               // e.g. "Promotor de crédito"
-  positionKeywords: string[]; // job title substrings to auto-match (lowercase)
+  profileNames?: string[];    // exact Viterbit profile names this template applies to (primary match)
+  positionKeywords: string[]; // job title substrings to auto-match — fallback when no profileNames
   // Fallback values used only when Viterbit job data is unavailable
   salary?: string;
   benefits?: string;          // Benefits package — defined per template (same for all positions)
@@ -292,6 +309,7 @@ export interface CreateCandidatePayload {
   email: string;
   phone?: string;
   position: string;
+  profile?: string;
 }
 
 export interface SendInvitationPayload {

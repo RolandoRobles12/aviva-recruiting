@@ -8,6 +8,7 @@ import { createCandidate } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { sendInvitationEmail } from '../../services/functions';
 import { useAuth } from '../../hooks/useAuth';
+import { CANDIDATE_PROFILES } from '../../types';
 
 const schema = z.object({
   firstName: z.string().min(2, 'Mínimo 2 caracteres'),
@@ -15,6 +16,7 @@ const schema = z.object({
   email: z.string().email('Correo electrónico inválido'),
   phone: z.string().optional(),
   position: z.string().min(2, 'Escribe la posición'),
+  profile: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -143,6 +145,18 @@ export function CreateCandidateModal({ isOpen, onClose }: Props) {
             {errors.position && (
               <p className="text-xs text-red-500 mt-1">{errors.position.message}</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Perfil
+            </label>
+            <select {...register('profile')} className="input-field">
+              <option value="">Sin perfil</option>
+              {CANDIDATE_PROFILES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
           </div>
 
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">

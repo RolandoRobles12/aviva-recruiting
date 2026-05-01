@@ -10,6 +10,7 @@ import {
 } from '../services/offerTemplates';
 import { RichTextEditor } from '../components/offer/RichTextEditor';
 import type { OfferTemplate } from '../types';
+import { CANDIDATE_PROFILES } from '../types';
 
 type FormValues = {
   name: string;
@@ -63,8 +64,12 @@ export function OfferTemplatesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bodyHtml, setBodyHtml] = useState(DEFAULT_BODY);
+  const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
 
   const { register, handleSubmit, reset } = useForm<FormValues>();
+
+  const toggleProfile = (p: string) =>
+    setSelectedProfiles((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
 
   const load = async () => {
     setLoading(true);
@@ -78,6 +83,7 @@ export function OfferTemplatesPage() {
   const openCreate = () => {
     setEditingId(null);
     setBodyHtml(DEFAULT_BODY);
+    setSelectedProfiles([]);
     reset({ name: '', positionKeywordsRaw: '', benefits: '' });
     setShowForm(true);
   };
@@ -85,6 +91,7 @@ export function OfferTemplatesPage() {
   const openEdit = (t: OfferTemplate) => {
     setEditingId(t.id);
     setBodyHtml(t.bodyHtml);
+    setSelectedProfiles(t.profileNames ?? []);
     reset({
       name: t.name,
       positionKeywordsRaw: (t.positionKeywords ?? []).join(', '),
@@ -101,6 +108,7 @@ export function OfferTemplatesPage() {
       .filter(Boolean);
     const payload = {
       name: values.name.trim(),
+      profileNames: selectedProfiles,
       positionKeywords: keywords,
       benefits: values.benefits.trim(),
       bodyHtml,
@@ -164,9 +172,19 @@ export function OfferTemplatesPage() {
                   <div className="flex items-center justify-between px-5 py-4">
                     <div>
                       <p className="font-medium text-gray-900 text-sm">{t.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {t.positionKeywords?.length ? `Keywords: ${t.positionKeywords.join(', ')}` : 'Sin keywords'}
-                      </p>
+                      {t.profileNames && t.profileNames.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {t.profileNames.map((p) => (
+                            <span key={p} className="inline-block px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-medium">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {t.positionKeywords?.length ? `Keywords: ${t.positionKeywords.join(', ')}` : 'Sin perfiles asignados'}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -250,8 +268,8 @@ export function OfferTemplatesPage() {
               <div className="bg-primary-50 border-b border-primary-100 px-6 py-3 shrink-0 flex items-start gap-3">
                 <span className="text-primary-500 mt-0.5 shrink-0 text-base">💡</span>
                 <p className="text-xs text-primary-800 leading-relaxed">
-                  <strong>¿Cómo funciona?</strong> Cuando un candidato llega a "Aprobado" en Viterbit, el sistema busca el template
-                  correcto por las <strong>keywords</strong> del puesto y envía la carta automáticamente.
+                  <strong>¿Cómo funciona?</strong> Cuando un candidato llega a "Aprobado" en Viterbit, el sistema detecta su <strong>perfil</strong> y elige este template automáticamente.
+                  Si el perfil no coincide con ninguno, usa las keywords como fallback.
                   Los datos del candidato y del puesto se insertan solos — tú solo defines la estructura de la carta.
                 </p>
               </div>
@@ -262,24 +280,38 @@ export function OfferTemplatesPage() {
                 {/* Left sidebar — steps */}
                 <div className="w-80 shrink-0 border-r border-gray-100 overflow-y-auto bg-gray-50/40">
 
-                  {/* Step 1 */}
+                  {/* Step 1 — Profiles */}
                   <div className="p-5 border-b border-gray-100">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
-                      <span className="text-sm font-semibold text-gray-800">¿Para qué tipo de puesto?</span>
+                      <span className="text-sm font-semibold text-gray-800">¿Para qué perfiles?</span>
                     </div>
                     <p className="text-xs text-gray-500 mb-3 leading-relaxed ml-8">
-                      Escribe palabras que aparezcan en el título del puesto en Viterbit. El sistema las usa para elegir este template automáticamente.
+                      Selecciona los perfiles de Viterbit que usarán esta carta. El sistema elegirá este template automáticamente cuando el candidato tenga uno de estos perfiles.
                     </p>
-                    <div className="ml-8">
+                    <div className="ml-8 space-y-1.5">
+                      {CANDIDATE_PROFILES.map((p) => (
+                        <label key={p} className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={selectedProfiles.includes(p)}
+                            onChange={() => toggleProfile(p)}
+                            className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                          />
+                          <span className={`text-xs transition-colors ${selectedProfiles.includes(p) ? 'text-indigo-700 font-medium' : 'text-gray-600 group-hover:text-gray-800'}`}>
+                            {p}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="ml-8 mt-4 pt-3 border-t border-gray-100">
+                      <p className="text-[10px] text-gray-400 mb-1.5 font-medium uppercase tracking-wider">Fallback (keywords de posición)</p>
                       <input
                         {...register('positionKeywordsRaw')}
-                        placeholder="promotor, crédito, asesor"
-                        className="input-field"
+                        placeholder="promotor, crédito"
+                        className="input-field text-xs"
                       />
-                      <p className="text-xs text-gray-400 mt-1.5">
-                        Ej: si el puesto es <em>"Promotor Digital de Crédito"</em> → escribe <code className="bg-gray-100 px-1 rounded">promotor, crédito</code>
-                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">Solo se usa si ningún perfil coincide.</p>
                     </div>
                   </div>
 

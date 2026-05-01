@@ -53,6 +53,7 @@ export async function createCandidate(
     email: payload.email,
     phone: payload.phone,
     position: payload.position,
+    profile: payload.profile ?? undefined,
     status: 'invited',
     formToken: token,
     formExpiresAt: expiresAt,

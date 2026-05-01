@@ -312,15 +312,26 @@ async function fetchViterbitCandidate(
 }
 
 
-/** Find the best-matching offer template for a job position */
+/** Find the best-matching offer template.
+ *  Priority: 1. exact profile name match, 2. positionKeywords, 3. first template. */
 async function findOfferTemplate(
-  position: string
+  position: string,
+  profile?: string,
 ): Promise<{ id: string; data: Record<string, unknown> } | null> {
   const snap = await db.collection('offer_templates').get();
   if (snap.empty) return null;
 
+  // 1. Profile-name match (primary — most precise)
+  if (profile) {
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const profileNames = (data.profileNames as string[]) ?? [];
+      if (profileNames.includes(profile)) return { id: doc.id, data };
+    }
+  }
+
+  // 2. positionKeywords fallback (legacy / non-Viterbit)
   const posLower = position.toLowerCase();
-  // Try keyword match first
   for (const doc of snap.docs) {
     const data = doc.data();
     const keywords = (data.positionKeywords as string[]) ?? [];
@@ -328,7 +339,8 @@ async function findOfferTemplate(
       return { id: doc.id, data };
     }
   }
-  // Fallback to first template
+
+  // 3. First template
   return { id: snap.docs[0].id, data: snap.docs[0].data() };
 }
 
@@ -402,8 +414,8 @@ async function handleAprobado(
 
   console.log('[webhook] handleAprobado candidate resolved → firstName:', firstName, '| lastName:', lastName, '| email:', candidateEmail);
 
-  // Find best offer template for this position
-  const templateMatch = await findOfferTemplate(jobTitle);
+  // Find best offer template — profile-name match takes priority
+  const templateMatch = await findOfferTemplate(jobTitle, viterbitDepartmentProfile || undefined);
 
   // Create offer token (configurable expiry)
   const linkDurations = await getLinkDuration();
@@ -433,6 +445,8 @@ async function handleAprobado(
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy: 'viterbit_webhook',
+    // Canonical profile (same as viterbitDepartmentProfile for webhook candidates)
+    profile: viterbitDepartmentProfile || null,
     // Viterbit job custom fields (used to interpolate offer letter variables)
     viterbitSalary: viterbitSalary || null,
     viterbitStartDate: viterbitStartDate || null,

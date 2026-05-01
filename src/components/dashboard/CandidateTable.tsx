@@ -137,9 +137,9 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
 
                     {/* Profile */}
                     <td className="px-4 py-3 hidden xl:table-cell">
-                      {c.viterbitDepartmentProfile ? (
+                      {(c.profile ?? c.viterbitDepartmentProfile) ? (
                         <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium truncate max-w-[140px]">
-                          {c.viterbitDepartmentProfile}
+                          {c.profile ?? c.viterbitDepartmentProfile}
                         </span>
                       ) : (
                         <span className="text-xs text-gray-300">—</span>
