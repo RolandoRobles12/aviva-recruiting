@@ -216,6 +216,16 @@ export async function markDocumentAsValid(
   });
 }
 
+export async function updateCandidateDataOverrides(
+  candidateId: string,
+  overrides: Record<string, string>
+): Promise<void> {
+  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
+    dataOverrides: overrides,
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function extendFormToken(candidateId: string, formDays = 7): Promise<string> {
   const newToken = generateToken();
   const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + formDays * 24 * 60 * 60 * 1000));

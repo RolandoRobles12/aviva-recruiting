@@ -36,10 +36,67 @@ import {
   sendContractEmail,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
-import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate } from '../../services/candidates';
+import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+// ─── Contract data fields: validation rules for OCR-extracted values ──────────
+
+interface ContractField {
+  key: string;
+  label: string;
+  placeholder: string;
+  validate: (v: string) => boolean;
+}
+
+const CONTRACT_FIELDS: ContractField[] = [
+  { key: 'curp',      label: 'CURP',      placeholder: '18 caracteres',   validate: (v) => /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/i.test(v.trim()) },
+  { key: 'rfc',       label: 'RFC',       placeholder: '12-13 caracteres', validate: (v) => /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i.test(v.trim()) },
+  { key: 'nss',       label: 'NSS',       placeholder: '11 dígitos',       validate: (v) => /^\d{11}$/.test(v.trim()) },
+  { key: 'clabe',     label: 'CLABE',     placeholder: '18 dígitos',       validate: (v) => /^\d{18}$/.test(v.trim()) },
+  { key: 'banco',     label: 'Banco',     placeholder: 'Ej. BBVA',         validate: (v) => v.trim().length > 1 },
+  { key: 'domicilio', label: 'Domicilio', placeholder: 'Calle, número…',   validate: (v) => v.trim().length > 5 },
+];
+
+function extractOcrContractData(c: Candidate): Record<string, string> {
+  const docs = (c.documents ?? {}) as Record<string, import('../../types').CandidateDocument>;
+  const ocr = (t: string): Record<string, string> => {
+    const d = docs[t];
+    return d?.status === 'valid' ? ((d.ocrResult?.extractedData ?? {}) as Record<string, string>) : {};
+  };
+  const ine       = ocr('ine');
+  const curpDoc   = ocr('curp');
+  const constancia = ocr('constancia_fiscal');
+  const caratula  = ocr('caratula_bancaria');
+  const nssDoc    = ocr('nss');
+  return {
+    curp:      curpDoc.curp      || ine.curp      || '',
+    rfc:       constancia.rfc                      || '',
+    nss:       nssDoc.nss                          || '',
+    clabe:     caratula.clabe                      || '',
+    banco:     caratula.banco                      || '',
+    domicilio: ine.domicilio                       || '',
+  };
+}
+
+/** Merge OCR data with manual overrides */
+function mergedContractData(c: Candidate): Record<string, string> {
+  const ocr = extractOcrContractData(c);
+  const ov  = (c.dataOverrides ?? {}) as Record<string, string>;
+  return Object.fromEntries(CONTRACT_FIELDS.map(({ key }) => [key, ov[key] ?? ocr[key] ?? '']));
+}
+
+/** Returns how many contract fields are missing or malformed */
+function contractDataIssues(c: Candidate): number {
+  const data = mergedContractData(c);
+  return CONTRACT_FIELDS.filter(({ key, validate }) => {
+    const val = data[key] ?? '';
+    return !val || !validate(val);
+  }).length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
   candidate: Candidate;
@@ -210,20 +267,28 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
         <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-100">
           {/* Tabs */}
           <div className="flex border-b border-gray-100 px-5 shrink-0 bg-gray-50/50">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
-                  tab === t.id
-                    ? 'border-primary-600 text-primary-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            ))}
+            {TABS.map((t) => {
+              const issueCount = t.id === 'contract' ? contractDataIssues(c) : 0;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`relative flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
+                    tab === t.id
+                      ? 'border-primary-600 text-primary-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {t.icon}
+                  {t.label}
+                  {issueCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                      {issueCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Tab content */}
@@ -808,14 +873,19 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
 
   return (
     <div className="px-5 py-4 space-y-5">
+      {/* Contract data always visible so recruiter can review OCR fields at any stage */}
+      <Section title="Datos para el contrato">
+        <ContractDataSection c={c} />
+      </Section>
+
       {!contractUrl ? (
-        <div className="text-center py-12">
+        <div className="text-center py-8">
           <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <ClipboardList size={24} className="text-gray-300" />
           </div>
-          <p className="text-sm text-gray-500 font-medium">Sin contrato</p>
+          <p className="text-sm text-gray-500 font-medium">Sin contrato aún</p>
           <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
-            El contrato se genera automáticamente cuando el candidato es aprobado y avanza al stage de "Contrato" en Viterbit.
+            El contrato se genera automáticamente cuando el candidato avanza al stage de "Contrato" en Viterbit.
           </p>
         </div>
       ) : (
@@ -1077,6 +1147,111 @@ function TabAnswers({ c }: { c: Candidate }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Contract data editor: editable OCR fields with validation warnings
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function ContractDataSection({ c }: { c: Candidate }) {
+  const ocr   = extractOcrContractData(c);
+  const saved = (c.dataOverrides ?? {}) as Record<string, string>;
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(CONTRACT_FIELDS.map(({ key }) => [key, saved[key] ?? ocr[key] ?? '']))
+  );
+  const [saving, setSaving] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+
+  const issueFields = CONTRACT_FIELDS.filter(({ key, validate }) => {
+    const v = values[key] ?? '';
+    return !v || !validate(v);
+  });
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSavedOk(false);
+    try {
+      await updateCandidateDataOverrides(c.id, values);
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hasAnyData = CONTRACT_FIELDS.some(({ key }) => ocr[key] || saved[key]);
+  if (!hasAnyData && issueFields.length === CONTRACT_FIELDS.length) {
+    return (
+      <p className="text-xs text-gray-400 italic">
+        Los datos del contrato aparecerán aquí una vez que el candidato suba sus documentos.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {issueFields.length > 0 && (
+        <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-amber-800">
+              {issueFields.length} dato{issueFields.length > 1 ? 's' : ''} incompleto{issueFields.length > 1 ? 's' : ''} o ilegible{issueFields.length > 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {issueFields.map((f) => f.label).join(', ')} — corrige antes de firmar el contrato.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {CONTRACT_FIELDS.map(({ key, label, placeholder, validate }) => {
+          const val    = values[key] ?? '';
+          const isOk   = val && validate(val);
+          const hasOcr = !!ocr[key];
+          const overridden = saved[key] && saved[key] !== ocr[key];
+          return (
+            <div key={key}>
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                  {label}
+                  {overridden && <span className="ml-1 text-blue-500 normal-case font-normal">(corregido)</span>}
+                  {!hasOcr && !saved[key] && <span className="ml-1 text-amber-500 normal-case font-normal">(sin datos OCR)</span>}
+                </label>
+                {isOk
+                  ? <CheckCircle size={11} className="text-green-500 shrink-0" />
+                  : val
+                    ? <AlertTriangle size={11} className="text-amber-500 shrink-0" />
+                    : <XCircle size={11} className="text-gray-300 shrink-0" />
+                }
+              </div>
+              <input
+                value={val}
+                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                placeholder={placeholder}
+                className={`w-full text-xs rounded-lg border px-2.5 py-1.5 font-mono focus:outline-none focus:ring-1 ${
+                  isOk
+                    ? 'border-green-200 bg-green-50/40 focus:ring-green-300'
+                    : val
+                      ? 'border-amber-300 bg-amber-50/40 focus:ring-amber-300'
+                      : 'border-gray-200 bg-gray-50 focus:ring-primary-300'
+                }`}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-60"
+      >
+        {saving ? <RefreshCw size={12} className="animate-spin" /> : savedOk ? <CheckCircle size={12} /> : <Check size={12} />}
+        {saving ? 'Guardando…' : savedOk ? '¡Guardado!' : 'Guardar correcciones'}
+      </button>
     </div>
   );
 }

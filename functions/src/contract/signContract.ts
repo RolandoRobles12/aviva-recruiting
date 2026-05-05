@@ -95,12 +95,15 @@ function buildContractVars(candidate: Record<string, unknown>, now: Date): Recor
   const caratulaData   = ocr('caratula_bancaria');
   const nssData        = ocr('nss');
 
-  vars.curp      = curpData.curp || ineData.curp || '';
-  vars.rfc       = constanciaData.rfc || '';
-  vars.domicilio = toTitleCase(ineData.domicilio || '');
-  vars.clabe     = caratulaData.clabe || '';
-  vars.banco     = caratulaData.banco || '';
-  vars.nss       = nssData.nss || '';
+  // Manual overrides take priority over OCR-extracted values (recruiter corrections)
+  const ov = (candidate.dataOverrides ?? {}) as Record<string, string>;
+
+  vars.curp      = ov.curp      || curpData.curp || ineData.curp || '';
+  vars.rfc       = ov.rfc       || constanciaData.rfc || '';
+  vars.domicilio = ov.domicilio || toTitleCase(ineData.domicilio || '');
+  vars.clabe     = ov.clabe     || caratulaData.clabe || '';
+  vars.banco     = ov.banco     || caratulaData.banco || '';
+  vars.nss       = ov.nss       || nssData.nss || '';
 
   // sexo: prefer acta (full word), fallback to INE (H/M) normalized
   const sexoRaw = actaData.sexo || ineData.sexo || '';
