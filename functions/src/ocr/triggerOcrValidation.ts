@@ -172,17 +172,7 @@ export const onDocumentUploaded = onObjectFinalized(
 
       const errorMessage = (err as Error).message || 'Error al procesar el documento.';
 
-      // Rate-limit and transient API errors: mark for manual review instead of
-      // rejecting — the document is fine, the service was temporarily unavailable.
-      const isRateLimitError =
-        errorMessage.includes('rate_limit') ||
-        errorMessage.includes('rate limit') ||
-        errorMessage.includes('429') ||
-        errorMessage.includes('tokens per minute') ||
-        errorMessage.includes('requests per minute') ||
-        errorMessage.includes('overloaded');
-
-      // Configuration errors (bad key, auth): also mark for review.
+      // Configuration errors (bad key, auth): mark for manual review — can't process until fixed.
       const isConfigError =
         errorMessage.includes('apiKey') ||
         errorMessage.includes('authToken') ||
@@ -190,8 +180,20 @@ export const onDocumentUploaded = onObjectFinalized(
         errorMessage.includes('authentication') ||
         errorMessage.includes('ANTHROPIC_API_KEY');
 
-      const needsManualReview = isRateLimitError || isConfigError;
-      const docStatus = needsManualReview ? 'review' : 'invalid';
+      // Rate-limit exhausted after retries, or other transient errors:
+      // mark invalid with a friendly "please re-upload" message so the candidate can try again.
+      const isTransientError =
+        errorMessage.includes('OCR_RATE_LIMIT') ||
+        errorMessage.includes('rate_limit') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('429') ||
+        errorMessage.includes('tokens per minute') ||
+        errorMessage.includes('overloaded');
+
+      const friendlyMessage = 'Hubo un error temporal al procesar tu documento. Por favor vuelve a subirlo.';
+
+      const docStatus = isConfigError ? 'review' : 'invalid';
+      const rejectionReason = isConfigError ? undefined : (isTransientError ? friendlyMessage : errorMessage);
 
       await updateCandidateDocument(candidateId, documentType, {
         status: docStatus,
@@ -200,10 +202,10 @@ export const onDocumentUploaded = onObjectFinalized(
           extractedData: {},
           confidence: 0,
           validationPassed: false,
-          validationErrors: [errorMessage],
+          validationErrors: [isTransientError ? friendlyMessage : errorMessage],
           processedAt: FieldValue.serverTimestamp(),
         },
-        ...(needsManualReview ? {} : { rejectionReason: errorMessage }),
+        ...(rejectionReason ? { rejectionReason } : {}),
       });
 
       await updateCandidateCompletion(candidateId);

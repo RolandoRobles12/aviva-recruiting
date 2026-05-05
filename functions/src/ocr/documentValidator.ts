@@ -7,9 +7,40 @@ let client: Anthropic | null = null;
 
 function getClient(): Anthropic {
   if (!client) {
-    client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+    client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value(), maxRetries: 0 });
   }
   return client;
+}
+
+function isRateLimitError(err: unknown): boolean {
+  if (err instanceof Anthropic.RateLimitError) return true;
+  const msg = (err as Error)?.message ?? '';
+  return msg.includes('rate_limit') || msg.includes('429') || msg.includes('tokens per minute') || msg.includes('overloaded');
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function callClaudeWithRetry(
+  anthropic: Anthropic,
+  params: Parameters<Anthropic['messages']['create']>[0],
+  maxAttempts = 3,
+): Promise<Anthropic.Message> {
+  const delays = [15_000, 30_000]; // ms between retries
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await anthropic.messages.create(params) as Anthropic.Message;
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < maxAttempts - 1) {
+        const wait = delays[attempt] ?? 30_000;
+        console.warn(`[ocr] rate limit hit, retrying in ${wait / 1000}s (attempt ${attempt + 1}/${maxAttempts})`);
+        await sleep(wait);
+        continue;
+      }
+      throw err;
+    }
+  }
+  // Should never reach here
+  throw new Error('OCR_RATE_LIMIT: No se pudo procesar el documento por sobrecarga temporal. Por favor vuelve a subirlo.');
 }
 
 export interface ValidationResult {
@@ -250,7 +281,7 @@ export async function validateDocument(
           },
         };
 
-  const response = await anthropic.messages.create({
+  const response = await callClaudeWithRetry(anthropic, {
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1024,
     system: SYSTEM_PROMPT,

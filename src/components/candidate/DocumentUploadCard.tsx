@@ -235,16 +235,6 @@ export function DocumentUploadCard({ candidateId, documentType, document, settin
         </div>
       )}
 
-      {/* Under manual review (e.g. OCR service temporarily unavailable) */}
-      {document.status === 'review' && (
-        <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-          <p className="text-xs font-medium text-blue-700">Documento en revisión</p>
-          <p className="text-xs text-blue-600 mt-0.5">
-            Tu documento está siendo revisado manualmente. Te avisaremos si necesitamos algo más.
-          </p>
-        </div>
-      )}
-
       {/* Error: invalid doc */}
       {document.status === 'invalid' && (
         <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg space-y-2">
