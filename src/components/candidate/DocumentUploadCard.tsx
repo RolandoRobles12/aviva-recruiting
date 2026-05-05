@@ -235,23 +235,41 @@ export function DocumentUploadCard({ candidateId, documentType, document, settin
         </div>
       )}
 
+      {/* Under manual review (e.g. OCR service temporarily unavailable) */}
+      {document.status === 'review' && (
+        <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <p className="text-xs font-medium text-blue-700">Documento en revisión</p>
+          <p className="text-xs text-blue-600 mt-0.5">
+            Tu documento está siendo revisado manualmente. Te avisaremos si necesitamos algo más.
+          </p>
+        </div>
+      )}
+
       {/* Error: invalid doc */}
       {document.status === 'invalid' && (
         <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg space-y-2">
           <p className="text-xs font-medium text-red-700">
             Tu documento fue rechazado. Por favor revisa los motivos y sube uno nuevo:
           </p>
-          {document.ocrResult?.validationErrors && document.ocrResult.validationErrors.length > 0 ? (
-            <ul className="text-xs text-red-600 list-disc pl-4 space-y-1">
-              {document.ocrResult.validationErrors.map((err, i) => (
-                <li key={i}>{err}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-red-600">
-              {document.rejectionReason ?? 'El documento no cumple los requisitos. Asegúrate de que sea legible, esté completo y corresponda al tipo solicitado.'}
-            </p>
-          )}
+          {(() => {
+            // Filter out internal API/technical errors — never show raw error messages to candidates
+            const userFacingErrors = (document.ocrResult?.validationErrors ?? []).filter(
+              (e) => !e.includes('rate_limit') && !e.includes('429') && !e.includes('{') && !e.includes('request_id')
+            );
+            return userFacingErrors.length > 0 ? (
+              <ul className="text-xs text-red-600 list-disc pl-4 space-y-1">
+                {userFacingErrors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-red-600">
+                {document.rejectionReason && !document.rejectionReason.includes('{') && !document.rejectionReason.includes('rate_limit')
+                  ? document.rejectionReason
+                  : 'El documento no cumple los requisitos. Asegúrate de que sea legible, esté completo y corresponda al tipo solicitado.'}
+              </p>
+            );
+          })()}
         </div>
       )}
 

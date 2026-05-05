@@ -172,8 +172,17 @@ export const onDocumentUploaded = onObjectFinalized(
 
       const errorMessage = (err as Error).message || 'Error al procesar el documento.';
 
-      // If the failure is a configuration error (e.g. missing API key), mark for
-      // manual review instead of rejecting the document and emailing the candidate.
+      // Rate-limit and transient API errors: mark for manual review instead of
+      // rejecting — the document is fine, the service was temporarily unavailable.
+      const isRateLimitError =
+        errorMessage.includes('rate_limit') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('429') ||
+        errorMessage.includes('tokens per minute') ||
+        errorMessage.includes('requests per minute') ||
+        errorMessage.includes('overloaded');
+
+      // Configuration errors (bad key, auth): also mark for review.
       const isConfigError =
         errorMessage.includes('apiKey') ||
         errorMessage.includes('authToken') ||
@@ -181,7 +190,8 @@ export const onDocumentUploaded = onObjectFinalized(
         errorMessage.includes('authentication') ||
         errorMessage.includes('ANTHROPIC_API_KEY');
 
-      const docStatus = isConfigError ? 'review' : 'invalid';
+      const needsManualReview = isRateLimitError || isConfigError;
+      const docStatus = needsManualReview ? 'review' : 'invalid';
 
       await updateCandidateDocument(candidateId, documentType, {
         status: docStatus,
@@ -193,7 +203,7 @@ export const onDocumentUploaded = onObjectFinalized(
           validationErrors: [errorMessage],
           processedAt: FieldValue.serverTimestamp(),
         },
-        ...(isConfigError ? {} : { rejectionReason: errorMessage }),
+        ...(needsManualReview ? {} : { rejectionReason: errorMessage }),
       });
 
       await updateCandidateCompletion(candidateId);
