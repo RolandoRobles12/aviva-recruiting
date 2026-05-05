@@ -15,3 +15,4 @@ export { analyzeContractVariables } from './contract/analyzeContractVariables';
 export { checkEmailTickets } from './integrations/checkEmailTickets';
 export { provisionAccountsManual } from './integrations/provisionAccounts';
 export { backfillCandidateDocuments } from './utils/backfillDocuments';
+export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';

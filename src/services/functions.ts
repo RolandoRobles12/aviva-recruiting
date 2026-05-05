@@ -47,3 +47,8 @@ export const backfillCandidateDocuments = httpsCallable<
   Record<string, never>,
   { updated: number; message: string }
 >(functions, 'backfillCandidateDocuments');
+
+export const refreshCandidateViterbit = httpsCallable<
+  { candidateId: string },
+  { success: boolean; salary: string | null; startDate: string | null; position: string | null }
+>(functions, 'refreshCandidateViterbit');
