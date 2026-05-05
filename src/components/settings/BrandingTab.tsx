@@ -35,7 +35,7 @@ export function BrandingTab() {
   }, []);
 
   const initPadHelper = useCallback((
-    canvasRef: React.RefObject<HTMLCanvasElement>,
+    canvasRef: React.RefObject<HTMLCanvasElement | null>,
     padRef: React.MutableRefObject<SignaturePad | null>,
     setEmpty: (v: boolean) => void,
     opts?: { minWidth?: number; maxWidth?: number }
