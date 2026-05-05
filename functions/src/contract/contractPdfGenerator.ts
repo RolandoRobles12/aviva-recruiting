@@ -426,3 +426,24 @@ export async function generateEvidencePdf(
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
 }
+
+/**
+ * Append the evidence certificate as the last page(s) of the signed contract PDF.
+ * Returns a new Buffer containing the merged document.
+ */
+export async function appendEvidenceToPdf(
+  contractPdfBuffer: Buffer,
+  evidencePdfBuffer: Buffer,
+): Promise<Buffer> {
+  const merged = await PDFDocument.create();
+
+  const contractDoc = await PDFDocument.load(contractPdfBuffer);
+  const contractPages = await merged.copyPages(contractDoc, contractDoc.getPageIndices());
+  contractPages.forEach((p) => merged.addPage(p));
+
+  const evidenceDoc = await PDFDocument.load(evidencePdfBuffer);
+  const evidencePages = await merged.copyPages(evidenceDoc, evidenceDoc.getPageIndices());
+  evidencePages.forEach((p) => merged.addPage(p));
+
+  return Buffer.from(await merged.save());
+}

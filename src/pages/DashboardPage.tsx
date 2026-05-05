@@ -13,11 +13,12 @@ import { CandidateTable } from '../components/dashboard/CandidateTable';
 import { CandidateDetailPanel } from '../components/dashboard/CandidateDetailPanel';
 import { CreateCandidateModal } from '../components/dashboard/CreateCandidateModal';
 import { useCandidates } from '../hooks/useCandidates';
-import type { Candidate } from '../types';
 
 export function DashboardPage() {
   const { candidates, loading } = useCandidates();
-  const [selected, setSelected] = useState<Candidate | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Derive selected from the realtime candidates list so refreshes auto-apply
+  const selected = candidates.find((c) => c.id === selectedId) ?? null;
   const [showCreate, setShowCreate] = useState(false);
 
   const pipelineStats = {
@@ -66,8 +67,8 @@ export function DashboardPage() {
           ) : (
             <CandidateTable
               candidates={candidates}
-              onSelect={setSelected}
-              selectedId={selected?.id}
+              onSelect={(c) => setSelectedId(c.id)}
+              selectedId={selectedId ?? undefined}
             />
           )}
         </div>
@@ -79,13 +80,13 @@ export function DashboardPage() {
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/30 transition-opacity"
-            onClick={() => setSelected(null)}
+            onClick={() => setSelectedId(null)}
           />
           {/* Panel */}
           <div className="relative w-full max-w-4xl bg-white shadow-2xl flex flex-col animate-slide-in-right">
             <CandidateDetailPanel
               candidate={selected}
-              onClose={() => setSelected(null)}
+              onClose={() => setSelectedId(null)}
             />
           </div>
         </div>

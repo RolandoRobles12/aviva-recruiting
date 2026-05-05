@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../utils/admin';
-import { generateContractPdf, generateEvidencePdf, stripHtml } from './contractPdfGenerator';
+import { generateContractPdf, generateEvidencePdf, appendEvidenceToPdf, stripHtml } from './contractPdfGenerator';
 import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
 import { htmlToPdf } from './htmlToPdf';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
@@ -311,6 +311,9 @@ export const signContract = onRequest(
       candidate.position as string,
     );
 
+    // Merge evidence as the last page of the contract PDF (ZapSign-style)
+    const mergedPdfBuffer = await appendEvidenceToPdf(pdfBuffer, evidencePdfBuffer);
+
     // Upload to Storage
     const bucket = getStorage().bucket();
     const uploadedPaths: string[] = [];
@@ -326,10 +329,10 @@ export const signContract = onRequest(
     const sigUrl = sigFile.publicUrl();
     uploadedPaths.push(sigPath);
 
-    // Signed contract PDF
+    // Signed contract PDF (with certificate appended as last page)
     const pdfPath = `candidates/${candidateId}/contrato_firmado.pdf`;
     const pdfFile = bucket.file(pdfPath);
-    await pdfFile.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
+    await pdfFile.save(mergedPdfBuffer, { metadata: { contentType: 'application/pdf' } });
     await pdfFile.makePublic();
     const pdfUrl = pdfFile.publicUrl();
     uploadedPaths.push(pdfPath);
@@ -373,7 +376,52 @@ export const signContract = onRequest(
       );
     }
 
-    // Log
+    // Send signed copy email BEFORE responding — fire-and-forget after res.json()
+    // is unreliable in Cloud Functions because the runtime may terminate early.
+    const copyLogoUrl = await getLogoUrl();
+    const createdBy = candidate.createdBy as string;
+    const senderEmail = await getRecruiterEmail(createdBy).catch(() => undefined);
+    const { subject: copySubject, html: copyHtml } = signedCopyTemplate({
+      firstName: candidate.firstName as string,
+      position: candidate.position as string,
+      type: 'contract',
+      pdfUrl,
+      evidenceUrl,
+      logoUrl: copyLogoUrl,
+    });
+    try {
+      await sendEmail({
+        to: candidate.email as string,
+        subject: copySubject,
+        html: copyHtml,
+        senderEmail,
+        recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+        attachments: [
+          { filename: 'contrato_firmado.pdf', content: mergedPdfBuffer, contentType: 'application/pdf' },
+        ],
+      });
+      await db.collection('email_logs').add({
+        candidateId,
+        templateType: 'contract_signed_copy',
+        sentTo: candidate.email,
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: 'sign_contract',
+        success: true,
+      });
+    } catch (emailErr) {
+      console.error('[signContract] send signed copy email error:', emailErr);
+      await db.collection('email_logs').add({
+        candidateId,
+        templateType: 'contract_signed_copy',
+        sentTo: candidate.email,
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: 'sign_contract',
+        success: false,
+        error: String(emailErr),
+      });
+    }
+
+    // Log the signing event
     await db.collection('email_logs').add({
       candidateId,
       templateType: 'contract',
@@ -385,44 +433,6 @@ export const signContract = onRequest(
     });
 
     res.status(200).json({ ok: true, pdfUrl, evidenceUrl });
-
-    // Fire-and-forget: send signed copy email to candidate
-    void (async () => {
-      try {
-        const copyLogoUrl = await getLogoUrl();
-        const createdBy = candidate.createdBy as string;
-        const senderEmail = await getRecruiterEmail(createdBy).catch(() => undefined);
-        const { subject, html } = signedCopyTemplate({
-          firstName: candidate.firstName as string,
-          position: candidate.position as string,
-          type: 'contract',
-          pdfUrl,
-          evidenceUrl,
-          logoUrl: copyLogoUrl,
-        });
-        await sendEmail({
-          to: candidate.email as string,
-          subject,
-          html,
-          senderEmail,
-          recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
-          attachments: [
-            { filename: 'contrato_firmado.pdf', content: pdfBuffer, contentType: 'application/pdf' },
-            { filename: 'certificado_firma.pdf', content: evidencePdfBuffer, contentType: 'application/pdf' },
-          ],
-        });
-        await db.collection('email_logs').add({
-          candidateId,
-          templateType: 'contract_signed_copy',
-          sentTo: candidate.email,
-          sentAt: FieldValue.serverTimestamp(),
-          sentBy: 'sign_contract',
-          success: true,
-        });
-      } catch (emailErr) {
-        console.error('[signContract] send signed copy email error:', emailErr);
-      }
-    })();
     } catch (err) {
       console.error('[signContract] Unhandled error:', err);
       res.status(500).json({

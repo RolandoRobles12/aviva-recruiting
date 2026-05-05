@@ -34,6 +34,7 @@ import {
   sendOfferEmail,
   sendInvitationEmail,
   sendContractEmail,
+  refreshCandidateViterbit,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
@@ -317,10 +318,10 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               />
             )}
             {tab === 'offer' && (
-              <TabOffer c={c} offerUrl={offerUrl} copied={copied} onCopy={copyToClipboard} />
+              <TabOffer c={c} offerUrl={offerUrl} copied={copied} onCopy={copyToClipboard} onCandidateChange={() => {}} />
             )}
             {tab === 'contract' && (
-              <TabContract c={c} contractUrl={contractUrl} copied={copied} onCopy={copyToClipboard} />
+              <TabContract c={c} contractUrl={contractUrl} copied={copied} onCopy={copyToClipboard} onCandidateChange={() => {}} />
             )}
             {tab === 'accounts' && (
               <TabAccounts
@@ -712,14 +713,73 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Viterbit data alert — shown when salary or start date are missing
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function ViterbitDataAlert({ c, onRefreshed }: { c: Candidate; onRefreshed: () => void }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const [refreshed, setRefreshed] = useState(false);
+
+  const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
+  const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
+  if (!missingSalary && !missingDate) return null;
+
+  const missing: string[] = [];
+  if (missingSalary) missing.push('salario');
+  if (missingDate) missing.push('fecha de inicio');
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    setRefreshError('');
+    try {
+      await refreshCandidateViterbit({ candidateId: c.id });
+      setRefreshed(true);
+      onRefreshed();
+    } catch (err: unknown) {
+      setRefreshError(err instanceof Error ? err.message : 'Error al refrescar datos.');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+      <div className="flex items-start gap-2">
+        <AlertTriangle size={15} className="text-amber-600 mt-0.5 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-amber-800">
+            Faltan datos de Viterbit: {missing.join(' y ')}
+          </p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            El documento se generará con campos vacíos. Actualiza el puesto en Viterbit y luego refresca.
+          </p>
+        </div>
+      </div>
+      {refreshError && <p className="text-xs text-red-600">{refreshError}</p>}
+      {refreshed && <p className="text-xs text-green-700 font-medium">Datos actualizados — recarga el candidato para ver los cambios.</p>}
+      <button
+        onClick={handleRefresh}
+        disabled={refreshing}
+        className="flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+      >
+        <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+        {refreshing ? 'Refrescando...' : 'Refrescar datos de Viterbit'}
+      </button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    TAB: Carta Oferta
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabOffer({ c, offerUrl, copied, onCopy }: {
+function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange }: {
   c: Candidate;
   offerUrl: string | null;
   copied: boolean;
   onCopy: (text: string) => void;
+  onCandidateChange: () => void;
 }) {
   const [sendingOffer, setSendingOffer] = useState(false);
   const [offerSent, setOfferSent] = useState(false);
@@ -741,6 +801,7 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
 
   return (
     <div className="px-5 py-4 space-y-5">
+      <ViterbitDataAlert c={c} onRefreshed={onCandidateChange} />
       {!offerUrl && !c.offerPdfUrl ? (
         <div className="text-center py-12">
           <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
@@ -847,11 +908,12 @@ function TabOffer({ c, offerUrl, copied, onCopy }: {
    TAB: Contrato
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabContract({ c, contractUrl, copied, onCopy }: {
+function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange }: {
   c: Candidate;
   contractUrl: string | null;
   copied: boolean;
   onCopy: (text: string) => void;
+  onCandidateChange: () => void;
 }) {
   const [sendingContract, setSendingContract] = useState(false);
   const [contractSent, setContractSent] = useState(false);
@@ -873,6 +935,7 @@ function TabContract({ c, contractUrl, copied, onCopy }: {
 
   return (
     <div className="px-5 py-4 space-y-5">
+      <ViterbitDataAlert c={c} onRefreshed={onCandidateChange} />
       {/* Contract data always visible so recruiter can review OCR fields at any stage */}
       <Section title="Datos para el contrato">
         <ContractDataSection c={c} />
