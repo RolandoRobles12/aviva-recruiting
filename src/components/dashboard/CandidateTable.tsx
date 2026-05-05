@@ -95,7 +95,8 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-50 border-b border-gray-100 text-left">
                 <th className="px-5 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Candidato</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Puesto</th>
+                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Posición</th>
+                <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden xl:table-cell">Perfil</th>
                 <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Documentos</th>
                 <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
                 <th className="px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Fecha</th>
@@ -131,7 +132,18 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
 
                     {/* Position */}
                     <td className="px-4 py-3 hidden md:table-cell">
-                      <p className="text-sm text-gray-600 truncate max-w-[200px]">{c.position}</p>
+                      <p className="text-sm text-gray-600 truncate max-w-[180px]">{c.position}</p>
+                    </td>
+
+                    {/* Profile */}
+                    <td className="px-4 py-3 hidden xl:table-cell">
+                      {(c.profile ?? c.viterbitDepartmentProfile) ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium truncate max-w-[140px]">
+                          {c.profile ?? c.viterbitDepartmentProfile}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
 
                     {/* Documents progress */}

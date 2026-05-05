@@ -462,10 +462,13 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
         </div>
       </Section>
 
-      {/* Viterbit data */}
-      {(c.viterbitStartDate || c.viterbitHiringManager) && (
-        <Section title="Datos del puesto (Viterbit)">
+      {/* Viterbit / position data */}
+      {((c.profile ?? c.viterbitDepartmentProfile) || c.viterbitStartDate || c.viterbitHiringManager) && (
+        <Section title="Datos del puesto">
           <div className="grid grid-cols-2 gap-3">
+            {(c.profile ?? c.viterbitDepartmentProfile) && (
+              <DataCell icon={<Briefcase size={12} />} label="Perfil" value={(c.profile ?? c.viterbitDepartmentProfile)!} />
+            )}
             {c.viterbitHiringManager && (
               <DataCell icon={<User size={12} />} label="Líder" value={c.viterbitHiringManager} />
             )}
