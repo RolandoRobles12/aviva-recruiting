@@ -22,6 +22,22 @@ const STATUS_FILTERS: { value: FilterValue; label: string; statuses: CandidateSt
   { value: 'descalificados',  label: 'Descalificados',  statuses: ['disqualified'] },
 ];
 
+function PositionCell({ position }: { position: string }) {
+  // Split on " - " to separate role from store/location suffix
+  const dashIdx = position.indexOf(' - ');
+  if (dashIdx !== -1) {
+    const role = position.slice(0, dashIdx);
+    const suffix = position.slice(dashIdx + 3);
+    return (
+      <div title={position}>
+        <p className="text-sm text-gray-700 leading-snug">{role}</p>
+        <p className="text-xs text-gray-400 leading-snug">{suffix}</p>
+      </div>
+    );
+  }
+  return <p className="text-sm text-gray-600 leading-snug" title={position}>{position}</p>;
+}
+
 interface Props {
   candidates: Candidate[];
   onSelect: (candidate: Candidate) => void;
@@ -131,14 +147,17 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
                     </td>
 
                     {/* Position */}
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <p className="text-sm text-gray-600 truncate max-w-[180px]">{c.position}</p>
+                    <td className="px-4 py-3 hidden md:table-cell max-w-[220px]">
+                      <PositionCell position={c.position} />
                     </td>
 
                     {/* Profile */}
-                    <td className="px-4 py-3 hidden xl:table-cell">
+                    <td className="px-4 py-3 hidden xl:table-cell max-w-[180px]">
                       {(c.profile ?? c.viterbitDepartmentProfile) ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium truncate max-w-[140px]">
+                        <span
+                          title={c.profile ?? c.viterbitDepartmentProfile}
+                          className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium leading-snug break-words whitespace-normal"
+                        >
                           {c.profile ?? c.viterbitDepartmentProfile}
                         </span>
                       ) : (

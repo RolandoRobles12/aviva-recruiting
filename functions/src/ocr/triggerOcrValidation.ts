@@ -172,8 +172,7 @@ export const onDocumentUploaded = onObjectFinalized(
 
       const errorMessage = (err as Error).message || 'Error al procesar el documento.';
 
-      // If the failure is a configuration error (e.g. missing API key), mark for
-      // manual review instead of rejecting the document and emailing the candidate.
+      // Configuration errors (bad key, auth): mark for manual review — can't process until fixed.
       const isConfigError =
         errorMessage.includes('apiKey') ||
         errorMessage.includes('authToken') ||
@@ -181,7 +180,20 @@ export const onDocumentUploaded = onObjectFinalized(
         errorMessage.includes('authentication') ||
         errorMessage.includes('ANTHROPIC_API_KEY');
 
+      // Rate-limit exhausted after retries, or other transient errors:
+      // mark invalid with a friendly "please re-upload" message so the candidate can try again.
+      const isTransientError =
+        errorMessage.includes('OCR_RATE_LIMIT') ||
+        errorMessage.includes('rate_limit') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('429') ||
+        errorMessage.includes('tokens per minute') ||
+        errorMessage.includes('overloaded');
+
+      const friendlyMessage = 'Hubo un error temporal al procesar tu documento. Por favor vuelve a subirlo.';
+
       const docStatus = isConfigError ? 'review' : 'invalid';
+      const rejectionReason = isConfigError ? undefined : (isTransientError ? friendlyMessage : errorMessage);
 
       await updateCandidateDocument(candidateId, documentType, {
         status: docStatus,
@@ -190,10 +202,10 @@ export const onDocumentUploaded = onObjectFinalized(
           extractedData: {},
           confidence: 0,
           validationPassed: false,
-          validationErrors: [errorMessage],
+          validationErrors: [isTransientError ? friendlyMessage : errorMessage],
           processedAt: FieldValue.serverTimestamp(),
         },
-        ...(isConfigError ? {} : { rejectionReason: errorMessage }),
+        ...(rejectionReason ? { rejectionReason } : {}),
       });
 
       await updateCandidateCompletion(candidateId);
