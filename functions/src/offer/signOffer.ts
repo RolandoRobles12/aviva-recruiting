@@ -422,7 +422,7 @@ export const signOffer = onRequest(
             success: true,
           });
 
-          // Send signed copy email to candidate
+          // Send signed copy email to candidate (with PDF attached)
           const { subject: copySubject, html: copyHtml } = signedCopyTemplate({
             firstName: candidate.firstName as string,
             position: candidate.position as string,
@@ -436,6 +436,7 @@ export const signOffer = onRequest(
             html: copyHtml,
             senderEmail,
             recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+            attachments: [{ filename: 'carta_oferta_firmada.pdf', content: pdfBuffer, contentType: 'application/pdf' }],
           });
           await db.collection('email_logs').add({
             candidateId,

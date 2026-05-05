@@ -361,6 +361,7 @@ export interface LinkDurationSettings {
 export interface BrandingSettings {
   logoUrl?: string;
   companySignatureUrl?: string;
+  legalRepInitialsUrl?: string;
 }
 
 export interface DocumentSetting {

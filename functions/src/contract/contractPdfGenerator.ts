@@ -92,18 +92,20 @@ export async function generateContractPdf(
     .digest('hex');
 
   // ── Puppeteer-rendered HTML PDF: signatures are already embedded in the HTML.
-  //    Just stamp the evidence ID on the last page and return. ─────────────────
+  //    Stamp the evidence ID on EVERY page footer, then return. ────────────────
   if (input.htmlPdfBuffer) {
     const pdfDoc = await PDFDocument.load(input.htmlPdfBuffer);
     const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
     const gray = rgb(0.6, 0.6, 0.6);
 
     const pages = pdfDoc.getPages();
-    const lastPage = pages[pages.length - 1];
-    lastPage.drawText(
-      `ID de firma: ${evidenceId}  |  ${input.signedAt.toISOString()}`,
-      { x: 40, y: 10, size: 6, font: fontMono, color: gray }
-    );
+    const fesLabel = `ID de firma: ${evidenceId}`;
+    for (const page of pages) {
+      page.drawText(
+        fesLabel,
+        { x: 40, y: 6, size: 6, font: fontMono, color: gray }
+      );
+    }
 
     const pdfBytes = await pdfDoc.save();
     const pdfBuffer = Buffer.from(pdfBytes);

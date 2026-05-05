@@ -177,16 +177,51 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
       ? deptProfileRaw as Record<string, unknown>
       : undefined;
-    const departmentProfile =
+    let departmentProfile =
       (deptProfileObj?.name as string) ||
       (deptProfileObj?.title as string) ||
       getCustom('job_department_profile') ||
       getCustom('department_profile') ||
       '';
 
+    // Two-step fallback: includes[]=department_profile often returns null.
+    // Use department_id + department_profile_id to fetch the profile list and resolve the name.
+    if (!departmentProfile) {
+      const deptId = (data.department_id as string) || '';
+      const profileId = (data.department_profile_id as string) || '';
+      console.log('[viterbit] fetchViterbitJob profile fallback: deptId=', deptId, 'profileId=', profileId);
+      if (deptId && profileId) {
+        try {
+          const profResp = await fetch(
+            `${VITERBIT_API_BASE}/departments/${deptId}/profiles`,
+            { headers: { 'X-API-Key': apiKey } },
+          );
+          if (profResp.ok) {
+            const profJson = (await profResp.json()) as Record<string, unknown>;
+            const profiles =
+              (profJson.data as Array<Record<string, unknown>>) ??
+              (Array.isArray(profJson) ? profJson as Array<Record<string, unknown>> : []);
+            const matched = profiles.find(
+              (p) => String(p.id) === String(profileId),
+            );
+            if (matched) {
+              departmentProfile = (matched.name as string) || (matched.title as string) || '';
+              console.log('[viterbit] fetchViterbitJob resolved profile via dept endpoint:', departmentProfile);
+            } else {
+              console.log('[viterbit] fetchViterbitJob dept profiles:', JSON.stringify(profiles.map((p) => ({ id: p.id, name: p.name }))));
+            }
+          } else {
+            console.error('[viterbit] fetchViterbitJob dept profiles HTTP', profResp.status);
+          }
+        } catch (profErr) {
+          console.error('[viterbit] fetchViterbitJob dept profiles error:', profErr);
+        }
+      }
+    }
+
     const title = (data.title as string) || (data.name as string) || '';
     console.log('[viterbit] fetchViterbitJob keys:', Object.keys(data).join(', '));
-    console.log('[viterbit] fetchViterbitJob title:', JSON.stringify(title), '| department_profile:', JSON.stringify(deptProfileRaw));
+    console.log('[viterbit] fetchViterbitJob title:', JSON.stringify(title), '| department_profile:', JSON.stringify(deptProfileRaw), '| resolved:', JSON.stringify(departmentProfile));
 
     return {
       title,
