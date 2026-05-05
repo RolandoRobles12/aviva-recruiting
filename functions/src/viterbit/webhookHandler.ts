@@ -449,6 +449,22 @@ async function handleAprobado(
 
   console.log('[webhook] handleAprobado candidate resolved → firstName:', firstName, '| lastName:', lastName, '| email:', candidateEmail);
 
+  // Secondary idempotency check by email + jobId — catches race conditions where two
+  // simultaneous webhooks both pass the first check before either creates the record.
+  if (candidateEmail && jobId) {
+    const emailCheck = await db
+      .collection('candidates')
+      .where('email', '==', candidateEmail)
+      .where('viterbitJobId', '==', jobId)
+      .limit(1)
+      .get();
+    if (!emailCheck.empty) {
+      const existingId = emailCheck.docs[0].id;
+      await logRef.update({ status: 'ignored', reason: 'candidate already exists (email+job)', candidateId: existingId });
+      return { action: 'ignored', candidateId: existingId };
+    }
+  }
+
   // Find best offer template — profile-name match takes priority
   const templateMatch = await findOfferTemplate(jobTitle, viterbitDepartmentProfile || undefined);
 
