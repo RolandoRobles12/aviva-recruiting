@@ -105,6 +105,7 @@ export async function sendEmail(options: {
   html: string;
   senderEmail?: string;
   recruiterUid?: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }): Promise<void> {
   let gmail: ReturnType<typeof google.gmail> | null = null;
   let sender: string | undefined = options.senderEmail;
@@ -146,17 +147,49 @@ export async function sendEmail(options: {
     }
   }
 
-  // Build RFC 2822 email
-  const messageParts = [
-    `From: ${sender}`,
-    `To: ${options.to}`,
-    `Subject: =?UTF-8?B?${Buffer.from(options.subject).toString('base64')}?=`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=UTF-8',
-    '',
-    options.html,
-  ];
-  const rawMessage = messageParts.join('\r\n');
+  // Build RFC 2822 email (plain HTML or multipart/mixed with attachments)
+  let rawMessage: string;
+
+  if (options.attachments && options.attachments.length > 0) {
+    const boundary = `----=_Part_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    const parts: string[] = [
+      `From: ${sender}`,
+      `To: ${options.to}`,
+      `Subject: =?UTF-8?B?${Buffer.from(options.subject).toString('base64')}?=`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      Buffer.from(options.html, 'utf8').toString('base64').replace(/.{76}/g, '$&\r\n'),
+    ];
+    for (const att of options.attachments) {
+      parts.push(
+        `--${boundary}`,
+        `Content-Type: ${att.contentType}`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${att.filename}"`,
+        '',
+        att.content.toString('base64').replace(/.{76}/g, '$&\r\n'),
+      );
+    }
+    parts.push(`--${boundary}--`);
+    rawMessage = parts.join('\r\n');
+  } else {
+    const messageParts = [
+      `From: ${sender}`,
+      `To: ${options.to}`,
+      `Subject: =?UTF-8?B?${Buffer.from(options.subject).toString('base64')}?=`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=UTF-8',
+      '',
+      options.html,
+    ];
+    rawMessage = messageParts.join('\r\n');
+  }
+
   const encodedMessage = Buffer.from(rawMessage)
     .toString('base64')
     .replace(/\+/g, '-')

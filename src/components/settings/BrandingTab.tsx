@@ -8,28 +8,40 @@ import type { BrandingSettings } from '../../types';
 export function BrandingTab() {
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
   const [companySigUrl, setCompanySigUrl] = useState<string | undefined>();
+  const [legalRepInitialsUrl, setLegalRepInitialsUrl] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadingSig, setUploadingSig] = useState(false);
+  const [uploadingInitials, setUploadingInitials] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedSig, setSavedSig] = useState(false);
+  const [savedInitials, setSavedInitials] = useState(false);
   const [sigEmpty, setSigEmpty] = useState(true);
+  const [initialsEmpty, setInitialsEmpty] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sigCanvasRef = useRef<HTMLCanvasElement>(null);
   const sigPadRef = useRef<SignaturePad | null>(null);
+  const initialsCanvasRef = useRef<HTMLCanvasElement>(null);
+  const initialsPadRef = useRef<SignaturePad | null>(null);
 
   useEffect(() => {
     getBrandingSettings().then((s) => {
       setLogoUrl(s.logoUrl);
       setCompanySigUrl(s.companySignatureUrl);
+      setLegalRepInitialsUrl(s.legalRepInitialsUrl);
       setLoading(false);
     });
   }, []);
 
-  const initSigPad = useCallback(() => {
-    if (!sigCanvasRef.current) return;
-    const canvas = sigCanvasRef.current;
+  const initPadHelper = useCallback((
+    canvasRef: React.RefObject<HTMLCanvasElement>,
+    padRef: React.MutableRefObject<SignaturePad | null>,
+    setEmpty: (v: boolean) => void,
+    opts?: { minWidth?: number; maxWidth?: number }
+  ) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const parent = canvas.parentElement;
     if (!parent) return;
     const rect = parent.getBoundingClientRect();
@@ -40,22 +52,30 @@ export function BrandingTab() {
     canvas.style.height = `${rect.height}px`;
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.scale(ratio, ratio);
-    if (!sigPadRef.current) {
-      const pad = new SignaturePad(canvas, { penColor: '#1e293b', minWidth: 1.5, maxWidth: 3 });
-      sigPadRef.current = pad;
-      pad.addEventListener('endStroke', () => setSigEmpty(pad.isEmpty()));
+    if (!padRef.current) {
+      const pad = new SignaturePad(canvas, {
+        penColor: '#1e293b',
+        minWidth: opts?.minWidth ?? 1.5,
+        maxWidth: opts?.maxWidth ?? 3,
+      });
+      padRef.current = pad;
+      pad.addEventListener('endStroke', () => setEmpty(pad.isEmpty()));
     } else {
-      sigPadRef.current.clear();
+      padRef.current.clear();
     }
-    setSigEmpty(true);
+    setEmpty(true);
   }, []);
+
+  const initSigPad = useCallback(() => initPadHelper(sigCanvasRef, sigPadRef, setSigEmpty), [initPadHelper]);
+  const initInitialsPad = useCallback(() => initPadHelper(initialsCanvasRef, initialsPadRef, setInitialsEmpty, { minWidth: 1, maxWidth: 2.5 }), [initPadHelper]);
 
   useEffect(() => {
     if (!loading) {
-      const timer = setTimeout(initSigPad, 150);
-      return () => clearTimeout(timer);
+      const t1 = setTimeout(initSigPad, 150);
+      const t2 = setTimeout(initInitialsPad, 150);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
-  }, [loading, initSigPad]);
+  }, [loading, initSigPad, initInitialsPad]);
 
   function flash(setter: (v: boolean) => void) {
     setter(true);
@@ -125,6 +145,34 @@ export function BrandingTab() {
     setSigEmpty(true);
     await mergeRemove('companySignatureUrl');
     flash(setSavedSig);
+  };
+
+  // ─── Legal rep initials handlers ─────────────────────────────────────────────
+
+  const handleSaveInitials = async () => {
+    if (!initialsPadRef.current || initialsPadRef.current.isEmpty()) return;
+    setUploadingInitials(true);
+    setSavedInitials(false);
+    try {
+      const dataUrl = initialsPadRef.current.toDataURL('image/png');
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], 'legal_rep_initials.png', { type: 'image/png' });
+      const { downloadUrl } = await uploadAsset(file, 'assets/branding');
+      setLegalRepInitialsUrl(downloadUrl);
+      await mergeSave({ legalRepInitialsUrl: downloadUrl });
+      flash(setSavedInitials);
+    } finally {
+      setUploadingInitials(false);
+    }
+  };
+
+  const handleRemoveInitials = async () => {
+    setLegalRepInitialsUrl(undefined);
+    initialsPadRef.current?.clear();
+    setInitialsEmpty(true);
+    await mergeRemove('legalRepInitialsUrl');
+    flash(setSavedInitials);
   };
 
   if (loading) {
@@ -271,6 +319,93 @@ export function BrandingTab() {
             {savedSig && (
               <div className="flex items-center gap-1.5 text-green-700 text-xs font-medium">
                 <CheckCircle size={13} /> Guardada
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Legal rep initials ───────────────────────────────────────────────── */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800 mb-1">Iniciales del Representante Legal</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Dibuja las iniciales del representante legal. Aparecerán en el pie de página de cada hoja del contrato,
+          junto a las iniciales del candidato, como evidencia de que ambas partes leyeron todas las páginas.
+        </p>
+
+        <div className="border border-gray-200 rounded-xl p-5 bg-gray-50 space-y-4">
+
+          {legalRepInitialsUrl && (
+            <div className="bg-white border border-green-200 rounded-lg p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <CheckCircle size={16} className="text-green-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-gray-700 mb-1">Iniciales guardadas:</p>
+                  <img
+                    src={legalRepInitialsUrl}
+                    alt="Iniciales del Representante Legal"
+                    className="max-h-10 max-w-[120px] object-contain"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveInitials}
+                title="Eliminar iniciales"
+                className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs text-gray-500 mb-2">
+              {legalRepInitialsUrl ? 'Redibujar iniciales:' : 'Dibuja las iniciales del Representante Legal:'}
+            </p>
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-[10px] bg-blue-50 text-blue-600 rounded-lg px-2 py-1 font-bold tracking-wide shrink-0">
+                Ejemplo: SHD
+              </span>
+              <span className="text-xs text-gray-400">Usa tus iniciales con letra cursiva o de imprenta</span>
+            </div>
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-white relative"
+              style={{ height: '130px' }}
+            >
+              <canvas
+                ref={initialsCanvasRef}
+                className="absolute inset-0 w-full h-full cursor-crosshair"
+                style={{ touchAction: 'none' }}
+              />
+              {initialsEmpty && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <p className="text-gray-300 text-sm select-none">Iniciales aquí</p>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => { initialsPadRef.current?.clear(); setInitialsEmpty(true); }}
+              className="mt-1 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
+            >
+              Borrar
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSaveInitials}
+              disabled={initialsEmpty || uploadingInitials}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+            >
+              {uploadingInitials ? <Loader2 size={14} className="animate-spin" /> : <PenLine size={14} />}
+              {uploadingInitials ? 'Guardando…' : 'Guardar iniciales'}
+            </button>
+            {savedInitials && (
+              <div className="flex items-center gap-1.5 text-green-700 text-xs font-medium">
+                <CheckCircle size={13} /> Guardadas
               </div>
             )}
           </div>

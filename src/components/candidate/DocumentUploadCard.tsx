@@ -153,6 +153,16 @@ export function DocumentUploadCard({ candidateId, documentType, document, settin
               ¿No sabes cómo obtenerlo? Haz clic aquí →
             </a>
           )}
+          {documentType === 'curp' && (
+            <a
+              href="https://www.gob.mx/curp/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary-600 hover:underline mt-0.5 inline-block"
+            >
+              ¿No sabes cuál es tu CURP? Obtenla aquí →
+            </a>
+          )}
         </div>
       </div>
 

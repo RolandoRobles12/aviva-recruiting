@@ -11,7 +11,7 @@ import { generatePdfContract, extractInitials } from './pdfTemplateProcessor';
 import { htmlToPdf } from './htmlToPdf';
 import type { PdfFieldPosition, PdfVariableMapping } from './pdfTemplateProcessor';
 import { salaryToSpanishWords } from '../utils/numberToSpanishWords';
-import { getLogoUrl, getCompanySignatureUrl } from '../utils/branding';
+import { getLogoUrl, getCompanySignatureUrl, getLegalRepInitialsUrl } from '../utils/branding';
 import { sendEmail } from '../email/gmailClient';
 import { signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
@@ -95,12 +95,15 @@ function buildContractVars(candidate: Record<string, unknown>, now: Date): Recor
   const caratulaData   = ocr('caratula_bancaria');
   const nssData        = ocr('nss');
 
-  vars.curp      = curpData.curp || ineData.curp || '';
-  vars.rfc       = constanciaData.rfc || '';
-  vars.domicilio = toTitleCase(ineData.domicilio || '');
-  vars.clabe     = caratulaData.clabe || '';
-  vars.banco     = caratulaData.banco || '';
-  vars.nss       = nssData.nss || '';
+  // Manual overrides take priority over OCR-extracted values (recruiter corrections)
+  const ov = (candidate.dataOverrides ?? {}) as Record<string, string>;
+
+  vars.curp      = ov.curp      || curpData.curp || ineData.curp || '';
+  vars.rfc       = ov.rfc       || constanciaData.rfc || '';
+  vars.domicilio = ov.domicilio || toTitleCase(ineData.domicilio || '');
+  vars.clabe     = ov.clabe     || caratulaData.clabe || '';
+  vars.banco     = ov.banco     || caratulaData.banco || '';
+  vars.nss       = ov.nss       || nssData.nss || '';
 
   // sexo: prefer acta (full word), fallback to INE (H/M) normalized
   const sexoRaw = actaData.sexo || ineData.sexo || '';
@@ -246,10 +249,27 @@ export const signContract = onRequest(
       evidence = result.evidence;
     } else {
       // ── HTML-based template — both signatures injected into the HTML, Puppeteer renders ──
-      const companySigUrl = await getCompanySignatureUrl();
+      const [companySigUrl, legalRepInitialsUrl] = await Promise.all([
+        getCompanySignatureUrl(),
+        getLegalRepInitialsUrl(),
+      ]);
       vars.firmaEmpresa = companySigUrl
         ? `<img src="${companySigUrl}" alt="Firma Representante Legal" style="max-width:200px;max-height:70px;display:block;margin:4px auto;">`
         : '';
+
+      // Convert legal rep initials URL to base64 so Puppeteer footer can embed it inline
+      let legalRepInitialsBase64: string | undefined;
+      if (legalRepInitialsUrl) {
+        try {
+          const imgResp = await fetch(legalRepInitialsUrl);
+          if (imgResp.ok) {
+            const imgBuf = Buffer.from(await imgResp.arrayBuffer());
+            legalRepInitialsBase64 = `data:image/png;base64,${imgBuf.toString('base64')}`;
+          }
+        } catch (err) {
+          console.error('[signContract] fetch legalRepInitials error:', err);
+        }
+      }
 
       const bodyHtml = (contractTemplate?.bodyHtml as string) ?? '<p>Contrato en preparación.</p>';
 
@@ -266,6 +286,7 @@ export const signContract = onRequest(
       const htmlPdfBuffer = await htmlToPdf(interpolate(bodyHtml, vars), {
         initials: candidateInitials,
         initialsBase64: initialsBase64 || undefined,
+        legalRepInitialsBase64,
         pageMargins: { top: '20mm', right: '20mm', bottom: '16mm', left: '20mm' },
       });
 
@@ -385,6 +406,10 @@ export const signContract = onRequest(
           html,
           senderEmail,
           recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+          attachments: [
+            { filename: 'contrato_firmado.pdf', content: pdfBuffer, contentType: 'application/pdf' },
+            { filename: 'certificado_firma.pdf', content: evidencePdfBuffer, contentType: 'application/pdf' },
+          ],
         });
         await db.collection('email_logs').add({
           candidateId,

@@ -184,6 +184,8 @@ export interface Candidate {
   profile?: string;
   // Disqualification
   disqualificationReason?: string;
+  // Manual overrides for OCR-extracted contract fields (rfc, curp, clabe, nss, domicilio, banco)
+  dataOverrides?: Record<string, string>;
   // Viterbit job custom fields (populated from job API on webhook)
   viterbitSalary?: string;
   viterbitStartDate?: string;
@@ -361,6 +363,7 @@ export interface LinkDurationSettings {
 export interface BrandingSettings {
   logoUrl?: string;
   companySignatureUrl?: string;
+  legalRepInitialsUrl?: string;
 }
 
 export interface DocumentSetting {
