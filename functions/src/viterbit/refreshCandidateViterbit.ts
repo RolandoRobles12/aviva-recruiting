@@ -9,6 +9,8 @@ const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 /**
  * Re-fetch job data from Viterbit and update the candidate's salary, startDate,
  * hiringManager, company, departmentProfile, and position fields.
+ *
+ * Uses the same API structure as fetchViterbitJob in webhookHandler.ts.
  */
 export const refreshCandidateViterbit = onCall(
   { region: 'us-central1' },
@@ -27,45 +29,72 @@ export const refreshCandidateViterbit = onCall(
 
     const apiKey = VITERBIT_API_KEY.value();
     const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=custom_fields&includes[]=department_profile&includes[]=stages`,
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values&includes[]=department_profile`,
       { headers: { 'X-API-Key': apiKey } },
     );
     if (!resp.ok) {
       throw new HttpsError('unavailable', `Viterbit API devolvió HTTP ${resp.status}`);
     }
-    const json = await resp.json() as { data?: Record<string, unknown> };
-    const data = json.data ?? {};
 
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+
+    // custom_field_values is a key→{value:...} map
+    const custom = (data.custom_field_values as Record<string, unknown>)
+      ?? (data.custom_fields as Record<string, unknown>)
+      ?? {};
     const getCustom = (key: string): string => {
-      const fields = (data.custom_fields as Array<{ key: string; value: unknown }>) ?? [];
-      const found = fields.find((f) => f.key === key);
-      if (!found) return '';
-      if (typeof found.value === 'string') return found.value;
-      if (Array.isArray(found.value)) return (found.value as string[]).join(', ');
-      return String(found.value ?? '');
+      const val = custom[key];
+      if (val && typeof val === 'object' && 'value' in val) {
+        return String((val as Record<string, unknown>).value ?? '');
+      }
+      return (val as string) ?? (data[key] as string) ?? '';
     };
 
-    const rawSalary = getCustom('hired_salary_job') || getCustom('salary') || '';
-    const salary = rawSalary ? `$${rawSalary.replace(/^\$\s*/, '')}` : '';
+    // Salary from salary_min / salary_max objects
+    const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
+    const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
+    let salary = '';
+    if (salaryMin?.amount && salaryMax?.amount) {
+      const currency = salaryMin.currency ?? 'MXN';
+      salary = salaryMin.amount === salaryMax.amount
+        ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
+        : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
+    } else if (salaryMin?.amount) {
+      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
+    } else if (salaryMax?.amount) {
+      salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
+    }
 
-    // Resolve department profile
-    let departmentProfile = '';
-    const includes = (data.includes as Record<string, unknown> | undefined) ?? {};
-    const deptProfileRaw = includes['department_profile'] as Record<string, unknown> | null | undefined;
-    if (deptProfileRaw && deptProfileRaw.name) {
-      departmentProfile = deptProfileRaw.name as string;
-    } else {
+    // department_profile is at data.department_profile when includes[]=department_profile
+    const deptProfileRaw = data.department_profile;
+    const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
+      ? deptProfileRaw as Record<string, unknown>
+      : undefined;
+    let departmentProfile =
+      (deptProfileObj?.name as string) ||
+      (deptProfileObj?.title as string) ||
+      getCustom('job_department_profile') ||
+      getCustom('department_profile') ||
+      '';
+
+    // Two-step fallback using department_id + department_profile_id
+    if (!departmentProfile) {
       const deptId = (data.department_id as string) || '';
       const profileId = (data.department_profile_id as string) || '';
       if (deptId && profileId) {
         try {
-          const profResp = await fetch(`${VITERBIT_API_BASE}/departments/${deptId}/profiles`, {
-            headers: { 'X-API-Key': apiKey },
-          });
+          const profResp = await fetch(
+            `${VITERBIT_API_BASE}/departments/${deptId}/profiles`,
+            { headers: { 'X-API-Key': apiKey } },
+          );
           if (profResp.ok) {
-            const profiles = (((await profResp.json()).data) as Array<Record<string, unknown>>) ?? [];
+            const profJson = (await profResp.json()) as Record<string, unknown>;
+            const profiles =
+              (profJson.data as Array<Record<string, unknown>>) ??
+              (Array.isArray(profJson) ? (profJson as Array<Record<string, unknown>>) : []);
             const matched = profiles.find((p) => String(p.id) === String(profileId));
-            if (matched) departmentProfile = (matched.name as string) || '';
+            if (matched) departmentProfile = (matched.name as string) || (matched.title as string) || '';
           }
         } catch {
           // ignore
@@ -73,23 +102,20 @@ export const refreshCandidateViterbit = onCall(
       }
     }
 
+    const title = (data.title as string) || (data.name as string) || '';
+    const startDate = getCustom('hired_start_date_job') || getCustom('start_date') || '';
+    const hiringManager = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
+    const company = getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || '';
+
     const updates: Record<string, unknown> = {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    const title = (data.title as string) || '';
     if (title) updates.position = title;
     if (salary) updates.viterbitSalary = salary;
-
-    const startDate = getCustom('hired_start_date_job') || getCustom('start_date') || '';
     if (startDate) updates.viterbitStartDate = startDate;
-
-    const hiringManager = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
     if (hiringManager) updates.viterbitHiringManager = hiringManager;
-
-    const company = getCustom('custom_job_empresa') || getCustom('company') || '';
     if (company) updates.viterbitCompany = company;
-
     if (departmentProfile) {
       updates.viterbitDepartmentProfile = departmentProfile;
       updates.profile = departmentProfile;

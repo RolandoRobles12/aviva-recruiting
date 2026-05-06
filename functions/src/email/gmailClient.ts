@@ -89,6 +89,77 @@ async function findAnyConnectedRecruiterUid(): Promise<string | null> {
   return null;
 }
 
+/** Encode base64 per RFC 2045: lines of max 76 chars separated by CRLF. */
+function toMimeBase64(buf: Buffer): string {
+  const b64 = buf.toString('base64');
+  const lines: string[] = [];
+  for (let i = 0; i < b64.length; i += 76) {
+    lines.push(b64.slice(i, i + 76));
+  }
+  return lines.join('\r\n');
+}
+
+/**
+ * Build a raw RFC 2822 message Buffer ready for base64url-encoding.
+ * Uses multipart/mixed when attachments are present, otherwise plain text/html.
+ */
+function buildRawMessage(
+  sender: string,
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>,
+): Buffer {
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+
+  if (!attachments || attachments.length === 0) {
+    // Simple single-part text/html message
+    const lines = [
+      `From: ${sender}`,
+      `To: ${to}`,
+      `Subject: ${subjectEncoded}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      toMimeBase64(Buffer.from(html, 'utf8')),
+    ];
+    return Buffer.from(lines.join('\r\n'), 'ascii');
+  }
+
+  // Multipart/mixed — boundary chosen to be safe and unique
+  const boundary = `=====aviva_${Date.now().toString(16)}_${Math.floor(Math.random() * 0xffff).toString(16)}=====`;
+
+  const lines: string[] = [
+    `From: ${sender}`,
+    `To: ${to}`,
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    'Content-Disposition: inline',
+    '',
+    toMimeBase64(Buffer.from(html, 'utf8')),
+  ];
+
+  for (const att of attachments) {
+    lines.push(
+      `--${boundary}`,
+      `Content-Type: ${att.contentType}; name="${att.filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${att.filename}"`,
+      '',
+      toMimeBase64(att.content),
+    );
+  }
+
+  lines.push(`--${boundary}--`, '');
+  return Buffer.from(lines.join('\r\n'), 'ascii');
+}
+
 /**
  * Send an email via Gmail API.
  *
@@ -147,50 +218,11 @@ export async function sendEmail(options: {
     }
   }
 
-  // Build RFC 2822 email (plain HTML or multipart/mixed with attachments)
-  let rawMessage: string;
+  // Ensure we always have a sender string for the From header
+  const fromAddress = sender ?? 'noreply@avivacredito.com';
 
-  if (options.attachments && options.attachments.length > 0) {
-    const boundary = `----=_Part_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-    const parts: string[] = [
-      `From: ${sender}`,
-      `To: ${options.to}`,
-      `Subject: =?UTF-8?B?${Buffer.from(options.subject).toString('base64')}?=`,
-      'MIME-Version: 1.0',
-      `Content-Type: multipart/mixed; boundary="${boundary}"`,
-      '',
-      `--${boundary}`,
-      'Content-Type: text/html; charset=UTF-8',
-      'Content-Transfer-Encoding: base64',
-      '',
-      Buffer.from(options.html, 'utf8').toString('base64').replace(/.{76}/g, '$&\r\n'),
-    ];
-    for (const att of options.attachments) {
-      parts.push(
-        `--${boundary}`,
-        `Content-Type: ${att.contentType}`,
-        'Content-Transfer-Encoding: base64',
-        `Content-Disposition: attachment; filename="${att.filename}"`,
-        '',
-        att.content.toString('base64').replace(/.{76}/g, '$&\r\n'),
-      );
-    }
-    parts.push(`--${boundary}--`);
-    rawMessage = parts.join('\r\n');
-  } else {
-    const messageParts = [
-      `From: ${sender}`,
-      `To: ${options.to}`,
-      `Subject: =?UTF-8?B?${Buffer.from(options.subject).toString('base64')}?=`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/html; charset=UTF-8',
-      '',
-      options.html,
-    ];
-    rawMessage = messageParts.join('\r\n');
-  }
-
-  const encodedMessage = Buffer.from(rawMessage)
+  const rawBuffer = buildRawMessage(fromAddress, options.to, options.subject, options.html, options.attachments);
+  const encodedMessage = rawBuffer
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
