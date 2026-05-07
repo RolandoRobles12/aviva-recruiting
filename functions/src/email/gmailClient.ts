@@ -100,8 +100,9 @@ function toMimeBase64(buf: Buffer): string {
 }
 
 /**
- * Build a raw RFC 2822 message Buffer ready for base64url-encoding.
- * Uses multipart/mixed when attachments are present, otherwise plain text/html.
+ * Build a raw RFC 2822 message string ready for base64url-encoding.
+ * - No attachments: HTML body embedded inline (original working approach).
+ * - With attachments: multipart/mixed with base64-encoded parts.
  */
 function buildRawMessage(
   sender: string,
@@ -109,28 +110,28 @@ function buildRawMessage(
   subject: string,
   html: string,
   attachments?: Array<{ filename: string; content: Buffer; contentType: string }>,
-): Buffer {
+): string {
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
 
   if (!attachments || attachments.length === 0) {
-    // Simple single-part text/html message
-    const lines = [
+    // Embed HTML directly — no Content-Transfer-Encoding header.
+    // The whole message is outer-base64url encoded by sendEmail; Gmail is lenient
+    // about 8-bit content in the raw bytes decoded from that outer encoding.
+    return [
       `From: ${sender}`,
       `To: ${to}`,
       `Subject: ${subjectEncoded}`,
       'MIME-Version: 1.0',
       'Content-Type: text/html; charset=UTF-8',
-      'Content-Transfer-Encoding: base64',
       '',
-      toMimeBase64(Buffer.from(html, 'utf8')),
-    ];
-    return Buffer.from(lines.join('\r\n'), 'ascii');
+      html,
+    ].join('\r\n');
   }
 
-  // Multipart/mixed — boundary chosen to be safe and unique
-  const boundary = `=====aviva_${Date.now().toString(16)}_${Math.floor(Math.random() * 0xffff).toString(16)}=====`;
+  // Multipart/mixed for emails with PDF attachments
+  const boundary = `----=_Part_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
-  const lines: string[] = [
+  const parts: string[] = [
     `From: ${sender}`,
     `To: ${to}`,
     `Subject: ${subjectEncoded}`,
@@ -140,15 +141,14 @@ function buildRawMessage(
     `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
-    'Content-Disposition: inline',
     '',
     toMimeBase64(Buffer.from(html, 'utf8')),
   ];
 
   for (const att of attachments) {
-    lines.push(
+    parts.push(
       `--${boundary}`,
-      `Content-Type: ${att.contentType}; name="${att.filename}"`,
+      `Content-Type: ${att.contentType}`,
       'Content-Transfer-Encoding: base64',
       `Content-Disposition: attachment; filename="${att.filename}"`,
       '',
@@ -156,8 +156,8 @@ function buildRawMessage(
     );
   }
 
-  lines.push(`--${boundary}--`, '');
-  return Buffer.from(lines.join('\r\n'), 'ascii');
+  parts.push(`--${boundary}--`);
+  return parts.join('\r\n');
 }
 
 /**
@@ -221,8 +221,8 @@ export async function sendEmail(options: {
   // Ensure we always have a sender string for the From header
   const fromAddress = sender ?? 'noreply@avivacredito.com';
 
-  const rawBuffer = buildRawMessage(fromAddress, options.to, options.subject, options.html, options.attachments);
-  const encodedMessage = rawBuffer
+  const rawMessage = buildRawMessage(fromAddress, options.to, options.subject, options.html, options.attachments);
+  const encodedMessage = Buffer.from(rawMessage)
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
