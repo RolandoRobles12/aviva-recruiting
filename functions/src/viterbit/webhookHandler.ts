@@ -15,8 +15,10 @@ import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
-// Comma-separated job IDs to filter. Leave empty to allow all.
-const HIRING_JOB_NAMES = defineString('HIRING_JOB_NAMES', { default: '' });
+// Comma-separated department profile names to process. Leave empty to allow all.
+const HIRING_PROFILES = defineString('HIRING_PROFILES', {
+  default: 'Trainee Sucursal (Kiosk Trainee),Gerente de Sucursal (Kiosk Manager),Promotor/a Aviva tu Negocio',
+});
 
 // Stage names (configurable, matched case-insensitively against webhook payload)
 const STAGE_APROBADO     = defineString('STAGE_APROBADO',     { default: 'Aprobado' });
@@ -914,21 +916,18 @@ export const viterbitWebhook = onRequest(
         return;
       }
 
-      // Filter by allowed jobs if configured
-      const allowedJobs = HIRING_JOB_NAMES.value()
+      // Filter by allowed department profiles if configured
+      const allowedProfiles = HIRING_PROFILES.value()
         .split(',')
-        .map((j) => j.trim().toLowerCase())
+        .map((p) => p.trim().toLowerCase())
         .filter(Boolean);
-      if (allowedJobs.length > 0) {
-        const matchesById = allowedJobs.some((allowed) => jobId.toLowerCase() === allowed);
-        if (!matchesById) {
-          const jobTitle = (await fetchViterbitJob(jobId, apiKey)).title;
-          const matchesByName = allowedJobs.some((allowed) => jobTitle.toLowerCase().includes(allowed));
-          if (!matchesByName) {
-            await logRef.update({ status: 'ignored', reason: `job "${jobTitle}" (${jobId}) not in allowed list` });
-            res.status(200).json({ ok: true, action: 'ignored', reason: `job "${jobId}" not configured` });
-            return;
-          }
+      if (allowedProfiles.length > 0) {
+        const jobInfo = await fetchViterbitJob(jobId, apiKey);
+        const profile = jobInfo.departmentProfile.toLowerCase();
+        if (!allowedProfiles.some((allowed) => profile.includes(allowed))) {
+          await logRef.update({ status: 'ignored', reason: `profile "${jobInfo.departmentProfile}" not in allowed list` });
+          res.status(200).json({ ok: true, action: 'ignored', reason: `profile "${jobInfo.departmentProfile}" not configured` });
+          return;
         }
       }
 
