@@ -139,6 +139,35 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
+// Resolves the "Correo corporativo" stage ID from the candidate's stored viterbitStageIds,
+// falling back to a live Viterbit API lookup when the value is missing (e.g. the stage was
+// added after the candidate record was created).
+async function resolveCorreosStageId(
+  candidate: Record<string, unknown>,
+  apiKey: string,
+): Promise<string> {
+  const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
+  if (stageIds?.correos) return stageIds.correos;
+
+  const jobId = candidate.viterbitJobId as string | undefined;
+  if (!jobId || !apiKey) return '';
+
+  try {
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
+    if (!resp.ok) return '';
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    const stages = (data.stages as Array<{ id: string; name: string }>) ?? [];
+    const match = stages.find((s) => s.name.toLowerCase().includes('correo corporativo'));
+    return match?.id ?? '';
+  } catch {
+    return '';
+  }
+}
+
 // ─── Sign Contract ────────────────────────────────────────────────────────────
 
 export const signContract = onRequest(
@@ -364,16 +393,34 @@ export const signContract = onRequest(
       throw firestoreErr;
     }
 
-    // Move in Viterbit to "Correos" stage (fire-and-forget after Firestore is saved)
+    // Move in Viterbit to "Correos" stage.
+    // resolveCorreosStageId falls back to a live API lookup when the stored ID is missing.
     const apiKey = VITERBIT_API_KEY.value();
-    const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
-    const correosStageId = stageIds?.correos;
     const candidatureId = candidate.viterbitCandidatureId as string | undefined;
+    const correosStageId = await resolveCorreosStageId(candidate, apiKey);
 
     if (apiKey && correosStageId && candidatureId) {
-      void moveToStage(candidatureId, correosStageId, apiKey).catch((err) =>
-        console.error('[signContract] moveToStage correos error:', err)
-      );
+      try {
+        await moveToStage(candidatureId, correosStageId, apiKey);
+      } catch (err) {
+        console.error('[signContract] moveToStage correos error:', err);
+        await db.collection('webhook_logs').add({
+          type: 'moveToStage_error',
+          stage: 'correos',
+          candidateId,
+          candidatureId,
+          correosStageId,
+          error: String(err),
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+    } else {
+      console.warn('[signContract] skipping moveToStage correos — missing ids', {
+        candidateId,
+        candidatureId,
+        correosStageId,
+        hasApiKey: !!apiKey,
+      });
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()
