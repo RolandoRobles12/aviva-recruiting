@@ -29,7 +29,7 @@ export const refreshCandidateViterbit = onCall(
 
     const apiKey = VITERBIT_API_KEY.value();
     const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values&includes[]=department_profile`,
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
       { headers: { 'X-API-Key': apiKey } },
     );
     if (!resp.ok) {
