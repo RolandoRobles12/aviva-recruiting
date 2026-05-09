@@ -6,6 +6,20 @@ import { db } from '../utils/admin';
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
+async function fetchViterbitUser(userId: string, apiKey: string): Promise<string> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/users/${userId}`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) return '';
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    return (data.full_name as string) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Re-fetch job data from Viterbit and update the candidate's salary, startDate,
  * hiringManager, company, departmentProfile, and position fields.
@@ -104,7 +118,8 @@ export const refreshCandidateViterbit = onCall(
 
     const title = (data.title as string) || (data.name as string) || '';
     const startDate = getCustom('hired_start_date_job') || getCustom('start_date') || '';
-    const hiringManager = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
+    const hiringManagerId = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
+    const hiringManager = hiringManagerId ? await fetchViterbitUser(hiringManagerId, apiKey) : '';
     const company = getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || '';
 
     const updates: Record<string, unknown> = {
