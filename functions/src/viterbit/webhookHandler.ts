@@ -401,7 +401,7 @@ async function handleAprobado(
   parsed: ParsedViterbitEvent,
   apiKey: string,
   logRef: FirebaseFirestore.DocumentReference
-): Promise<{ action: string; candidateId?: string }> {
+): Promise<{ action: string; candidateId?: string; reason?: string }> {
   const { candidatureId, candidateViterbitId, jobId } = parsed;
 
   // Idempotency check
