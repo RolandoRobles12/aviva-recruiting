@@ -757,7 +757,7 @@ function ViterbitDataAlert({ c, onRefreshed }: { c: Candidate; onRefreshed: () =
         </div>
       </div>
       {refreshError && <p className="text-xs text-red-600">{refreshError}</p>}
-      {refreshed && <p className="text-xs text-green-700 font-medium">Datos actualizados — recarga el candidato para ver los cambios.</p>}
+      {refreshed && <p className="text-xs text-amber-700 font-medium">Datos consultados — si el botón sigue bloqueado, los campos siguen vacíos en Viterbit. Actualízalos allá y refresca de nuevo.</p>}
       <button
         onClick={handleRefresh}
         disabled={refreshing}
