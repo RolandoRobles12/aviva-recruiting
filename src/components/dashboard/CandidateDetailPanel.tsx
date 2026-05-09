@@ -785,6 +785,10 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange }: {
   const [offerSent, setOfferSent] = useState(false);
   const [offerSendError, setOfferSendError] = useState('');
 
+  const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
+  const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
+  const missingHiringDetails = missingSalary || missingDate;
+
   async function handleResendOffer() {
     setSendingOffer(true);
     setOfferSendError('');
@@ -882,9 +886,12 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange }: {
               {offerSendError && (
                 <p className="text-xs text-red-600 mb-2">{offerSendError}</p>
               )}
+              {missingHiringDetails && (
+                <p className="text-xs text-amber-700 mb-2">Completa los datos de Viterbit antes de reenviar.</p>
+              )}
               <button
                 onClick={handleResendOffer}
-                disabled={sendingOffer}
+                disabled={sendingOffer || missingHiringDetails}
                 className="flex items-center gap-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60"
               >
                 {sendingOffer ? (
@@ -918,6 +925,10 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange }: {
   const [sendingContract, setSendingContract] = useState(false);
   const [contractSent, setContractSent] = useState(false);
   const [contractSendError, setContractSendError] = useState('');
+
+  const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
+  const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
+  const missingHiringDetails = missingSalary || missingDate;
 
   async function handleResendContract() {
     setSendingContract(true);
@@ -1033,9 +1044,12 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange }: {
           {!c.contractSignedAt && c.status !== 'contract_signed' && (
             <Section title="Correo del contrato">
               {contractSendError && <p className="text-xs text-red-600 mb-2">{contractSendError}</p>}
+              {missingHiringDetails && (
+                <p className="text-xs text-amber-700 mb-2">Completa los datos de Viterbit antes de reenviar.</p>
+              )}
               <button
                 onClick={handleResendContract}
-                disabled={sendingContract}
+                disabled={sendingContract || missingHiringDetails}
                 className="flex items-center gap-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60 w-full justify-center"
               >
                 {sendingContract ? <RefreshCw size={13} className="animate-spin" /> : contractSent ? <Check size={13} /> : <Send size={13} />}
