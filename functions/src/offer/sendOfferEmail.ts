@@ -26,6 +26,13 @@ export const sendOfferEmail = onCall(
     const offerToken = candidate.offerToken as string | undefined;
     if (!offerToken) throw new HttpsError('failed-precondition', 'El candidato no tiene carta oferta generada.');
 
+    const missingSalary = !(candidate.viterbitSalary as string | undefined)?.trim();
+    const missingDate = !(candidate.viterbitStartDate as string | undefined)?.trim();
+    if (missingSalary || missingDate) {
+      const missing = [missingSalary && 'salario', missingDate && 'fecha de inicio'].filter(Boolean).join(' y ');
+      throw new HttpsError('failed-precondition', `Faltan datos de Viterbit: ${missing}. Refresca los datos antes de enviar.`);
+    }
+
     const appUrl = APP_URL.value();
     const offerUrl = `${appUrl}/offer/${offerToken}`;
 
