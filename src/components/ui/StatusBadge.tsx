@@ -1,7 +1,8 @@
 import type { CandidateStatus, DocumentStatus } from '../../types';
 
 const CANDIDATE_STATUS_CONFIG: Record<CandidateStatus, { label: string; className: string }> = {
-  offer_sent:   { label: 'Carta enviada',  className: 'badge-offer-sent' },
+  offer_held:   { label: 'Datos pendientes', className: 'badge-invalid' },
+  offer_sent:   { label: 'Carta enviada',    className: 'badge-offer-sent' },
   offer_signed: { label: 'Carta firmada',  className: 'badge-offer-signed' },
   invited:      { label: 'Invitado',       className: 'badge-pending' },
   in_progress:  { label: 'En progreso',    className: 'badge-review' },

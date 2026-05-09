@@ -112,6 +112,7 @@ export interface FormQuestion {
 // ─── Candidate ────────────────────────────────────────────────────────────────
 
 export type CandidateStatus =
+  | 'offer_held'       // candidate created but offer withheld — missing salary or start date in Viterbit
   | 'offer_sent'       // offer letter sent, pending candidate signature
   | 'offer_signed'     // candidate signed offer, document collection active
   | 'invited'          // documents link sent, no documents yet

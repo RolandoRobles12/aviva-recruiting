@@ -541,10 +541,20 @@ async function handleAprobado(
     },
   });
 
-  // Send offer email
+  // Send offer email — only when all required hiring details are present.
+  // If missing, the candidate is created but the offer is held so the recruiter
+  // can refresh the data in Viterbit and resend manually.
   const appUrl = APP_URL.value();
   const offerUrl = `${appUrl}/offer/${offerToken}`;
   const offerExpiresAtStr = format(offerExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+  if (!viterbitSalary || !viterbitStartDate) {
+    const missing = [!viterbitSalary && 'salario', !viterbitStartDate && 'fecha de inicio'].filter(Boolean).join(' y ');
+    console.warn(`[webhook] handleAprobado offer NOT sent — missing hiring details (${missing}) for candidate ${candidateRef.id}`);
+    await candidateRef.update({ status: 'offer_held', offerEmailSent: false, updatedAt: FieldValue.serverTimestamp() });
+    await logRef.update({ status: 'processed', candidateId: candidateRef.id, offerHeld: true, offerHeldReason: `missing: ${missing}` });
+    return { action: 'offer_held', candidateId: candidateRef.id, reason: `missing hiring details: ${missing}` };
+  }
 
   const logoUrl = await getLogoUrl();
   const { subject, html } = offerTemplate({
