@@ -243,7 +243,7 @@ export const signOffer = onRequest(
       const candidateId = candidateDoc.id;
       const candidate = candidateDoc.data();
 
-      if (candidate.status !== 'offer_sent') {
+      if (candidate.status !== 'offer_sent' && candidate.status !== 'offer_held') {
         res.status(409).json({ ok: false, error: 'Esta carta oferta ya fue firmada.' });
         return;
       }
@@ -499,7 +499,7 @@ export const getOffer = onRequest(
 
       const candidate = snap.docs[0].data();
 
-      if (candidate.status !== 'offer_sent') {
+      if (candidate.status !== 'offer_sent' && candidate.status !== 'offer_held') {
         res.status(409).json({ ok: false, error: 'already_signed' });
         return;
       }
