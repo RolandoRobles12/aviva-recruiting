@@ -1,6 +1,8 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -20,11 +22,35 @@ async function fetchViterbitUser(userId: string, apiKey: string): Promise<string
   }
 }
 
+// Fetches salary and start date from the candidature's hired_info.
+async function fetchCandidatureHiredInfo(
+  candidatureId: string,
+  apiKey: string,
+): Promise<{ salary: string; startDate: string }> {
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) return { salary: '', startDate: '' };
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
+    const salaryAmount = hiredInfo.salary as number | undefined;
+    const currency = (hiredInfo.currency as string) ?? 'MXN';
+    const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
+    const rawStartDate = (hiredInfo.start_at as string) ?? '';
+    const startDate = rawStartDate
+      ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
+      : '';
+    return { salary, startDate };
+  } catch {
+    return { salary: '', startDate: '' };
+  }
+}
+
 /**
- * Re-fetch job data from Viterbit and update the candidate's salary, startDate,
- * hiringManager, company, departmentProfile, and position fields.
- *
- * Uses the same API structure as fetchViterbitJob in webhookHandler.ts.
+ * Re-fetch job and candidature data from Viterbit and update the candidate's
+ * salary, startDate, hiringManager, company, departmentProfile, and position fields.
  */
 export const refreshCandidateViterbit = onCall(
   { region: 'us-central1' },
@@ -41,16 +67,23 @@ export const refreshCandidateViterbit = onCall(
     const jobId = candidate.viterbitJobId as string | undefined;
     if (!jobId) throw new HttpsError('failed-precondition', 'El candidato no tiene viterbitJobId.');
 
+    const candidatureId = candidate.viterbitCandidatureId as string | undefined;
     const apiKey = VITERBIT_API_KEY.value();
-    const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
-      { headers: { 'X-API-Key': apiKey } },
-    );
-    if (!resp.ok) {
-      throw new HttpsError('unavailable', `Viterbit API devolvió HTTP ${resp.status}`);
+
+    // Fetch job and candidature in parallel
+    const [jobResp, candidatureInfo] = await Promise.all([
+      fetch(
+        `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
+        { headers: { 'X-API-Key': apiKey } },
+      ),
+      candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve({ salary: '', startDate: '' }),
+    ]);
+
+    if (!jobResp.ok) {
+      throw new HttpsError('unavailable', `Viterbit API devolvió HTTP ${jobResp.status}`);
     }
 
-    const json = (await resp.json()) as Record<string, unknown>;
+    const json = (await jobResp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
 
     // custom_field_values is a key→{value:...} map
@@ -65,22 +98,27 @@ export const refreshCandidateViterbit = onCall(
       return (val as string) ?? (data[key] as string) ?? '';
     };
 
-    // Salary from salary_min / salary_max objects
-    const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
-    const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
-    let salary = '';
-    if (salaryMin?.amount && salaryMax?.amount) {
-      const currency = salaryMin.currency ?? 'MXN';
-      salary = salaryMin.amount === salaryMax.amount
-        ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
-        : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
-    } else if (salaryMin?.amount) {
-      salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
-    } else if (salaryMax?.amount) {
-      salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
+    // Salary: candidature hired_info takes priority over job salary range
+    let salary = candidatureInfo.salary;
+    if (!salary) {
+      const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
+      const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
+      if (salaryMin?.amount && salaryMax?.amount) {
+        const currency = salaryMin.currency ?? 'MXN';
+        salary = salaryMin.amount === salaryMax.amount
+          ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
+          : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
+      } else if (salaryMin?.amount) {
+        salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
+      } else if (salaryMax?.amount) {
+        salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
+      }
     }
 
-    // department_profile is at data.department_profile when includes[]=department_profile
+    // Start date: candidature hired_info takes priority over custom field
+    const startDate = candidatureInfo.startDate || getCustom('hired_start_date_job') || getCustom('start_date') || '';
+
+    // Department profile
     const deptProfileRaw = data.department_profile;
     const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
       ? deptProfileRaw as Record<string, unknown>
@@ -92,7 +130,6 @@ export const refreshCandidateViterbit = onCall(
       getCustom('department_profile') ||
       '';
 
-    // Two-step fallback using department_id + department_profile_id
     if (!departmentProfile) {
       const deptId = (data.department_id as string) || '';
       const profileId = (data.department_profile_id as string) || '';
@@ -117,7 +154,6 @@ export const refreshCandidateViterbit = onCall(
     }
 
     const title = (data.title as string) || (data.name as string) || '';
-    const startDate = getCustom('hired_start_date_job') || getCustom('start_date') || '';
     const hiringManagerId = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
     const hiringManager = hiringManagerId ? await fetchViterbitUser(hiringManagerId, apiKey) : '';
     const company = getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || '';
