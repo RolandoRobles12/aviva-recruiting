@@ -498,8 +498,13 @@ async function handleAprobado(
   const offerToken = generateToken();
   const offerExpiresAt = new Date(Date.now() + linkDurations.offerDays * 24 * 60 * 60 * 1000);
 
-  // Create candidate in Firestore
-  const candidateRef = db.collection('candidates').doc();
+  // Create candidate in Firestore.
+  // Using candidatureId as document ID guarantees uniqueness at the DB level —
+  // a concurrent duplicate webhook will simply overwrite the same document
+  // instead of creating a second record.
+  const candidateRef = candidatureId
+    ? db.collection('candidates').doc(candidatureId)
+    : db.collection('candidates').doc();
   await candidateRef.set({
     firstName,
     lastName,
