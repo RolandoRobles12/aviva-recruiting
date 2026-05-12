@@ -5,6 +5,10 @@ import { uploadAsset } from '../../services/storage';
 import { getBrandingSettings, saveBrandingSettings } from '../../services/settings';
 import type { BrandingSettings } from '../../types';
 
+function isMobile() {
+  return window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window;
+}
+
 export function BrandingTab() {
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
   const [companySigUrl, setCompanySigUrl] = useState<string | undefined>();
@@ -57,6 +61,8 @@ export function BrandingTab() {
         penColor: '#1e293b',
         minWidth: opts?.minWidth ?? 1.5,
         maxWidth: opts?.maxWidth ?? 3,
+        throttle: 16,
+        velocityFilterWeight: 0.7,
       });
       padRef.current = pad;
       pad.addEventListener('endStroke', () => setEmpty(pad.isEmpty()));
@@ -71,9 +77,29 @@ export function BrandingTab() {
 
   useEffect(() => {
     if (!loading) {
-      const t1 = setTimeout(initSigPad, 150);
-      const t2 = setTimeout(initInitialsPad, 150);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+      const delay = isMobile() ? 400 : 150;
+      const t1 = setTimeout(initSigPad, delay);
+      const t2 = setTimeout(initInitialsPad, delay);
+
+      let resizeTimer: ReturnType<typeof setTimeout>;
+      const handleResize = () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          initSigPad();
+          initInitialsPad();
+        }, 300);
+      };
+
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('orientationchange', handleResize);
+
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(resizeTimer);
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('orientationchange', handleResize);
+      };
     }
   }, [loading, initSigPad, initInitialsPad]);
 
@@ -284,7 +310,7 @@ export function BrandingTab() {
             </p>
             <div
               className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-white relative"
-              style={{ height: '130px' }}
+              style={{ height: '210px' }}
             >
               <canvas
                 ref={sigCanvasRef}
@@ -371,7 +397,7 @@ export function BrandingTab() {
             </div>
             <div
               className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-white relative"
-              style={{ height: '130px' }}
+              style={{ height: '180px' }}
             >
               <canvas
                 ref={initialsCanvasRef}

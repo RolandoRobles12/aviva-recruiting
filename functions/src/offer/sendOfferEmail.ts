@@ -78,14 +78,21 @@ export const sendOfferEmail = onCall(
       recruiterUid,
     });
 
-    await db.collection('email_logs').add({
-      candidateId,
-      templateType: 'offer',
-      sentTo: candidate.email,
-      sentAt: FieldValue.serverTimestamp(),
-      sentBy: recruiterUid,
-      success: true,
-    });
+    await Promise.all([
+      db.collection('email_logs').add({
+        candidateId,
+        templateType: 'offer',
+        sentTo: candidate.email,
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: recruiterUid,
+        success: true,
+      }),
+      db.collection('candidates').doc(candidateId).update({
+        status: 'offer_sent',
+        offerEmailSent: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
 
     return { success: true };
   }
