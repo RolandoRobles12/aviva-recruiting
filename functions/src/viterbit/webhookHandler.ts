@@ -541,8 +541,7 @@ export async function handleAprobado(
       ofertaEnviada: ofertaEnviadaId,
       documentos: documentosId,
       contrato: contratoId,
-      correos: correosId,
-      induccion: induccionId,
+      induccion: induccionId || correosId, // correos stage removed; fallback for legacy candidates
     },
   });
 
@@ -864,10 +863,9 @@ async function handleCorreos(
 }
 
 /**
- * Candidate reached "Inducción":
- * - Update status to 'induction'
- * - The induction email is sent by checkEmailTickets when accounts are provisioned.
- *   If manually moved here, just update the status.
+ * Candidate reached "Onboarding" (previously went through a separate Correos stage):
+ * 1. Create Jira ticket for IT to provision corporate email
+ * 2. Update status to 'email_pending' / 'induction'
  */
 async function handleInduccion(
   parsed: ParsedViterbitEvent,
@@ -884,16 +882,40 @@ async function handleInduccion(
 
   const { ref: candidateRef, data: candidate } = found;
 
-  // Only update if not already in induction
-  if (candidate.status !== 'induction') {
-    await candidateRef.update({
-      status: 'induction',
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+  // Don't create duplicate Jira tickets
+  if (candidate.jiraTicketKey) {
+    if (candidate.status !== 'induction' && candidate.status !== 'email_pending') {
+      await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
+    }
+    await logRef.update({ status: 'ignored', reason: 'Jira ticket already exists', candidateId: candidateRef.id });
+    return { action: 'ignored', candidateId: candidateRef.id };
   }
 
-  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
-  return { action: 'induction', candidateId: candidateRef.id };
+  // Create Jira ticket for corporate email provisioning
+  try {
+    const { ticketKey, ticketId } = await createEmailTicket({
+      candidateName: `${candidate.firstName} ${candidate.lastName}`,
+      position: candidate.position as string,
+      candidateId: candidateRef.id,
+      personalEmail: candidate.email as string,
+    });
+
+    await candidateRef.update({
+      status: 'email_pending',
+      jiraTicketKey: ticketKey,
+      jiraTicketId: ticketId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    console.info(`[webhook] Created Jira ticket ${ticketKey} for ${candidateRef.id}`);
+    await logRef.update({ status: 'processed', candidateId: candidateRef.id, jiraTicketKey: ticketKey });
+    return { action: 'email_pending', candidateId: candidateRef.id };
+  } catch (err) {
+    console.error('[webhook] Jira ticket creation failed at onboarding stage:', err);
+    await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
+    await logRef.update({ status: 'error', reason: `Jira ticket creation failed: ${err}`, candidateId: candidateRef.id });
+    return { action: 'induction', candidateId: candidateRef.id };
+  }
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -984,10 +1006,7 @@ export const viterbitWebhook = onRequest(
       } else if (matches(STAGE_CONTRATO.value())) {
         const result = await handleContrato(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
-      } else if (matches(STAGE_CORREOS.value())) {
-        const result = await handleCorreos(parsed, apiKey, logRef);
-        res.status(200).json({ ok: true, ...result });
-      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion') || matches('onboarding')) {
+      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion') || matches('onboarding') || matches(STAGE_CORREOS.value())) {
         const result = await handleInduccion(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
       } else {

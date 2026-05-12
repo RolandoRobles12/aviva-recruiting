@@ -68,6 +68,7 @@ export const onDocumentUploaded = onObjectFinalized(
     if (documentType === 'foto_profesional') {
       await updateCandidateDocument(candidateId, documentType, {
         status: 'valid',
+        storagePath: filePath,
         ocrResult: {
           rawText: '',
           extractedData: {},
@@ -162,6 +163,7 @@ export const onDocumentUploaded = onObjectFinalized(
 
       await updateCandidateDocument(candidateId, documentType, {
         status: newStatus,
+        storagePath: filePath,
         ocrResult,
         ...(rejectionReason && { rejectionReason }),
       });

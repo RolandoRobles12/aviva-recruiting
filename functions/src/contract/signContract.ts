@@ -142,12 +142,12 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
 // Resolves the "Correo corporativo" stage ID from the candidate's stored viterbitStageIds,
 // falling back to a live Viterbit API lookup when the value is missing (e.g. the stage was
 // added after the candidate record was created).
-async function resolveCorreosStageId(
+async function resolveOnboardingStageId(
   candidate: Record<string, unknown>,
   apiKey: string,
 ): Promise<string> {
   const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
-  if (stageIds?.correos) return stageIds.correos;
+  if (stageIds?.induccion) return stageIds.induccion;
 
   const jobId = candidate.viterbitJobId as string | undefined;
   if (!jobId || !apiKey) return '';
@@ -161,7 +161,9 @@ async function resolveCorreosStageId(
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
     const stages = (data.stages as Array<{ id: string; name: string }>) ?? [];
-    const match = stages.find((s) => s.name.toLowerCase().includes('correo corporativo'));
+    const match = stages.find(
+      (s) => s.name.toLowerCase().includes('onboarding') || s.name.toLowerCase().includes('inducción') || s.name.toLowerCase().includes('induccion'),
+    );
     return match?.id ?? '';
   } catch {
     return '';
@@ -393,32 +395,32 @@ export const signContract = onRequest(
       throw firestoreErr;
     }
 
-    // Move in Viterbit to "Correos" stage.
-    // resolveCorreosStageId falls back to a live API lookup when the stored ID is missing.
+    // Move in Viterbit to "Onboarding" stage (correos stage removed from pipeline).
+    // resolveOnboardingStageId falls back to a live API lookup when the stored ID is missing.
     const apiKey = VITERBIT_API_KEY.value();
     const candidatureId = candidate.viterbitCandidatureId as string | undefined;
-    const correosStageId = await resolveCorreosStageId(candidate, apiKey);
+    const onboardingStageId = await resolveOnboardingStageId(candidate, apiKey);
 
-    if (apiKey && correosStageId && candidatureId) {
+    if (apiKey && onboardingStageId && candidatureId) {
       try {
-        await moveToStage(candidatureId, correosStageId, apiKey);
+        await moveToStage(candidatureId, onboardingStageId, apiKey);
       } catch (err) {
-        console.error('[signContract] moveToStage correos error:', err);
+        console.error('[signContract] moveToStage onboarding error:', err);
         await db.collection('webhook_logs').add({
           type: 'moveToStage_error',
-          stage: 'correos',
+          stage: 'onboarding',
           candidateId,
           candidatureId,
-          correosStageId,
+          onboardingStageId,
           error: String(err),
           createdAt: FieldValue.serverTimestamp(),
         });
       }
     } else {
-      console.warn('[signContract] skipping moveToStage correos — missing ids', {
+      console.warn('[signContract] skipping moveToStage onboarding — missing ids', {
         candidateId,
         candidatureId,
-        correosStageId,
+        onboardingStageId,
         hasApiKey: !!apiKey,
       });
     }
