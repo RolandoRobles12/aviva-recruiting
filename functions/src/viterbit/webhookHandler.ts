@@ -1,6 +1,6 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as crypto from 'crypto';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -69,7 +69,7 @@ function buildInitialDocuments() {
 // }
 //
 // Candidate name/email are NOT included — must be fetched via API.
-interface ParsedViterbitEvent {
+export interface ParsedViterbitEvent {
   event: string;
   stageName: string;
   stageId: string;
@@ -397,7 +397,7 @@ async function findOfferTemplate(
  * 3. Create candidate record in Firestore (status: offer_sent)
  * 4. Send offer letter email
  */
-async function handleAprobado(
+export async function handleAprobado(
   parsed: ParsedViterbitEvent,
   apiKey: string,
   logRef: FirebaseFirestore.DocumentReference
@@ -967,8 +967,17 @@ export const viterbitWebhook = onRequest(
       };
 
       if (matches(STAGE_APROBADO.value())) {
-        const result = await handleAprobado(parsed, apiKey, logRef);
-        res.status(200).json({ ok: true, ...result });
+        // Delay processing 3 minutes so Viterbit has time to populate hired_info
+        const processAfter = new Date(Date.now() + 3 * 60 * 1000);
+        await db.collection('pending_approvals').add({
+          parsed,
+          processAfter: Timestamp.fromDate(processAfter),
+          processed: false,
+          logId: logRef.id,
+          queuedAt: FieldValue.serverTimestamp(),
+        });
+        await logRef.update({ status: 'queued', processAfter });
+        res.status(200).json({ ok: true, action: 'queued', processAfter });
       } else if (matches(STAGE_DOCUMENTOS.value())) {
         const result = await handleDocumentos(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
