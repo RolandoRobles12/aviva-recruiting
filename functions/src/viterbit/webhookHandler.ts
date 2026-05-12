@@ -806,63 +806,6 @@ async function handleContrato(
 }
 
 /**
- * Candidate reached "Correos":
- * 1. Create Jira ticket for IT to create corporate email
- * 2. Update status to 'email_pending'
- */
-async function handleCorreos(
-  parsed: ParsedViterbitEvent,
-  apiKey: string,
-  logRef: FirebaseFirestore.DocumentReference
-): Promise<{ action: string; candidateId?: string }> {
-  const { candidatureId, candidateViterbitId } = parsed;
-
-  const found = await findCandidateDoc(candidatureId, candidateViterbitId, apiKey);
-  if (!found) {
-    await logRef.update({ status: 'ignored', reason: 'no candidate record found for correos' });
-    return { action: 'ignored' };
-  }
-
-  const { ref: candidateRef, data: candidate } = found;
-
-  // Don't create duplicate tickets
-  if (candidate.jiraTicketKey) {
-    await logRef.update({ status: 'ignored', reason: 'Jira ticket already exists', candidateId: candidateRef.id });
-    return { action: 'ignored', candidateId: candidateRef.id };
-  }
-
-  // Create Jira ticket
-  try {
-    const { ticketKey, ticketId } = await createEmailTicket({
-      candidateName: `${candidate.firstName} ${candidate.lastName}`,
-      position: candidate.position as string,
-      candidateId: candidateRef.id,
-      personalEmail: candidate.email as string,
-    });
-
-    await candidateRef.update({
-      status: 'email_pending',
-      jiraTicketKey: ticketKey,
-      jiraTicketId: ticketId,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    console.info(`[webhook] Created Jira ticket ${ticketKey} for ${candidateRef.id}`);
-    await logRef.update({ status: 'processed', candidateId: candidateRef.id, jiraTicketKey: ticketKey });
-    return { action: 'email_pending', candidateId: candidateRef.id };
-  } catch (err) {
-    console.error('[webhook] Jira ticket creation failed:', err);
-    // Still update status so it can be retried
-    await candidateRef.update({
-      status: 'email_pending',
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    await logRef.update({ status: 'error', reason: `Jira ticket creation failed: ${err}`, candidateId: candidateRef.id });
-    return { action: 'error', candidateId: candidateRef.id };
-  }
-}
-
-/**
  * Candidate reached "Onboarding" (previously went through a separate Correos stage):
  * 1. Create Jira ticket for IT to provision corporate email
  * 2. Update status to 'email_pending' / 'induction'
