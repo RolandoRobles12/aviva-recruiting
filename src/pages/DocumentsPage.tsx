@@ -168,14 +168,16 @@ function Expediente({ c }: { c: Candidate }) {
           </div>
         </div>
 
-        {/* Dynamic questions */}
-        {dynamicQuestions.length > 0 && (
+        {/* Dynamic questions — only shown when candidate actually has customAnswers for them */}
+        {dynamicQuestions.length > 0 && dynamicQuestions.some((q) => (a?.customAnswers ?? {})[q.id]) && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Preguntas adicionales</p>
             <div className="space-y-0.5">
-              {dynamicQuestions.map((q) => (
-                <Row key={q.id} label={q.label} value={(a?.customAnswers ?? {})[q.id] ?? ''} />
-              ))}
+              {dynamicQuestions
+                .filter((q) => (a?.customAnswers ?? {})[q.id])
+                .map((q) => (
+                  <Row key={q.id} label={q.label} value={(a?.customAnswers ?? {})[q.id] ?? ''} />
+                ))}
             </div>
           </div>
         )}

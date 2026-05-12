@@ -1212,16 +1212,18 @@ function TabAnswers({ c }: { c: Candidate }) {
         <AnswerRow label="Parentesco" value={a?.contacto2Parentesco ? PARENTESCO_LABELS[a.contacto2Parentesco] : '—'} />
       </div>
 
-      {dynamicQuestions.length > 0 && (
+      {dynamicQuestions.length > 0 && dynamicQuestions.some((q) => (a?.customAnswers ?? {})[q.id]) && (
         <div className="border-t border-gray-100 pt-3">
           <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Preguntas adicionales</h4>
-          {dynamicQuestions.map((q) => (
-            <AnswerRow
-              key={q.id}
-              label={q.label}
-              value={(a?.customAnswers ?? {})[q.id] || '—'}
-            />
-          ))}
+          {dynamicQuestions
+            .filter((q) => (a?.customAnswers ?? {})[q.id])
+            .map((q) => (
+              <AnswerRow
+                key={q.id}
+                label={q.label}
+                value={(a?.customAnswers ?? {})[q.id] || '—'}
+              />
+            ))}
         </div>
       )}
     </div>
