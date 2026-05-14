@@ -146,7 +146,7 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
   };
   try {
     const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values&includes[]=department_profile`,
       { headers: { 'X-API-Key': apiKey } },
     );
     if (!resp.ok) return empty;
@@ -476,11 +476,11 @@ export async function handleAprobado(
 
   // Secondary idempotency check by email + jobId — catches race conditions where two
   // simultaneous webhooks both pass the first check before either creates the record.
-  if (candidateEmail && jobId) {
+  if (candidateEmail && resolvedJobId) {
     const emailCheck = await db
       .collection('candidates')
       .where('email', '==', candidateEmail)
-      .where('viterbitJobId', '==', jobId)
+      .where('viterbitJobId', '==', resolvedJobId)
       .limit(1)
       .get();
     if (!emailCheck.empty) {
@@ -536,7 +536,7 @@ export async function handleAprobado(
     viterbitDepartmentProfile: viterbitDepartmentProfile || null,
     // Viterbit IDs
     viterbitCandidatureId: candidatureId || null,
-    viterbitJobId: jobId,
+    viterbitJobId: resolvedJobId,
     viterbitStageIds: {
       ofertaEnviada: ofertaEnviadaId,
       documentos: documentosId,
