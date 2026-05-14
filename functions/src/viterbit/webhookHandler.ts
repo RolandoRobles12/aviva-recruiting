@@ -896,9 +896,7 @@ export const viterbitWebhook = onRequest(
         return;
       }
 
-      // Filter by allowed department profiles if configured.
-      // If the profile cannot be resolved (empty string), allow the webhook through —
-      // silently rejecting unresolvable profiles would cause candidates to be lost.
+      // Filter by allowed department profiles if configured
       const allowedProfiles = HIRING_PROFILES.value()
         .split(',')
         .map((p) => p.trim().toLowerCase())
@@ -906,7 +904,7 @@ export const viterbitWebhook = onRequest(
       if (allowedProfiles.length > 0) {
         const jobInfo = await fetchViterbitJob(jobId, apiKey);
         const profile = jobInfo.departmentProfile.toLowerCase();
-        if (profile && !allowedProfiles.some((allowed) => profile.includes(allowed))) {
+        if (!allowedProfiles.some((allowed) => profile.includes(allowed))) {
           await logRef.update({ status: 'ignored', reason: `profile "${jobInfo.departmentProfile}" not in allowed list` });
           res.status(200).json({ ok: true, action: 'ignored', reason: `profile "${jobInfo.departmentProfile}" not configured` });
           return;
