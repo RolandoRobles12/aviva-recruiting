@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "pending_approvals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "processed", "order": "ASCENDING" },
+        { "fieldPath": "processAfter", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "candidates",
       "queryScope": "COLLECTION",
       "fields": [
