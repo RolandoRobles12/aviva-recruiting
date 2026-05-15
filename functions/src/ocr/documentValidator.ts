@@ -121,7 +121,11 @@ Validaciones requeridas:
 3. ¿Se puede leer el nombre o razón social?
 4. ¿Incluye el domicilio fiscal?
 
-Datos a extraer: rfc, nombre_completo, domicilio_fiscal, regimen_fiscal.`,
+Datos a extraer:
+- rfc: el RFC completo con homoclave tal como aparece en el documento.
+- nombre_completo: el nombre completo de la persona. La constancia puede mostrar el nombre en campos separados ("Nombre(s)", "Primer Apellido", "Segundo Apellido") — combínalos en un solo valor, por ejemplo "ALEJANDRA LUNA GOMEZ".
+- domicilio_fiscal: dirección fiscal del contribuyente.
+- regimen_fiscal: régimen fiscal si aparece.`,
 
   carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
 
