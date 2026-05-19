@@ -535,6 +535,7 @@ export async function handleAprobado(
     viterbitCompany: viterbitCompany || null,
     viterbitDepartmentProfile: viterbitDepartmentProfile || null,
     // Viterbit IDs
+    viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
     viterbitJobId: resolvedJobId,
     viterbitStageIds: {
@@ -650,6 +651,7 @@ async function handleDocumentos(
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy: 'viterbit_webhook',
+    viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
     viterbitJobId: jobId,
   });
