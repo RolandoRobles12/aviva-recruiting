@@ -445,6 +445,7 @@ export async function handleAprobado(
     : '';
 
   const findStage = (name: string) =>
+    stages.find((s) => s.name.toLowerCase() === name.toLowerCase())?.id ??
     stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
 
   const ofertaEnviadaId = findStage('Oferta Enviada') ?? findStage('oferta') ?? '';
