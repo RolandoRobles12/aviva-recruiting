@@ -150,7 +150,7 @@ async function patchViterbitCandidateFile(
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const form = new FormData();
-    form.append(fieldName, new Blob([fileBuffer], { type: 'application/pdf' }), filename);
+    form.append(fieldName, new Blob([new Uint8Array(fileBuffer)], { type: 'application/pdf' }), filename);
     const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateId}`, {
       method: 'PATCH',
       headers: { 'X-API-Key': apiKey, 'Accept': 'application/json' },
