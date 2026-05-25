@@ -62,9 +62,22 @@ export const provisionAccountsManual = onCall(
     // Resolve corporate email: prefer Viterbit field, fall back to manually entered value
     const apiKey = VITERBIT_API_KEY.value();
     const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
+    const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
     let corporateEmail = manualEmail?.trim() || '';
 
-    if (viterbitCandidateId && apiKey) {
+    const extractCustomEmail = (json: Record<string, unknown>): string => {
+      const data = (json.data as Record<string, unknown>) ?? json;
+      const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
+      console.log('[provisionManual] custom_field_values keys:', Object.keys(customFields));
+      const raw = customFields.correo_corporativo;
+      if (raw && typeof raw === 'object' && 'value' in raw) {
+        return String((raw as Record<string, unknown>).value ?? '');
+      }
+      return (raw as string) || '';
+    };
+
+    // 1. Try candidate-level custom field
+    if (!corporateEmail && viterbitCandidateId && apiKey) {
       try {
         const resp = await fetch(
           `${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}?includes[]=custom_field_values`,
@@ -72,24 +85,44 @@ export const provisionAccountsManual = onCall(
         );
         if (resp.ok) {
           const json = (await resp.json()) as Record<string, unknown>;
-          const data = (json.data as Record<string, unknown>) ?? json;
-          const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
-          const raw = customFields.correo_corporativo;
-          const viterbitEmail = (raw && typeof raw === 'object' && 'value' in raw)
-            ? String((raw as Record<string, unknown>).value ?? '')
-            : (raw as string) || '';
-          console.log('[provisionManual] Viterbit correo_corporativo raw:', JSON.stringify(raw), '→', viterbitEmail);
-          if (viterbitEmail) corporateEmail = viterbitEmail;
+          corporateEmail = extractCustomEmail(json);
+          console.log('[provisionManual] candidate correo_corporativo →', corporateEmail || '(vacío)');
         } else {
-          console.warn('[provisionManual] Viterbit candidate fetch failed:', resp.status);
+          console.warn('[provisionManual] Viterbit GET candidate failed:', resp.status);
         }
       } catch (err) {
-        console.warn('[provisionManual] Could not fetch correo_corporativo from Viterbit:', err);
+        console.warn('[provisionManual] Could not fetch from Viterbit candidate:', err);
       }
     }
 
+    // 2. Fallback: try candidature-level custom field
+    if (!corporateEmail && viterbitCandidatureId && apiKey) {
+      try {
+        const resp = await fetch(
+          `${VITERBIT_API_BASE}/candidatures/${viterbitCandidatureId}?includes[]=custom_field_values`,
+          { headers: { 'X-API-Key': apiKey } },
+        );
+        if (resp.ok) {
+          const json = (await resp.json()) as Record<string, unknown>;
+          corporateEmail = extractCustomEmail(json);
+          console.log('[provisionManual] candidature correo_corporativo →', corporateEmail || '(vacío)');
+        } else {
+          console.warn('[provisionManual] Viterbit GET candidature failed:', resp.status);
+        }
+      } catch (err) {
+        console.warn('[provisionManual] Could not fetch from Viterbit candidature:', err);
+      }
+    }
+
+    console.log('[provisionManual] viterbitCandidateId:', viterbitCandidateId ?? 'null',
+      '| viterbitCandidatureId:', viterbitCandidatureId ?? 'null',
+      '| corporateEmail resolved:', corporateEmail || '(none)');
+
     if (!corporateEmail) {
-      throw new HttpsError('invalid-argument', 'No se encontró correo corporativo en Viterbit ni fue ingresado manualmente.');
+      throw new HttpsError(
+        'invalid-argument',
+        `No se encontró correo corporativo. viterbitCandidateId=${viterbitCandidateId ?? 'null'}, viterbitCandidatureId=${viterbitCandidatureId ?? 'null'}. Ingrésalo manualmente.`,
+      );
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(corporateEmail)) {
