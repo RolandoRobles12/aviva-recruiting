@@ -29,7 +29,7 @@ async function moveToViterbitStage(candidatureId: string, stageId: string, apiKe
 
 interface ProvisionRequest {
   candidateId: string;
-  corporateEmail: string;
+  corporateEmail?: string;
   skipSlack?: boolean;
 }
 
@@ -44,15 +44,10 @@ export const provisionAccountsManual = onCall(
       throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
     }
 
-    const { candidateId, corporateEmail, skipSlack = false } = request.data as ProvisionRequest;
+    const { candidateId, corporateEmail: manualEmail, skipSlack = false } = request.data as ProvisionRequest;
 
-    if (!candidateId || !corporateEmail) {
-      throw new HttpsError('invalid-argument', 'Se requiere candidateId y corporateEmail.');
-    }
-
-    // Basic email validation
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(corporateEmail)) {
-      throw new HttpsError('invalid-argument', 'El correo corporativo no es válido.');
+    if (!candidateId) {
+      throw new HttpsError('invalid-argument', 'Se requiere candidateId.');
     }
 
     const docRef = db.collection('candidates').doc(candidateId);
@@ -63,6 +58,36 @@ export const provisionAccountsManual = onCall(
     }
 
     const candidate = doc.data()!;
+
+    // Resolve corporate email: prefer Viterbit field, fall back to manually entered value
+    const apiKey = VITERBIT_API_KEY.value();
+    const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
+    let corporateEmail = manualEmail?.trim() || '';
+
+    if (viterbitCandidateId && apiKey) {
+      try {
+        const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}`, {
+          headers: { 'X-API-Key': apiKey },
+        });
+        if (resp.ok) {
+          const json = (await resp.json()) as Record<string, unknown>;
+          const data = (json.data as Record<string, unknown>) ?? json;
+          const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
+          const viterbitEmail = (customFields.correo_corporativo as string) || '';
+          if (viterbitEmail) corporateEmail = viterbitEmail;
+        }
+      } catch (err) {
+        console.warn('[provisionManual] Could not fetch correo_corporativo from Viterbit:', err);
+      }
+    }
+
+    if (!corporateEmail) {
+      throw new HttpsError('invalid-argument', 'No se encontró correo corporativo en Viterbit ni fue ingresado manualmente.');
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(corporateEmail)) {
+      throw new HttpsError('invalid-argument', 'El correo corporativo no es válido.');
+    }
 
     // Provision HubSpot (always) + dual Slack (optional)
     const hubspotPromise = createHubSpotUser({
@@ -82,6 +107,7 @@ export const provisionAccountsManual = onCall(
     const [hubspotResult, slackResult] = await Promise.allSettled([hubspotPromise, slackPromise]);
 
     const hubspotOk = hubspotResult.status === 'fulfilled';
+    const hubspotOwnerId = hubspotResult.status === 'fulfilled' ? (hubspotResult.value.ownerId ?? null) : null;
     const slackValue = slackResult.status === 'fulfilled' ? slackResult.value : null;
     const slackPrimaryOk = slackValue?.primary.ok ?? false;
     const slackGuestOk = slackValue?.guest.ok ?? false;
@@ -105,11 +131,11 @@ export const provisionAccountsManual = onCall(
     if (hubspotOk) {
       firestoreUpdate.corporateEmail = corporateEmail;
       firestoreUpdate.status = 'induction';
+      if (hubspotOwnerId) firestoreUpdate.hubspotOwnerId = hubspotOwnerId;
     }
     await docRef.update(firestoreUpdate);
 
     // Move candidate to "Inducción" stage in Viterbit
-    const apiKey = VITERBIT_API_KEY.value();
     const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
     const viterbitStageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
     const induccionStageId = viterbitStageIds?.induccion;
@@ -150,6 +176,7 @@ export const provisionAccountsManual = onCall(
       hubspotCreated: hubspotOk,
       slackPrimaryInvited: slackPrimaryOk,
       slackGuestInvited: slackGuestOk,
+      corporateEmail,
       hubspotError: hubspotResult.status === 'rejected' ? String(hubspotResult.reason) : undefined,
       slackError: slackResult.status === 'rejected' ? String(slackResult.reason) : undefined,
     };

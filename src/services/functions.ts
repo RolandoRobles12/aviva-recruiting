@@ -24,12 +24,13 @@ export interface ProvisionResult {
   hubspotCreated: boolean;
   slackPrimaryInvited: boolean;
   slackGuestInvited: boolean;
+  corporateEmail?: string;
   hubspotError?: string;
   slackError?: string;
 }
 
 export const provisionAccountsManual = httpsCallable<
-  { candidateId: string; corporateEmail: string; skipSlack?: boolean },
+  { candidateId: string; corporateEmail?: string; skipSlack?: boolean },
   ProvisionResult
 >(functions, 'provisionAccountsManual');
 

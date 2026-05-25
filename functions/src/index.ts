@@ -13,6 +13,7 @@ export { signContract, getContract } from './contract/signContract';
 export { analyzePdfTemplateEndpoint as analyzePdfTemplate } from './contract/analyzePdf';
 export { analyzeContractVariables } from './contract/analyzeContractVariables';
 export { checkEmailTickets } from './integrations/checkEmailTickets';
+export { checkViterbitEmail } from './integrations/checkViterbitEmail';
 export { provisionAccountsManual } from './integrations/provisionAccounts';
 export { backfillCandidateDocuments } from './utils/backfillDocuments';
 export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';
