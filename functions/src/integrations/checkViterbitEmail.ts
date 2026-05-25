@@ -7,27 +7,28 @@ import { createHubSpotUser } from './hubspotService';
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
-async function fetchCorporateEmailFromViterbit(
-  viterbitCandidateId: string,
-  apiKey: string,
-): Promise<string | null> {
+function extractCorporateEmailFromJson(json: Record<string, unknown>): string {
+  const data = (json.data as Record<string, unknown>) ?? json;
+  const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
+  const raw = customFields.correo_corporativo;
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as Record<string, unknown>).value ?? '');
+  }
+  return (raw as string) || '';
+}
+
+async function fetchFromViterbitEndpoint(url: string, apiKey: string): Promise<string> {
   try {
-    const resp = await fetch(
-      `${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}?includes[]=custom_field_values`,
-      { headers: { 'X-API-Key': apiKey } },
-    );
-    if (!resp.ok) return null;
+    const resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    if (!resp.ok) {
+      console.warn(`[checkViterbitEmail] GET ${url} failed: ${resp.status}`);
+      return '';
+    }
     const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
-    const raw = customFields.correo_corporativo;
-    const email = (raw && typeof raw === 'object' && 'value' in raw)
-      ? String((raw as Record<string, unknown>).value ?? '')
-      : (raw as string) || '';
-    return email || null;
+    return extractCorporateEmailFromJson(json);
   } catch (err) {
-    console.error('[checkViterbitEmail] fetchCorporateEmail error:', err);
-    return null;
+    console.error(`[checkViterbitEmail] fetch error for ${url}:`, err);
+    return '';
   }
 }
 
@@ -37,14 +38,30 @@ async function processCandidateEmail(
 ): Promise<boolean> {
   const candidate = doc.data();
   const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
+  const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
 
-  if (!viterbitCandidateId) {
-    console.warn(`[checkViterbitEmail] ${doc.id} has no viterbitCandidateId — skipping`);
-    return false;
+  let corporateEmail = '';
+
+  // Try candidate-level custom field first
+  if (viterbitCandidateId) {
+    corporateEmail = await fetchFromViterbitEndpoint(
+      `${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}?includes[]=custom_field_values`,
+      apiKey,
+    );
   }
 
-  const corporateEmail = await fetchCorporateEmailFromViterbit(viterbitCandidateId, apiKey);
-  if (!corporateEmail) return false;
+  // Fallback: try candidature-level custom field
+  if (!corporateEmail && viterbitCandidatureId) {
+    corporateEmail = await fetchFromViterbitEndpoint(
+      `${VITERBIT_API_BASE}/candidatures/${viterbitCandidatureId}?includes[]=custom_field_values`,
+      apiKey,
+    );
+  }
+
+  if (!corporateEmail) {
+    console.warn(`[checkViterbitEmail] ${doc.id}: no correo_corporativo found (candidateId=${viterbitCandidateId ?? 'null'}, candidatureId=${viterbitCandidatureId ?? 'null'})`);
+    return false;
+  }
 
   console.info(`[checkViterbitEmail] correo_corporativo found for ${doc.id}: ${corporateEmail}`);
 

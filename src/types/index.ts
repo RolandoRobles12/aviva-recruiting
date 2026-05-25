@@ -172,6 +172,7 @@ export interface Candidate {
   jiraTicketKey?: string;
   jiraTicketId?: string;
   // Viterbit integration
+  viterbitCandidateId?: string;
   viterbitCandidatureId?: string;
   viterbitJobId?: string;
   viterbitStageIds?: {
