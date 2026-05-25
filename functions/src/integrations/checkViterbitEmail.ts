@@ -43,27 +43,31 @@ async function processCandidateEmail(
 
   console.info(`[checkViterbitEmail] correo_corporativo found for ${doc.id}: ${corporateEmail}`);
 
-  // Create HubSpot user
+  // Create HubSpot user and fetch owner ID
   let hubspotCreated = false;
+  let hubspotOwnerId: string | null = null;
   try {
-    await createHubSpotUser({
+    const result = await createHubSpotUser({
       corporateEmail,
       firstName: candidate.firstName as string,
       lastName: candidate.lastName as string,
     });
     hubspotCreated = true;
+    hubspotOwnerId = result.ownerId;
   } catch (err) {
     console.error(`[checkViterbitEmail] HubSpot creation failed for ${doc.id}:`, err);
   }
 
   // Update Firestore
-  await doc.ref.update({
+  const firestoreUpdate: Record<string, unknown> = {
     corporateEmail,
     status: 'induction',
     hubspotCreated,
     emailProvisionedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+  if (hubspotOwnerId) firestoreUpdate.hubspotOwnerId = hubspotOwnerId;
+  await doc.ref.update(firestoreUpdate);
 
   return true;
 }

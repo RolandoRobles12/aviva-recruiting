@@ -82,6 +82,7 @@ export const provisionAccountsManual = onCall(
     const [hubspotResult, slackResult] = await Promise.allSettled([hubspotPromise, slackPromise]);
 
     const hubspotOk = hubspotResult.status === 'fulfilled';
+    const hubspotOwnerId = hubspotResult.status === 'fulfilled' ? (hubspotResult.value.ownerId ?? null) : null;
     const slackValue = slackResult.status === 'fulfilled' ? slackResult.value : null;
     const slackPrimaryOk = slackValue?.primary.ok ?? false;
     const slackGuestOk = slackValue?.guest.ok ?? false;
@@ -105,6 +106,7 @@ export const provisionAccountsManual = onCall(
     if (hubspotOk) {
       firestoreUpdate.corporateEmail = corporateEmail;
       firestoreUpdate.status = 'induction';
+      if (hubspotOwnerId) firestoreUpdate.hubspotOwnerId = hubspotOwnerId;
     }
     await docRef.update(firestoreUpdate);
 
