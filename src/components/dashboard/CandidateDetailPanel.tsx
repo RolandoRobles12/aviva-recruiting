@@ -199,17 +199,17 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   };
 
   const handleProvision = async () => {
-    if (!corpEmail.trim()) return;
     setProvisioning(true);
     setProvisionError('');
     setProvisionResult(null);
     try {
       const res = await provisionAccountsManual({
         candidateId: c.id,
-        corporateEmail: corpEmail.trim(),
+        corporateEmail: corpEmail.trim() || undefined,
         skipSlack: true,
       });
       setProvisionResult(res.data);
+      if (res.data.corporateEmail) setCorpEmail(res.data.corporateEmail);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setProvisionError(msg);
@@ -1103,20 +1103,20 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
       {/* Provisioning form */}
       <Section title="Crear cuentas corporativas">
         <p className="text-[11px] text-gray-400 mb-3">
-          Ingresa el correo corporativo para crear las cuentas.
+          Si el correo ya está en Viterbit se detecta automáticamente. De lo contrario, ingrésalo manualmente.
         </p>
         <div className="space-y-2">
           <input
             type="email"
             value={corpEmail}
             onChange={(e) => setCorpEmail(e.target.value)}
-            placeholder="nombre@avivacredito.com"
+            placeholder="nombre@avivacredito.com (opcional)"
             disabled={provisioning}
             className="w-full input-field text-xs py-2"
           />
           <button
             onClick={onProvision}
-            disabled={provisioning || !corpEmail.trim()}
+            disabled={provisioning}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
           >
             {provisioning ? (
