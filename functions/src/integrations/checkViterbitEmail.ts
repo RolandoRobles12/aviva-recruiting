@@ -12,14 +12,19 @@ async function fetchCorporateEmailFromViterbit(
   apiKey: string,
 ): Promise<string | null> {
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}?includes[]=custom_field_values`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
     if (!resp.ok) return null;
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
     const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
-    return (customFields.correo_corporativo as string) || null;
+    const raw = customFields.correo_corporativo;
+    const email = (raw && typeof raw === 'object' && 'value' in raw)
+      ? String((raw as Record<string, unknown>).value ?? '')
+      : (raw as string) || '';
+    return email || null;
   } catch (err) {
     console.error('[checkViterbitEmail] fetchCorporateEmail error:', err);
     return null;
