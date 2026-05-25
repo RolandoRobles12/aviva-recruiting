@@ -142,19 +142,16 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
 async function patchViterbitCandidateFile(
   candidateId: string,
   fieldName: string,
-  fileBuffer: Buffer,
-  filename: string,
+  fileUrl: string,
   apiKey: string,
 ): Promise<void> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const form = new FormData();
-    form.append(fieldName, new Blob([new Uint8Array(fileBuffer)], { type: 'application/pdf' }), filename);
     const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateId}`, {
       method: 'PATCH',
-      headers: { 'X-API-Key': apiKey, 'Accept': 'application/json' },
-      body: form,
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ custom_field_values: { [fieldName]: fileUrl } }),
       signal: controller.signal,
     });
     if (!resp.ok) {
@@ -456,7 +453,7 @@ export const signContract = onRequest(
     const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
     if (apiKey && viterbitCandidateId) {
       try {
-        await patchViterbitCandidateFile(viterbitCandidateId, 'contrato_firmado', mergedPdfBuffer, 'contrato_firmado.pdf', apiKey);
+        await patchViterbitCandidateFile(viterbitCandidateId, 'contrato_firmado', pdfUrl, apiKey);
       } catch (err) {
         console.error('[signContract] patchViterbitCandidateFile contrato_firmado error:', err);
       }
