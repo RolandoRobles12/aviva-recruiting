@@ -38,6 +38,33 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
+async function patchViterbitCandidateFile(
+  candidateId: string,
+  fieldName: string,
+  fileBuffer: Buffer,
+  filename: string,
+  apiKey: string,
+): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const form = new FormData();
+    form.append(fieldName, new Blob([fileBuffer], { type: 'application/pdf' }), filename);
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateId}`, {
+      method: 'PATCH',
+      headers: { 'X-API-Key': apiKey, 'Accept': 'application/json' },
+      body: form,
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`patchViterbitCandidateFile → HTTP ${resp.status}: ${text}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 
 // ─── Helper: interpolate template variables ────────────────────────────────────
 
@@ -359,6 +386,14 @@ export const signOffer = onRequest(
       if (apiKey && documentosStageId && candidatureId) {
         void moveToStage(candidatureId, documentosStageId, apiKey).catch((err) =>
           console.error('[signOffer] moveToStage documentos error:', err)
+        );
+      }
+
+      // ── Update carta_oferta field in Viterbit (fire-and-forget) ──────────────
+      const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
+      if (apiKey && viterbitCandidateId) {
+        void patchViterbitCandidateFile(viterbitCandidateId, 'carta_oferta', pdfBuffer, 'carta_oferta_firmada.pdf', apiKey).catch((err) =>
+          console.error('[signOffer] patchViterbitCandidateFile carta_oferta error:', err)
         );
       }
 
