@@ -176,7 +176,6 @@ export const provisionAccountsManual = onCall(
     await docRef.update(firestoreUpdate);
 
     // Move candidate to "Inducción" stage in Viterbit
-    const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
     const viterbitStageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
     const induccionStageId = viterbitStageIds?.induccion;
     if (apiKey && viterbitCandidatureId && induccionStageId) {
