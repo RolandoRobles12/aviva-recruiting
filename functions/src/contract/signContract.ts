@@ -139,6 +139,29 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
+async function patchViterbitCandidate(
+  candidateId: string,
+  fields: Record<string, string>,
+  apiKey: string,
+): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateId}`, {
+      method: 'PATCH',
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(fields),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`patchViterbitCandidate → HTTP ${resp.status}: ${text}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Resolves the "Correo corporativo" stage ID from the candidate's stored viterbitStageIds,
 // falling back to a live Viterbit API lookup when the value is missing (e.g. the stage was
 // added after the candidate record was created).
@@ -423,6 +446,16 @@ export const signContract = onRequest(
         onboardingStageId,
         hasApiKey: !!apiKey,
       });
+    }
+
+    // ── Update contrato_firmado field in Viterbit ─────────────────────────────
+    const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
+    if (apiKey && viterbitCandidateId) {
+      try {
+        await patchViterbitCandidate(viterbitCandidateId, { contrato_firmado: pdfUrl }, apiKey);
+      } catch (err) {
+        console.error('[signContract] patchViterbitCandidate contrato_firmado error:', err);
+      }
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()
