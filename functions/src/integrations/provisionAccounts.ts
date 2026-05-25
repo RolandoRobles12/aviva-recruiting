@@ -72,13 +72,19 @@ export const provisionAccountsManual = onCall(
         if (resp.ok) {
           const json = (await resp.json()) as Record<string, unknown>;
           const data = (json.data as Record<string, unknown>) ?? json;
+          console.log('[provisionManual] Viterbit candidate keys:', Object.keys(data).join(', '));
+          console.log('[provisionManual] custom_field_values raw:', JSON.stringify(data.custom_field_values));
           const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
           const viterbitEmail = (customFields.correo_corporativo as string) || '';
           if (viterbitEmail) corporateEmail = viterbitEmail;
+        } else {
+          console.warn('[provisionManual] Viterbit fetch status:', resp.status);
         }
       } catch (err) {
         console.warn('[provisionManual] Could not fetch correo_corporativo from Viterbit:', err);
       }
+    } else {
+      console.warn('[provisionManual] Skipping Viterbit fetch — viterbitCandidateId:', viterbitCandidateId, 'hasApiKey:', !!apiKey);
     }
 
     if (!corporateEmail) {
