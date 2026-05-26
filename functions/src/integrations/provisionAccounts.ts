@@ -4,9 +4,6 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { createHubSpotUser } from './hubspotService';
 import { inviteSlackDual } from './slackService';
-import { sendEmail } from '../email/gmailClient';
-import { inductionTemplate } from '../email/templates';
-import { getLogoUrl } from '../utils/branding';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -180,34 +177,6 @@ export const provisionAccountsManual = onCall(
     const induccionStageId = viterbitStageIds?.induccion;
     if (apiKey && viterbitCandidatureId && induccionStageId) {
       void moveToViterbitStage(viterbitCandidatureId, induccionStageId, apiKey);
-    }
-
-    // Send induction email
-    try {
-      const logoUrl = await getLogoUrl();
-      const { subject, html } = inductionTemplate({
-        firstName: candidate.firstName as string,
-        lastName: candidate.lastName as string,
-        position: candidate.position as string,
-        corporateEmail,
-        logoUrl,
-      });
-      await sendEmail({
-        to: candidate.email as string,
-        subject,
-        html,
-        recruiterUid: request.auth.uid,
-      });
-      await db.collection('email_logs').add({
-        candidateId,
-        templateType: 'induction',
-        sentTo: candidate.email,
-        sentAt: FieldValue.serverTimestamp(),
-        sentBy: 'manual_provision',
-        success: true,
-      });
-    } catch (err) {
-      console.error(`[provisionManual] Failed to send induction email for ${candidateId}:`, err);
     }
 
     return {
