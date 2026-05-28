@@ -464,12 +464,12 @@ export const signContract = onRequest(
     // Create candidate folder in Google Drive
     if (candidatureId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
-      void createCandidateDriveFolder(
+      createCandidateDriveFolder(
         candidate.firstName as string,
         candidate.lastName as string,
         candidatureId,
         driveServiceAccount,
-      );
+      ).catch((err: unknown) => console.error('[signContract] Drive folder error:', err));
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()
