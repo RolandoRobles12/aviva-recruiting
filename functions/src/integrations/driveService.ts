@@ -19,10 +19,10 @@ function getDriveClient(serviceAccount: object) {
 export async function createCandidateDriveFolder(
   firstName: string,
   lastName: string,
-  viterbitCandidatureId: string,
+  viterbitCandidateId: string,
   serviceAccountJson: object,
 ): Promise<string> {
-  const folderName = `${firstName} ${lastName}`.toUpperCase().trim() + `_${viterbitCandidatureId}`;
+  const folderName = `${firstName} ${lastName}`.toUpperCase().trim() + `_${viterbitCandidateId}`;
   const drive = getDriveClient(serviceAccountJson);
 
   // Check if folder already exists to avoid duplicates

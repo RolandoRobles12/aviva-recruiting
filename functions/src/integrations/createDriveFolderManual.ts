@@ -28,16 +28,16 @@ export const createDriveFolderManual = onCall(
     const candidate = doc.data()!;
     const firstName = candidate.firstName as string;
     const lastName = candidate.lastName as string;
-    const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
+    const viterbitCandidateId = (candidate.viterbitCandidateId ?? candidate.viterbitCandidatureId) as string | undefined;
 
-    if (!viterbitCandidatureId) {
-      throw new HttpsError('failed-precondition', 'El candidato no tiene viterbitCandidatureId.');
+    if (!viterbitCandidateId) {
+      throw new HttpsError('failed-precondition', 'El candidato no tiene viterbitCandidateId.');
     }
 
     const serviceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
     let folderId: string;
     try {
-      folderId = await createCandidateDriveFolder(firstName, lastName, viterbitCandidatureId, serviceAccount);
+      folderId = await createCandidateDriveFolder(firstName, lastName, viterbitCandidateId, serviceAccount);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[createDriveFolderManual] Drive error:', msg);
