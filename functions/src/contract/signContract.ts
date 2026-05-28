@@ -1,5 +1,5 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
+import { defineString, defineSecret } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
@@ -15,8 +15,10 @@ import { getLogoUrl, getCompanySignatureUrl, getLegalRepInitialsUrl } from '../u
 import { sendEmail } from '../email/gmailClient';
 import { signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
+import { createCandidateDriveFolder } from '../integrations/driveService';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
+const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
 const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
@@ -197,7 +199,7 @@ async function resolveOnboardingStageId(
 // ─── Sign Contract ────────────────────────────────────────────────────────────
 
 export const signContract = onRequest(
-  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300, memory: '1GiB' },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300, memory: '1GiB', secrets: [DRIVE_SERVICE_ACCOUNT] },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -457,6 +459,17 @@ export const signContract = onRequest(
       } catch (err) {
         console.error('[signContract] patchViterbitCandidateFile contrato_firmado error:', err);
       }
+    }
+
+    // Create candidate folder in Google Drive
+    if (candidatureId) {
+      const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
+      void createCandidateDriveFolder(
+        candidate.firstName as string,
+        candidate.lastName as string,
+        candidatureId,
+        driveServiceAccount,
+      );
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()
