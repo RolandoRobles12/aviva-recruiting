@@ -34,10 +34,13 @@ export const createDriveFolderManual = onCall(
     }
 
     const serviceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
-    const folderId = await createCandidateDriveFolder(firstName, lastName, viterbitCandidatureId, serviceAccount);
-
-    if (!folderId) {
-      throw new HttpsError('internal', 'No se pudo crear la carpeta en Drive.');
+    let folderId: string;
+    try {
+      folderId = await createCandidateDriveFolder(firstName, lastName, viterbitCandidatureId, serviceAccount);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[createDriveFolderManual] Drive error:', msg);
+      throw new HttpsError('internal', `Drive: ${msg}`);
     }
 
     await docRef.update({
