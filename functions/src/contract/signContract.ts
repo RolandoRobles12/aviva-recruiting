@@ -463,13 +463,14 @@ export const signContract = onRequest(
     }
 
     // Create candidate folder in Google Drive and sync valid documents (fire-and-forget)
-    if (candidatureId) {
+    const driveCandidateId = (candidate.viterbitCandidateId ?? candidate.viterbitCandidatureId) as string | undefined;
+    if (driveCandidateId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
       const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
       createCandidateDriveFolder(
         candidate.firstName as string,
         candidate.lastName as string,
-        candidatureId,
+        driveCandidateId,
         driveServiceAccount,
       ).then(async (folderId) => {
         await candidateDoc.ref.update({ driveFolderId: folderId, updatedAt: FieldValue.serverTimestamp() });
