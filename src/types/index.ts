@@ -171,6 +171,8 @@ export interface Candidate {
   corporateEmail?: string;
   jiraTicketKey?: string;
   jiraTicketId?: string;
+  // Google Drive
+  driveFolderId?: string;
   // Viterbit integration
   viterbitCandidateId?: string;
   viterbitCandidatureId?: string;

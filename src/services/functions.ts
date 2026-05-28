@@ -53,3 +53,8 @@ export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
   { success: boolean; salary: string | null; startDate: string | null; position: string | null }
 >(functions, 'refreshCandidateViterbit');
+
+export const createDriveFolderManual = httpsCallable<
+  { candidateId: string },
+  { success: boolean; folderId: string; folderUrl: string }
+>(functions, 'createDriveFolderManual');

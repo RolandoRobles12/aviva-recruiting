@@ -35,6 +35,7 @@ import {
   sendInvitationEmail,
   sendContractEmail,
   refreshCandidateViterbit,
+  createDriveFolderManual,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
@@ -128,6 +129,10 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
   const [provisionError, setProvisionError] = useState('');
   const [showDisqualifyModal, setShowDisqualifyModal] = useState(false);
+  const [creatingDriveFolder, setCreatingDriveFolder] = useState(false);
+  const [driveFolderUrl, setDriveFolderUrl] = useState(
+    c.driveFolderId ? `https://drive.google.com/drive/folders/${c.driveFolderId}` : ''
+  );
 
   // Reset tab/notes when candidate changes
   useEffect(() => {
@@ -215,6 +220,18 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
       setProvisionError(msg);
     } finally {
       setProvisioning(false);
+    }
+  };
+
+  const handleCreateDriveFolder = async () => {
+    setCreatingDriveFolder(true);
+    try {
+      const res = await createDriveFolderManual({ candidateId: c.id });
+      setDriveFolderUrl(res.data.folderUrl);
+    } catch (err: unknown) {
+      console.error('[createDriveFolder]', err);
+    } finally {
+      setCreatingDriveFolder(false);
     }
   };
 
@@ -438,6 +455,39 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               )}
             </div>
           )}
+
+          {/* Drive folder */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
+              <FolderOpen size={13} className="text-green-500" />
+              Expediente Drive
+            </h4>
+            {driveFolderUrl ? (
+              <a
+                href={driveFolderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2.5 py-2 hover:bg-green-100 transition-colors"
+              >
+                <FolderOpen size={12} />
+                <span className="flex-1 truncate font-medium">Ver carpeta en Drive</span>
+                <ExternalLink size={11} />
+              </a>
+            ) : (
+              <button
+                onClick={handleCreateDriveFolder}
+                disabled={creatingDriveFolder}
+                className="w-full flex items-center justify-center gap-2 bg-green-600 text-white px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors disabled:opacity-60"
+              >
+                {creatingDriveFolder ? (
+                  <RefreshCw size={12} className="animate-spin" />
+                ) : (
+                  <FolderOpen size={12} />
+                )}
+                {creatingDriveFolder ? 'Creando...' : 'Crear carpeta en Drive'}
+              </button>
+            )}
+          </div>
 
           {/* Quick actions */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
