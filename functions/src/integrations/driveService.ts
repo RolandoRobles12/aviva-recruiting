@@ -28,6 +28,8 @@ export async function createCandidateDriveFolder(
   const existing = await drive.files.list({
     q: `name='${folderName}' and '${EXPEDIENTES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id,name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
 
   if (existing.data.files && existing.data.files.length > 0) {
@@ -42,6 +44,7 @@ export async function createCandidateDriveFolder(
       parents: [EXPEDIENTES_FOLDER_ID],
     },
     fields: 'id',
+    supportsAllDrives: true,
   });
 
   console.log(`[driveService] Folder created: ${folderName} (${res.data.id})`);
