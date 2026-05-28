@@ -14,15 +14,28 @@ function mimeTypeFromPath(storagePath: string): string {
   return map[ext] ?? 'application/octet-stream';
 }
 
+async function fetchBuffer(url: string): Promise<Buffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+export interface ExtraFile {
+  name: string;
+  url: string;
+}
+
 /**
  * Downloads every valid document from Firebase Storage and uploads it to the
- * candidate's Drive folder. Errors on individual files are logged and skipped
- * so a single bad file doesn't abort the entire sync.
+ * candidate's Drive folder. Optionally uploads additional files from public URLs
+ * (e.g. signed offer PDF, signed contract PDF). Errors on individual files are
+ * logged and skipped so a single bad file doesn't abort the entire sync.
  */
 export async function syncValidDocumentsToDriveFolder(
   folderId: string,
   documents: Record<string, { status?: string; storagePath?: string }>,
   serviceAccountJson: object,
+  extraFiles?: ExtraFile[],
 ): Promise<void> {
   const bucket = getStorage().bucket();
 
@@ -40,6 +53,16 @@ export async function syncValidDocumentsToDriveFolder(
       console.log(`[driveSync] Uploaded ${fileName} → ${folderId}`);
     } catch (err) {
       console.error(`[driveSync] Failed to upload ${docType}:`, err);
+    }
+  }
+
+  for (const extra of extraFiles ?? []) {
+    try {
+      const buffer = await fetchBuffer(extra.url);
+      await uploadFileToDriveFolder(folderId, extra.name, 'application/pdf', buffer, serviceAccountJson);
+      console.log(`[driveSync] Uploaded extra file ${extra.name} → ${folderId}`);
+    } catch (err) {
+      console.error(`[driveSync] Failed to upload extra file ${extra.name}:`, err);
     }
   }
 }
