@@ -17,6 +17,8 @@ import { signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { createCandidateDriveFolder } from '../integrations/driveService';
 import { syncValidDocumentsToDriveFolder } from '../integrations/driveSync';
+import { appendCandidateRow } from '../integrations/sheetsService';
+import { getRecruiterName } from '../utils/recruiters';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
@@ -194,6 +196,40 @@ async function resolveOnboardingStageId(
     return match?.id ?? '';
   } catch {
     return '';
+  }
+}
+
+// ─── Viterbit job helper for Sheets ─────────────────────────────────────────
+
+async function fetchJobForSheets(
+  jobId: string,
+  apiKey: string,
+): Promise<{ externalId: string | undefined; recruiterName: string }> {
+  try {
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=custom_field_values`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
+    if (!resp.ok) return { externalId: undefined, recruiterName: '' };
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    const externalId = (data.external_id as string) || undefined;
+    const custom = (data.custom_field_values as Record<string, unknown>) ?? {};
+    const reclutadorId = custom.reclutador as string | undefined;
+    let recruiterName = '';
+    if (reclutadorId) {
+      const uResp = await fetch(`${VITERBIT_API_BASE}/users/${reclutadorId}`, {
+        headers: { 'X-API-Key': apiKey },
+      });
+      if (uResp.ok) {
+        const uJson = (await uResp.json()) as Record<string, unknown>;
+        const uData = (uJson.data as Record<string, unknown>) ?? uJson;
+        recruiterName = (uData.full_name as string) ?? '';
+      }
+    }
+    return { externalId, recruiterName };
+  } catch {
+    return { externalId: undefined, recruiterName: '' };
   }
 }
 
@@ -462,7 +498,7 @@ export const signContract = onRequest(
       }
     }
 
-    // Create candidate folder in Google Drive and sync valid documents (fire-and-forget)
+    // Create Drive folder → sync docs → append Sheets row (all fire-and-forget)
     const driveCandidateId = (candidate.viterbitCandidateId ?? candidate.viterbitCandidatureId) as string | undefined;
     if (driveCandidateId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
@@ -472,6 +508,7 @@ export const signContract = onRequest(
       ];
       const offerPdfUrl = candidate.offerPdfUrl as string | undefined;
       if (offerPdfUrl) extraFiles.push({ name: 'Carta Oferta Firmada.pdf', url: offerPdfUrl });
+
       createCandidateDriveFolder(
         candidate.firstName as string,
         candidate.lastName as string,
@@ -480,7 +517,23 @@ export const signContract = onRequest(
       ).then(async (folderId) => {
         await candidateDoc.ref.update({ driveFolderId: folderId, updatedAt: FieldValue.serverTimestamp() });
         await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount, extraFiles);
-      }).catch((err: unknown) => console.error('[signContract] Drive error:', err));
+
+        // Append row to Google Sheets
+        const viterbitJobId = candidate.viterbitJobId as string | undefined;
+        const apiKey = VITERBIT_API_KEY.value();
+        const { externalId, recruiterName: viterbitRecruiter } = viterbitJobId && apiKey
+          ? await fetchJobForSheets(viterbitJobId, apiKey)
+          : { externalId: undefined, recruiterName: '' };
+        const recruiterName = viterbitRecruiter
+          || await getRecruiterName(candidate.createdBy as string).catch(() => '');
+        await appendCandidateRow(
+          { ...candidate, id: candidateId },
+          folderId,
+          recruiterName,
+          externalId,
+          driveServiceAccount,
+        );
+      }).catch((err: unknown) => console.error('[signContract] Drive/Sheets error:', err));
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()
