@@ -16,6 +16,7 @@ import { sendEmail } from '../email/gmailClient';
 import { signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { createCandidateDriveFolder } from '../integrations/driveService';
+import { syncValidDocumentsToDriveFolder } from '../integrations/driveSync';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
@@ -461,15 +462,19 @@ export const signContract = onRequest(
       }
     }
 
-    // Create candidate folder in Google Drive
+    // Create candidate folder in Google Drive and sync valid documents (fire-and-forget)
     if (candidatureId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
+      const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
       createCandidateDriveFolder(
         candidate.firstName as string,
         candidate.lastName as string,
         candidatureId,
         driveServiceAccount,
-      ).catch((err: unknown) => console.error('[signContract] Drive folder error:', err));
+      ).then(async (folderId) => {
+        await candidateDoc.ref.update({ driveFolderId: folderId, updatedAt: FieldValue.serverTimestamp() });
+        await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount);
+      }).catch((err: unknown) => console.error('[signContract] Drive error:', err));
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()

@@ -3,6 +3,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { createCandidateDriveFolder } from './driveService';
+import { syncValidDocumentsToDriveFolder } from './driveSync';
 
 const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
 
@@ -47,6 +48,14 @@ export const createDriveFolderManual = onCall(
       driveFolderId: folderId,
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    // Sync all valid documents to the new folder (errors per-file are logged, not thrown)
+    const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
+    try {
+      await syncValidDocumentsToDriveFolder(folderId, documents, serviceAccount);
+    } catch (err) {
+      console.error('[createDriveFolderManual] Document sync error:', err);
+    }
 
     return {
       success: true,

@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 const EXPEDIENTES_FOLDER_ID = '1wVBfz7_Mx10bOcmpnkVTaeQBFRNVLwkp';
 
@@ -48,5 +49,34 @@ export async function createCandidateDriveFolder(
   });
 
   console.log(`[driveService] Folder created: ${folderName} (${res.data.id})`);
+  return res.data.id!;
+}
+
+/**
+ * Uploads a file buffer into a Drive folder.
+ * Returns the created file ID. Throws on error.
+ */
+export async function uploadFileToDriveFolder(
+  folderId: string,
+  fileName: string,
+  mimeType: string,
+  buffer: Buffer,
+  serviceAccountJson: object,
+): Promise<string> {
+  const drive = getDriveClient(serviceAccountJson);
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      parents: [folderId],
+    },
+    media: {
+      mimeType,
+      body: Readable.from(buffer),
+    },
+    fields: 'id',
+    supportsAllDrives: true,
+  });
+
   return res.data.id!;
 }
