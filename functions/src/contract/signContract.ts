@@ -467,6 +467,11 @@ export const signContract = onRequest(
     if (driveCandidateId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
       const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
+      const extraFiles: import('../integrations/driveSync').ExtraFile[] = [
+        { name: 'Contrato Firmado.pdf', url: pdfUrl },
+      ];
+      const offerPdfUrl = candidate.offerPdfUrl as string | undefined;
+      if (offerPdfUrl) extraFiles.push({ name: 'Carta Oferta Firmada.pdf', url: offerPdfUrl });
       createCandidateDriveFolder(
         candidate.firstName as string,
         candidate.lastName as string,
@@ -474,7 +479,7 @@ export const signContract = onRequest(
         driveServiceAccount,
       ).then(async (folderId) => {
         await candidateDoc.ref.update({ driveFolderId: folderId, updatedAt: FieldValue.serverTimestamp() });
-        await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount);
+        await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount, extraFiles);
       }).catch((err: unknown) => console.error('[signContract] Drive error:', err));
     }
 

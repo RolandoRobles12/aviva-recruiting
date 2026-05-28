@@ -49,10 +49,13 @@ export const createDriveFolderManual = onCall(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Sync all valid documents to the new folder (errors per-file are logged, not thrown)
+    // Sync all valid documents + signed PDFs to the new folder
     const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
+    const extraFiles: import('./driveSync').ExtraFile[] = [];
+    if (candidate.offerPdfUrl) extraFiles.push({ name: 'Carta Oferta Firmada.pdf', url: candidate.offerPdfUrl as string });
+    if (candidate.contractPdfUrl) extraFiles.push({ name: 'Contrato Firmado.pdf', url: candidate.contractPdfUrl as string });
     try {
-      await syncValidDocumentsToDriveFolder(folderId, documents, serviceAccount);
+      await syncValidDocumentsToDriveFolder(folderId, documents, serviceAccount, extraFiles);
     } catch (err) {
       console.error('[createDriveFolderManual] Document sync error:', err);
     }
