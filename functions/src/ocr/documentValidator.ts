@@ -154,7 +154,7 @@ Validaciones requeridas:
 4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa). No importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
 {{/INE_ADDRESS}}
 
-Datos a extraer: direccion (lo más completa posible), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,
+Datos a extraer: direccion (dirección completa, lo más completa posible), cp (código postal de 5 dígitos, solo los números), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,
 
   foto_profesional: `Analiza esta imagen y determina si es una foto profesional o tipo credencial de una persona.
 
@@ -209,6 +209,48 @@ Responde SIEMPRE en JSON con esta estructura exacta:
 }
 
 No incluyas texto fuera del JSON. Solo responde con el JSON.`;
+
+// Regex patterns for critical fields — values that don't match are cleared rather than stored
+const FIELD_PATTERNS: Record<string, RegExp> = {
+  curp:  /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9]{2}$/,
+  rfc:   /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
+  nss:   /^[0-9]{11}$/,
+  clabe: /^[0-9]{18}$/,
+  cp:    /^[0-9]{5}$/,
+};
+
+/**
+ * Strip or normalise extracted fields so only values that match their expected
+ * format are persisted.  Unknown fields are passed through unchanged.
+ */
+function sanitizeExtractedData(
+  documentType: string,
+  data: Record<string, string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(data)) {
+    if (!rawValue) { result[key] = ''; continue; }
+
+    const value = String(rawValue).trim();
+
+    // Only validate fields that have a known pattern
+    const pattern = FIELD_PATTERNS[key];
+    if (pattern) {
+      // Normalise to uppercase, strip spaces/dashes before testing
+      const normalised = value.toUpperCase().replace(/[\s\-]/g, '');
+      if (pattern.test(normalised)) {
+        result[key] = normalised;
+      } else {
+        // Log so we can see what Claude returned for debugging
+        console.warn(`[ocr][${documentType}] field "${key}" failed format check — value discarded: "${value}"`);
+        result[key] = '';
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 /**
  * Validate a document image using Claude Haiku 4.5 vision.
@@ -321,7 +363,7 @@ export async function validateDocument(
       valid: parsed.valid,
       documentTypeDetected: parsed.document_type_detected,
       errors: parsed.errors ?? [],
-      extractedData: parsed.extracted_data ?? {},
+      extractedData: sanitizeExtractedData(documentType, parsed.extracted_data ?? {}),
       confidence: parsed.confidence ?? 0,
     };
   } catch {

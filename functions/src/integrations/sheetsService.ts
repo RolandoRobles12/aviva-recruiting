@@ -63,6 +63,7 @@ function mergedField(ov: Record<string, string>, docs: Record<string, unknown>, 
     case 'clabe':    return getOcrField(docs, 'caratula_bancaria', 'clabe');
     case 'banco':    return getOcrField(docs, 'caratula_bancaria', 'banco');
     case 'domicilio':return getOcrField(docs, 'ine', 'domicilio');
+    case 'cp':       return getOcrField(docs, 'comprobante_domicilio', 'cp');
     default:         return '';
   }
 }
@@ -142,7 +143,7 @@ export async function appendCandidateRow(
     /* 55 NSS */                                 mergedField(ov, docs, 'nss'),
     /* 56 RFC */                                 mergedField(ov, docs, 'rfc'),
     /* 57 CURP */                                mergedField(ov, docs, 'curp'),
-    /* 58 CP */                                  '',
+    /* 58 CP */                                  mergedField(ov, docs, 'cp'),
     /* 59 BANCO */                               mergedField(ov, docs, 'banco'),
     /* 60 CUENTA */                              '',
     /* 61 CLABE INTERBANCARIA */                 mergedField(ov, docs, 'clabe'),
