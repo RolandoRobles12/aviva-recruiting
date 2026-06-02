@@ -1,10 +1,15 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
+import { defineString, defineSecret } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
-import { validateDocument } from './documentValidator';
+import { validateDocument, retryExtractField, CRITICAL_FIELDS_BY_DOC } from './documentValidator';
 import { crossValidateNames, namesMatch } from './nameMatch';
 import { ALL_DOCUMENT_TYPES, DOCUMENT_LABELS } from '../utils/documentTypes';
+import { notifyFieldsUnreadable, notifyCurpMismatch } from '../integrations/slackService';
+
+const APP_URL             = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
+const SLACK_CHAT_BOT_TOKEN = defineSecret('SLACK_CHAT_BOT_TOKEN');
 
 /**
  * Download a file from Cloud Storage and return its buffer and media type.
@@ -43,6 +48,7 @@ export const onDocumentUploaded = onObjectFinalized(
     region: 'us-central1',
     memory: '512MiB',
     timeoutSeconds: 120,
+    secrets: [SLACK_CHAT_BOT_TOKEN],
   },
   async (event) => {
     const object = event.data;
@@ -109,8 +115,61 @@ export const onDocumentUploaded = onObjectFinalized(
         }
       }
 
-      // Validate with Claude Haiku
+      // Validate with Claude Haiku (first pass — full document prompt)
       const result = await validateDocument(buffer, mediaType, documentType, extraContext);
+
+      // ── Targeted field retry ──────────────────────────────────────────────
+      // If the document was accepted but a critical field is missing (blank after
+      // format-validation), retry with a hyper-focused single-field prompt.
+      // Most recoverable misses are fixed here without human involvement.
+      if (result.valid) {
+        const criticalFields = CRITICAL_FIELDS_BY_DOC[documentType] ?? [];
+        const missingAfterFirst = criticalFields.filter((f) => !result.extractedData[f]);
+
+        for (const field of missingAfterFirst) {
+          console.log(`[ocr] Retrying "${field}" for ${candidateId}/${documentType}`);
+          const recovered = await retryExtractField(field, buffer, mediaType);
+          if (recovered) {
+            result.extractedData[field] = recovered;
+            console.log(`[ocr] Recovered "${field}" via targeted retry`);
+          }
+        }
+
+        // Fields still blank after both attempts → alert Slack
+        const stillMissing = criticalFields.filter((f) => !result.extractedData[f]);
+        if (stillMissing.length > 0 && candidate) {
+          const cName = `${(candidate.firstName as string) ?? ''} ${(candidate.lastName as string) ?? ''}`.trim();
+          notifyFieldsUnreadable(candidateId, cName, documentType, stillMissing, APP_URL.value())
+            .catch((e) => console.error('[ocr] Slack notify error:', e));
+        }
+      }
+
+      // ── CURP cross-document consistency check ─────────────────────────────
+      // INE and the CURP document both contain the CURP. If both are valid and
+      // their CURPs disagree, at least one document does not belong to this
+      // candidate — alert immediately.
+      if (result.valid && (documentType === 'ine' || documentType === 'curp') && candidate) {
+        const newCurp = result.extractedData.curp;
+        if (newCurp) {
+          const existingDocs = (candidate.documents ?? {}) as Record<string, {
+            status: string;
+            ocrResult?: { extractedData?: Record<string, string> };
+          }>;
+          const counterpart = documentType === 'ine' ? 'curp' : 'ine';
+          const otherDoc   = existingDocs[counterpart];
+          const otherCurp  = otherDoc?.status === 'valid'
+            ? (otherDoc.ocrResult?.extractedData?.curp ?? '')
+            : '';
+
+          if (otherCurp && otherCurp !== newCurp) {
+            const cName = `${(candidate.firstName as string) ?? ''} ${(candidate.lastName as string) ?? ''}`.trim();
+            const curpIne     = documentType === 'ine' ? newCurp : otherCurp;
+            const curpCurpDoc = documentType === 'curp' ? newCurp : otherCurp;
+            notifyCurpMismatch(candidateId, cName, curpIne, curpCurpDoc, APP_URL.value())
+              .catch((e) => console.error('[ocr] Slack notify error:', e));
+          }
+        }
+      }
 
       const extraErrors: string[] = [];
 

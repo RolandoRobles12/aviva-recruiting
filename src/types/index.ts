@@ -169,6 +169,7 @@ export interface Candidate {
   contractTemplateId?: string;
   // Corporate email (Correos stage)
   corporateEmail?: string;
+  activatedAt?: Timestamp;
   jiraTicketKey?: string;
   jiraTicketId?: string;
   // Google Drive

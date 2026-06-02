@@ -1,7 +1,16 @@
-import { defineString } from 'firebase-functions/params';
+import { defineString, defineSecret } from 'firebase-functions/params';
 
 // ─── Primary workspace: full member ─────────────────────────────────────────
 const SLACK_BOT_TOKEN = defineString('SLACK_BOT_TOKEN');
+
+// ─── OCR alert bot token + channel ───────────────────────────────────────────
+/**
+ * Bot token (xoxb-...) with chat:write scope for posting OCR alerts.
+ * Store securely: firebase functions:secrets:set SLACK_CHAT_BOT_TOKEN
+ */
+const SLACK_CHAT_BOT_TOKEN = defineSecret('SLACK_CHAT_BOT_TOKEN');
+/** Channel ID (e.g. C08XXXXXXXX) where OCR alerts are posted. */
+const SLACK_OCR_CHANNEL_ID = defineString('SLACK_OCR_CHANNEL_ID', { default: '' });
 
 // ─── Secondary workspace: single-channel guest ─────────────────────────────
 const SLACK_GUEST_BOT_TOKEN = defineString('SLACK_GUEST_BOT_TOKEN', { default: '' });
@@ -203,4 +212,125 @@ export async function inviteSlackDual(params: {
       ? guest.value
       : { ok: false, error: String(guest.reason) },
   };
+}
+
+// ─── OCR data-integrity alerts ───────────────────────────────────────────────
+
+const OCR_DOC_LABELS: Record<string, string> = {
+  ine:                  'INE',
+  curp:                 'CURP',
+  nss:                  'NSS',
+  acta_nacimiento:      'Acta de Nacimiento',
+  caratula_bancaria:    'Carátula Bancaria',
+  certificado_estudios: 'Certificado de Estudios',
+  constancia_fiscal:    'Constancia Fiscal',
+  comprobante_domicilio:'Comprobante de Domicilio',
+};
+
+const OCR_FIELD_LABELS: Record<string, string> = {
+  curp:  'CURP (18 caracteres)',
+  rfc:   'RFC (12-13 caracteres)',
+  nss:   'NSS (11 dígitos)',
+  clabe: 'CLABE interbancaria (18 dígitos)',
+  cp:    'Código Postal (5 dígitos)',
+};
+
+async function postOcrAlert(blocks: object[]): Promise<void> {
+  const token     = SLACK_CHAT_BOT_TOKEN.value();
+  const channelId = SLACK_OCR_CHANNEL_ID.value();
+  if (!token || !channelId) return;
+
+  const resp = await fetch(`${SLACK_API_BASE}/chat.postMessage`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel: channelId, blocks }),
+  });
+  const data = (await resp.json()) as { ok: boolean; error?: string };
+  if (!data.ok) console.error(`[slack] OCR alert failed: ${data.error}`);
+}
+
+/**
+ * Alert that a valid document still has unreadable critical fields after two
+ * OCR attempts.  The recruiter should review the document or ask the candidate
+ * to re-upload it before the contract is generated.
+ */
+export async function notifyFieldsUnreadable(
+  candidateId: string,
+  candidateName: string,
+  documentType: string,
+  unreadableFields: string[],
+  appUrl: string,
+): Promise<void> {
+  const docLabel  = OCR_DOC_LABELS[documentType] ?? documentType;
+  const fieldList = unreadableFields.map((f) => `• ${OCR_FIELD_LABELS[f] ?? f}`).join('\n');
+
+  await postOcrAlert([
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: '⚠️ OCR: Dato(s) no legibles tras 2 intentos' },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*Candidato:*\n${candidateName}` },
+        { type: 'mrkdwn', text: `*Documento:*\n${docLabel}` },
+      ],
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Campo(s) sin extraer:*\n${fieldList}\n\nEl documento fue aceptado pero estos datos quedarán en blanco en el contrato. Revísalo o pide al candidato que lo suba de nuevo.`,
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        { type: 'button', text: { type: 'plain_text', text: 'Ir al dashboard' }, url: appUrl, style: 'primary' },
+      ],
+    },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `ID: \`${candidateId}\`` }] },
+  ]);
+}
+
+/**
+ * Alert that the CURP read from the INE and the CURP document disagree.
+ * This indicates a data-integrity problem that must be resolved before contract
+ * generation — one of the documents likely does not belong to this candidate.
+ */
+export async function notifyCurpMismatch(
+  candidateId: string,
+  candidateName: string,
+  curpFromIne: string,
+  curpFromCurpDoc: string,
+  appUrl: string,
+): Promise<void> {
+  await postOcrAlert([
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: '🚨 OCR: CURP no coincide entre documentos' },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*Candidato:*\n${candidateName}` },
+        { type: 'mrkdwn', text: `*CURP en INE:*\n\`${curpFromIne}\`` },
+        { type: 'mrkdwn', text: `*CURP en doc. CURP:*\n\`${curpFromCurpDoc}\`` },
+      ],
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'Los valores no coinciden. Verifica ambos documentos — uno de ellos puede no corresponder a este candidato.',
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        { type: 'button', text: { type: 'plain_text', text: 'Ir al dashboard' }, url: appUrl, style: 'danger' },
+      ],
+    },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `ID: \`${candidateId}\`` }] },
+  ]);
 }

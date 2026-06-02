@@ -17,3 +17,15 @@ export async function getRecruiterEmail(uid: string): Promise<string | undefined
   }
   return undefined;
 }
+
+/** Look up a recruiter's display name by their Firebase UID. */
+export async function getRecruiterName(uid: string): Promise<string> {
+  if (!uid || uid === 'viterbit_webhook') return '';
+  try {
+    const snap = await db.collection('users').doc(uid).get();
+    if (snap.exists) {
+      return (snap.data() as { displayName?: string }).displayName ?? '';
+    }
+  } catch { /* ignore */ }
+  return '';
+}

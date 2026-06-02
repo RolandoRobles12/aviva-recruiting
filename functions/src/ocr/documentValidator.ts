@@ -154,7 +154,7 @@ Validaciones requeridas:
 4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa). No importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
 {{/INE_ADDRESS}}
 
-Datos a extraer: direccion (lo más completa posible), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,
+Datos a extraer: direccion (dirección completa, lo más completa posible), cp (código postal de 5 dígitos, solo los números), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,
 
   foto_profesional: `Analiza esta imagen y determina si es una foto profesional o tipo credencial de una persona.
 
@@ -209,6 +209,117 @@ Responde SIEMPRE en JSON con esta estructura exacta:
 }
 
 No incluyas texto fuera del JSON. Solo responde con el JSON.`;
+
+// Regex patterns for critical fields — values that don't match are cleared rather than stored
+const FIELD_PATTERNS: Record<string, RegExp> = {
+  curp:  /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9]{2}$/,
+  rfc:   /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
+  nss:   /^[0-9]{11}$/,
+  clabe: /^[0-9]{18}$/,
+  cp:    /^[0-9]{5}$/,
+};
+
+/** Which critical fields each document type is expected to produce. */
+export const CRITICAL_FIELDS_BY_DOC: Record<string, string[]> = {
+  ine:                  ['curp'],
+  curp:                 ['curp'],
+  nss:                  ['nss'],
+  caratula_bancaria:    ['clabe'],
+  constancia_fiscal:    ['rfc'],
+  comprobante_domicilio:['cp'],
+};
+
+// Focused single-field extraction prompts — used when the first pass misses a field
+const FIELD_RETRY_PROMPTS: Record<string, string> = {
+  curp:  `Busca la CURP en este documento mexicano. La CURP tiene exactamente 18 caracteres: 4 letras + 6 dígitos de fecha (AAMMDD) + H o M (sexo) + 5 letras + 2 caracteres alfanuméricos. Ejemplo: VERM850304HDFRRR04. Responde SOLO con los 18 caracteres de la CURP, sin espacios ni guiones ni texto adicional. Si no puedes leerla claramente, responde exactamente: NO_ENCONTRADO`,
+  rfc:   `Busca el RFC en este documento del SAT de México. El RFC tiene 12 o 13 caracteres alfanuméricos (3-4 letras + 6 dígitos de fecha + 3 caracteres de homoclave). Responde SOLO con el RFC en mayúsculas, sin espacios ni texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  nss:   `Busca el Número de Seguridad Social (NSS) del IMSS en este documento. El NSS tiene exactamente 11 dígitos, sin letras. Responde SOLO con los 11 dígitos, sin espacios ni guiones. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos, sin letras. Responde SOLO con los 18 dígitos, sin espacios ni guiones. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
+  cp:    `Busca el código postal en este documento. El código postal tiene exactamente 5 dígitos. Responde SOLO con los 5 dígitos, sin texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+};
+
+/**
+ * Strip or normalise extracted fields so only values that match their expected
+ * format are persisted.  Unknown fields are passed through unchanged.
+ */
+function sanitizeExtractedData(
+  documentType: string,
+  data: Record<string, string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(data)) {
+    if (!rawValue) { result[key] = ''; continue; }
+
+    const value = String(rawValue).trim();
+
+    // Only validate fields that have a known pattern
+    const pattern = FIELD_PATTERNS[key];
+    if (pattern) {
+      // Normalise to uppercase, strip spaces/dashes before testing
+      const normalised = value.toUpperCase().replace(/[\s\-]/g, '');
+      if (pattern.test(normalised)) {
+        result[key] = normalised;
+      } else {
+        // Log so we can see what Claude returned for debugging
+        console.warn(`[ocr][${documentType}] field "${key}" failed format check — value discarded: "${value}"`);
+        result[key] = '';
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Second-pass focused extraction for a single critical field that was missing
+ * or format-invalid after the first OCR pass.
+ *
+ * Uses a hyper-focused prompt that asks only for the one value, which
+ * significantly improves recall for structurally-correct but noisy documents.
+ *
+ * Returns the validated value if found, or '' if still unreadable.
+ */
+export async function retryExtractField(
+  fieldKey: string,
+  fileBuffer: Buffer,
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | 'application/pdf',
+): Promise<string> {
+  const prompt = FIELD_RETRY_PROMPTS[fieldKey];
+  if (!prompt) return '';
+
+  const anthropic = getClient();
+  const base64Data = fileBuffer.toString('base64');
+
+  const fileContent: Anthropic.MessageParam['content'][number] =
+    mediaType === 'application/pdf'
+      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data } }
+      : { type: 'image' as const,    source: { type: 'base64' as const, media_type: mediaType, data: base64Data } };
+
+  try {
+    const response = await callClaudeWithRetry(anthropic, {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 64,
+      messages: [{ role: 'user', content: [fileContent, { type: 'text', text: prompt }] }],
+    });
+
+    const raw = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s\-]/g, '');
+
+    if (!raw || raw === 'NO_ENCONTRADO') return '';
+
+    const pattern = FIELD_PATTERNS[fieldKey];
+    return (pattern && pattern.test(raw)) ? raw : '';
+  } catch (err) {
+    console.warn(`[ocr] retryExtractField "${fieldKey}" failed:`, (err as Error).message);
+    return '';
+  }
+}
 
 /**
  * Validate a document image using Claude Haiku 4.5 vision.
@@ -321,7 +432,7 @@ export async function validateDocument(
       valid: parsed.valid,
       documentTypeDetected: parsed.document_type_detected,
       errors: parsed.errors ?? [],
-      extractedData: parsed.extracted_data ?? {},
+      extractedData: sanitizeExtractedData(documentType, parsed.extracted_data ?? {}),
       confidence: parsed.confidence ?? 0,
     };
   } catch {
