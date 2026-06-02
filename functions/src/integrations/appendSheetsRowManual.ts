@@ -62,20 +62,20 @@ export const appendSheetsRowManual = onCall(
       throw new HttpsError('not-found', 'Candidato no encontrado.');
     }
 
-    const candidate = { ...doc.data()!, id: candidateId };
-    const folderId = (candidate.driveFolderId as string) ?? '';
+    const candidateData = doc.data()! as Record<string, unknown>;
+    const folderId = (candidateData.driveFolderId as string) ?? '';
 
-    const viterbitJobId = candidate.viterbitJobId as string | undefined;
+    const viterbitJobId = candidateData.viterbitJobId as string | undefined;
     const apiKey = VITERBIT_API_KEY.value();
     const { externalId, recruiterName: viterbitRecruiter } = viterbitJobId && apiKey
       ? await fetchJobInfo(viterbitJobId, apiKey)
       : { externalId: undefined, recruiterName: '' };
     const recruiterName = viterbitRecruiter
-      || await getRecruiterName(candidate.createdBy as string).catch(() => '');
+      || await getRecruiterName(candidateData.createdBy as string).catch(() => '');
 
     const serviceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
 
-    await appendCandidateRow(candidate, folderId, recruiterName, externalId, serviceAccount);
+    await appendCandidateRow({ ...candidateData, id: candidateId }, folderId, recruiterName, externalId, serviceAccount);
 
     return { success: true };
   },
