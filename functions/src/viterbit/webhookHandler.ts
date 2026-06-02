@@ -853,11 +853,8 @@ async function handleInduccion(
 
   const { ref: candidateRef, data: candidate } = found;
 
-  // Don't create duplicate Jira tickets
+  // Don't create duplicate Jira tickets — skip silently if one already exists
   if (candidate.jiraTicketKey) {
-    if (candidate.status !== 'induction' && candidate.status !== 'email_pending') {
-      await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
-    }
     await logRef.update({ status: 'ignored', reason: 'Jira ticket already exists', candidateId: candidateRef.id });
     return { action: 'ignored', candidateId: candidateRef.id };
   }
