@@ -219,6 +219,25 @@ const FIELD_PATTERNS: Record<string, RegExp> = {
   cp:    /^[0-9]{5}$/,
 };
 
+/** Which critical fields each document type is expected to produce. */
+export const CRITICAL_FIELDS_BY_DOC: Record<string, string[]> = {
+  ine:                  ['curp'],
+  curp:                 ['curp'],
+  nss:                  ['nss'],
+  caratula_bancaria:    ['clabe'],
+  constancia_fiscal:    ['rfc'],
+  comprobante_domicilio:['cp'],
+};
+
+// Focused single-field extraction prompts — used when the first pass misses a field
+const FIELD_RETRY_PROMPTS: Record<string, string> = {
+  curp:  `Busca la CURP en este documento mexicano. La CURP tiene exactamente 18 caracteres: 4 letras + 6 dígitos de fecha (AAMMDD) + H o M (sexo) + 5 letras + 2 caracteres alfanuméricos. Ejemplo: VERM850304HDFRRR04. Responde SOLO con los 18 caracteres de la CURP, sin espacios ni guiones ni texto adicional. Si no puedes leerla claramente, responde exactamente: NO_ENCONTRADO`,
+  rfc:   `Busca el RFC en este documento del SAT de México. El RFC tiene 12 o 13 caracteres alfanuméricos (3-4 letras + 6 dígitos de fecha + 3 caracteres de homoclave). Responde SOLO con el RFC en mayúsculas, sin espacios ni texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  nss:   `Busca el Número de Seguridad Social (NSS) del IMSS en este documento. El NSS tiene exactamente 11 dígitos, sin letras. Responde SOLO con los 11 dígitos, sin espacios ni guiones. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos, sin letras. Responde SOLO con los 18 dígitos, sin espacios ni guiones. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
+  cp:    `Busca el código postal en este documento. El código postal tiene exactamente 5 dígitos. Responde SOLO con los 5 dígitos, sin texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+};
+
 /**
  * Strip or normalise extracted fields so only values that match their expected
  * format are persisted.  Unknown fields are passed through unchanged.
@@ -250,6 +269,56 @@ function sanitizeExtractedData(
     }
   }
   return result;
+}
+
+/**
+ * Second-pass focused extraction for a single critical field that was missing
+ * or format-invalid after the first OCR pass.
+ *
+ * Uses a hyper-focused prompt that asks only for the one value, which
+ * significantly improves recall for structurally-correct but noisy documents.
+ *
+ * Returns the validated value if found, or '' if still unreadable.
+ */
+export async function retryExtractField(
+  fieldKey: string,
+  fileBuffer: Buffer,
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | 'application/pdf',
+): Promise<string> {
+  const prompt = FIELD_RETRY_PROMPTS[fieldKey];
+  if (!prompt) return '';
+
+  const anthropic = getClient();
+  const base64Data = fileBuffer.toString('base64');
+
+  const fileContent: Anthropic.MessageParam['content'][number] =
+    mediaType === 'application/pdf'
+      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data } }
+      : { type: 'image' as const,    source: { type: 'base64' as const, media_type: mediaType, data: base64Data } };
+
+  try {
+    const response = await callClaudeWithRetry(anthropic, {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 64,
+      messages: [{ role: 'user', content: [fileContent, { type: 'text', text: prompt }] }],
+    });
+
+    const raw = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s\-]/g, '');
+
+    if (!raw || raw === 'NO_ENCONTRADO') return '';
+
+    const pattern = FIELD_PATTERNS[fieldKey];
+    return (pattern && pattern.test(raw)) ? raw : '';
+  } catch (err) {
+    console.warn(`[ocr] retryExtractField "${fieldKey}" failed:`, (err as Error).message);
+    return '';
+  }
 }
 
 /**
