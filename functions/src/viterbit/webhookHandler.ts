@@ -353,11 +353,22 @@ async function fetchViterbitCandidate(
 
     const reference = (data.reference as string) || undefined;
 
-    // Extract contrasena_correo_corporativo from candidate custom fields
-    const customFields = (data.custom_field_values as Array<{ field_id?: string; name?: string; value?: string }>) ?? [];
-    const contrasena = customFields.find(
-      f => f.field_id === 'contrasena_correo_corporativo' || f.name === 'contrasena_correo_corporativo'
-    )?.value || (data.contrasena_correo_corporativo as string) || undefined;
+    // Extract contrasena_correo_corporativo — Viterbit may return custom_field_values as
+    // an array [{field_id, name, value}] or as a record {key: {value} | string}
+    let contrasena: string | undefined;
+    const rawCustom = data.custom_field_values;
+    if (Array.isArray(rawCustom)) {
+      contrasena = (rawCustom as Array<{ field_id?: string; name?: string; value?: string }>).find(
+        f => f.field_id === 'contrasena_correo_corporativo' || f.name === 'contrasena_correo_corporativo',
+      )?.value;
+    } else if (rawCustom && typeof rawCustom === 'object') {
+      const rec = rawCustom as Record<string, unknown>;
+      const val = rec['contrasena_correo_corporativo'];
+      contrasena = (val && typeof val === 'object' && 'value' in val)
+        ? String((val as Record<string, unknown>).value ?? '')
+        : (val as string) || undefined;
+    }
+    contrasena = contrasena || (data.contrasena_correo_corporativo as string) || undefined;
 
     return { name, email, phone, reference, contrasena };
   } catch (err) {

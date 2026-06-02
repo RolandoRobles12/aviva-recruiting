@@ -348,24 +348,35 @@ export const signOffer = onRequest(
       let sigUrl: string;
       let pdfUrl: string;
       try {
+        // Embed Firebase download tokens — URLs work under Uniform Bucket-Level Access without ACLs
+        const fbUrl = (path: string, token: string) =>
+          `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+
+        const sigPath = `candidates/${candidateId}/offer_signature.png`;
+        const sigToken = randomBytes(16).toString('hex');
+        const pdfPath = `candidates/${candidateId}/carta_oferta_firmada.pdf`;
+        const pdfToken = randomBytes(16).toString('hex');
+
         [sigUrl, pdfUrl] = await Promise.all([
           (async () => {
-            const f = bucket.file(`candidates/${candidateId}/offer_signature.png`);
+            const f = bucket.file(sigPath);
             await Promise.race([
-              f.save(Buffer.from(sigBase64, 'base64'), { metadata: { contentType: 'image/png' } }),
+              f.save(Buffer.from(sigBase64, 'base64'), {
+                metadata: { contentType: 'image/png', metadata: { firebaseStorageDownloadTokens: sigToken } },
+              }),
               gcsTimeout(20_000, 'sig save'),
             ]);
-            await Promise.race([f.makePublic(), gcsTimeout(10_000, 'sig makePublic')]);
-            return f.publicUrl();
+            return fbUrl(sigPath, sigToken);
           })(),
           (async () => {
-            const f = bucket.file(`candidates/${candidateId}/carta_oferta_firmada.pdf`);
+            const f = bucket.file(pdfPath);
             await Promise.race([
-              f.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } }),
+              f.save(pdfBuffer, {
+                metadata: { contentType: 'application/pdf', metadata: { firebaseStorageDownloadTokens: pdfToken } },
+              }),
               gcsTimeout(20_000, 'pdf save'),
             ]);
-            await Promise.race([f.makePublic(), gcsTimeout(10_000, 'pdf makePublic')]);
-            return f.publicUrl();
+            return fbUrl(pdfPath, pdfToken);
           })(),
         ]);
         console.log(`[signOffer] Storage uploads done in ${Date.now() - t0}ms`);
