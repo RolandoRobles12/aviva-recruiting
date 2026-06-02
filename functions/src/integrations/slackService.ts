@@ -3,6 +3,10 @@ import { defineString, defineSecret } from 'firebase-functions/params';
 // ─── Primary workspace: full member ─────────────────────────────────────────
 const SLACK_BOT_TOKEN = defineString('SLACK_BOT_TOKEN');
 
+// ─── Performance check channel ───────────────────────────────────────────────
+/** Channel ID for 15/30-day performance check alerts (e.g. C08XXXXXXXX). */
+const SLACK_PERFORMANCE_CHANNEL_ID = defineString('SLACK_PERFORMANCE_CHANNEL_ID', { default: '' });
+
 // ─── OCR alert bot token + channel ───────────────────────────────────────────
 /**
  * Bot token (xoxb-...) with chat:write scope for posting OCR alerts.
@@ -333,4 +337,75 @@ export async function notifyCurpMismatch(
     },
     { type: 'context', elements: [{ type: 'mrkdwn', text: `ID: \`${candidateId}\`` }] },
   ]);
+}
+
+// ─── 15/30-day performance check alerts ──────────────────────────────────────
+
+export interface PerformanceCheckResult {
+  candidateId: string;
+  candidateName: string;
+  company: string;
+  profile: string;
+  daysMark: 15 | 30;
+  dealCount: number;
+  monthlyTarget: number;
+  startDate: string;
+  appUrl: string;
+}
+
+export async function notifyPerformanceCheck(r: PerformanceCheckResult): Promise<void> {
+  const token     = SLACK_CHAT_BOT_TOKEN.value();
+  const channelId = SLACK_PERFORMANCE_CHANNEL_ID.value();
+  if (!token || !channelId) return;
+
+  const proportionalTarget = r.daysMark === 15 ? Math.ceil(r.monthlyTarget / 2) : r.monthlyTarget;
+  const onTrack = r.dealCount >= proportionalTarget;
+  const pct = r.monthlyTarget > 0 ? Math.round((r.dealCount / r.monthlyTarget) * 100) : 0;
+
+  const headerEmoji = r.daysMark === 30
+    ? (onTrack ? '🏆' : '❌')
+    : (onTrack ? '✅' : '⚠️');
+  const headerText = r.daysMark === 15
+    ? `${headerEmoji} Revisión 15 días — ${r.candidateName}`
+    : `${headerEmoji} Revisión 30 días — ${r.candidateName}`;
+  const statusText = r.daysMark === 15
+    ? (onTrack ? 'Va encaminado/a a cumplir la meta mensual' : 'No está en camino a cumplir la meta mensual')
+    : (onTrack ? 'Promotor/a exitoso/a — cumplió o superó la meta' : 'No alcanzó la meta mensual — considerar reemplazo');
+  const dealsText = r.daysMark === 15
+    ? `*Deals creados:* ${r.dealCount} / ${proportionalTarget} esperados a mitad de mes`
+    : `*Deals creados:* ${r.dealCount} / ${r.monthlyTarget} meta mensual (${pct}%)`;
+
+  const resp = await fetch(`${SLACK_API_BASE}/chat.postMessage`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      channel: channelId,
+      blocks: [
+        { type: 'header', text: { type: 'plain_text', text: headerText } },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Empresa / Dpto:*\n${r.company || '—'}` },
+            { type: 'mrkdwn', text: `*Puesto:*\n${r.profile || '—'}` },
+            { type: 'mrkdwn', text: `*Fecha de inicio:*\n${r.startDate}` },
+            { type: 'mrkdwn', text: `*Meta mensual:*\n${r.monthlyTarget} deals` },
+          ],
+        },
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `${dealsText}\n\n*${statusText}*` },
+        },
+        {
+          type: 'actions',
+          elements: [
+            { type: 'button', text: { type: 'plain_text', text: 'Ver expediente' }, url: r.appUrl, style: onTrack ? 'primary' : 'danger' },
+          ],
+        },
+        { type: 'context', elements: [{ type: 'mrkdwn', text: `ID: \`${r.candidateId}\`` }] },
+      ],
+    }),
+  });
+
+  const data = (await resp.json()) as { ok: boolean; error?: string };
+  if (!data.ok) console.error(`[slack] performance notify failed: ${data.error}`);
 }

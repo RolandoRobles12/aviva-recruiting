@@ -66,3 +66,56 @@ export async function createHubSpotUser(params: {
   const ownerId = await getOwnerIdByEmail(params.corporateEmail, apiKey);
   return { userId: data.id, ownerId };
 }
+
+/**
+ * Count deals created by a specific owner (hubspot_owner_id) from a given
+ * start date up to now. Handles pagination automatically.
+ */
+export async function countDealsByOwner(
+  ownerId: string,
+  fromDateMs: number,
+): Promise<number> {
+  const apiKey = HUBSPOT_API_KEY.value();
+  if (!apiKey) throw new Error('HubSpot API key not configured.');
+
+  const url = `${HUBSPOT_API_BASE}/crm/v3/objects/deals/search`;
+  let after: string | undefined;
+  let total = 0;
+
+  do {
+    const payload: Record<string, unknown> = {
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId },
+            { propertyName: 'createdate',       operator: 'GTE', value: fromDateMs },
+          ],
+        },
+      ],
+      properties: ['createdate'],
+      limit: 100,
+      ...(after ? { after } : {}),
+    };
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`HubSpot deals search failed: HTTP ${resp.status} — ${text}`);
+    }
+
+    const data = (await resp.json()) as {
+      results: unknown[];
+      paging?: { next?: { after?: string } };
+    };
+
+    total += data.results.length;
+    after = data.paging?.next?.after;
+  } while (after);
+
+  return total;
+}
