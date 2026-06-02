@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 
-const SPREADSHEET_ID = '1LiuRz3AgJriRjCBnSCUcF7HGvzWlyx3v9FEesBLXgmA';
+const SPREADSHEET_ID = '1LiuRz3AgJriRjCBnSCUcF7HGvzWIyx3v9FEesBLXgmA';
 
 function getSheetsClient(serviceAccountJson: object) {
   const auth = new google.auth.GoogleAuth({
@@ -152,7 +152,7 @@ export async function appendCandidateRow(
   const sheets = getSheetsClient(serviceAccountJson);
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'A1',
+    range: 'MASTER!A1',
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
