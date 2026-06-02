@@ -58,3 +58,8 @@ export const createDriveFolderManual = httpsCallable<
   { candidateId: string },
   { success: boolean; folderId: string; folderUrl: string }
 >(functions, 'createDriveFolderManual');
+
+export const appendSheetsRowManual = httpsCallable<
+  { candidateId: string },
+  { success: boolean }
+>(functions, 'appendSheetsRowManual');
