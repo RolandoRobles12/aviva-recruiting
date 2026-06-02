@@ -174,6 +174,13 @@ export interface Candidate {
   jiraTicketId?: string;
   // Google Drive
   driveFolderId?: string;
+  // HubSpot
+  hubspotOwnerId?: string;
+  // 15/30-day performance checks
+  performance15DayCheckedAt?: Timestamp;
+  performance15DayDeals?: number;
+  performance30DayCheckedAt?: Timestamp;
+  performance30DayDeals?: number;
   // Viterbit integration
   viterbitCandidateId?: string;
   viterbitCandidatureId?: string;
