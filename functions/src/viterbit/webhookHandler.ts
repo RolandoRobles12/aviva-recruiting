@@ -932,6 +932,11 @@ export const viterbitWebhook = onRequest(
         const cfg = configName.toLowerCase();
         return stageNameLower.includes(cfg) || stageIdLower === cfg;
       };
+      // Exact match — avoids "Onboarding" inadvertently matching "Onboarding Iniciado"
+      const exactMatches = (configName: string) => {
+        const cfg = configName.toLowerCase();
+        return stageNameLower === cfg || stageIdLower === cfg;
+      };
 
       if (matches(STAGE_APROBADO.value())) {
         // Delay processing 3 minutes so Viterbit has time to populate hired_info
@@ -951,7 +956,7 @@ export const viterbitWebhook = onRequest(
       } else if (matches(STAGE_CONTRATO.value())) {
         const result = await handleContrato(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
-      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion') || matches('onboarding') || matches(STAGE_CORREOS.value())) {
+      } else if (exactMatches(STAGE_INDUCCION.value())) {
         const result = await handleInduccion(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
       } else {
