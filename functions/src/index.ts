@@ -12,7 +12,6 @@ export { onCandidateUpdated } from './offer/onCandidateUpdated';
 export { signContract, getContract } from './contract/signContract';
 export { analyzePdfTemplateEndpoint as analyzePdfTemplate } from './contract/analyzePdf';
 export { analyzeContractVariables } from './contract/analyzeContractVariables';
-export { checkEmailTickets } from './integrations/checkEmailTickets';
 export { checkViterbitEmail } from './integrations/checkViterbitEmail';
 export { checkActivations } from './integrations/checkActivations';
 export { provisionAccountsManual } from './integrations/provisionAccounts';
