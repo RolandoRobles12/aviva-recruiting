@@ -54,17 +54,26 @@ function getOcrField(docs: Record<string, unknown>, docType: string, field: stri
   return extracted[field] ?? '';
 }
 
+function sexoToGenero(sexo: string): string {
+  if (sexo === 'H') return 'MASCULINO';
+  if (sexo === 'M') return 'FEMENINO';
+  return sexo;
+}
+
 function mergedField(ov: Record<string, string>, docs: Record<string, unknown>, key: string): string {
   if (ov[key]) return ov[key];
   switch (key) {
-    case 'curp':     return getOcrField(docs, 'curp', 'curp') || getOcrField(docs, 'ine', 'curp');
-    case 'rfc':      return getOcrField(docs, 'constancia_fiscal', 'rfc');
-    case 'nss':      return getOcrField(docs, 'nss', 'nss');
-    case 'clabe':    return getOcrField(docs, 'caratula_bancaria', 'clabe');
-    case 'banco':    return getOcrField(docs, 'caratula_bancaria', 'banco');
-    case 'domicilio':return getOcrField(docs, 'ine', 'domicilio');
-    case 'cp':       return getOcrField(docs, 'comprobante_domicilio', 'cp');
-    default:         return '';
+    case 'curp':           return getOcrField(docs, 'curp', 'curp') || getOcrField(docs, 'ine', 'curp');
+    case 'rfc':            return getOcrField(docs, 'constancia_fiscal', 'rfc');
+    case 'nss':            return getOcrField(docs, 'nss', 'nss');
+    case 'clabe':          return getOcrField(docs, 'caratula_bancaria', 'clabe');
+    case 'banco':          return getOcrField(docs, 'caratula_bancaria', 'banco');
+    case 'numero_cuenta':  return getOcrField(docs, 'caratula_bancaria', 'numero_cuenta');
+    case 'domicilio':      return getOcrField(docs, 'ine', 'domicilio');
+    case 'cp':             return getOcrField(docs, 'comprobante_domicilio', 'cp');
+    case 'fecha_nacimiento': return getOcrField(docs, 'acta_nacimiento', 'fecha_nacimiento');
+    case 'genero':         return sexoToGenero(getOcrField(docs, 'ine', 'sexo'));
+    default:               return '';
   }
 }
 
@@ -110,10 +119,10 @@ export async function appendCandidateRow(
     /* 22 Apertura de Tienda */                  '',
     /* 23 Ticket Jira */                         (candidate.jiraTicketKey as string) ?? '',
     /* 24 Correo corporativo */                  (candidate.corporateEmail as string) ?? '',
-    /* 25 Contraseña */                          '',
+    /* 25 Contraseña */                          (candidate.viterbitContrasena as string) ?? '',
     /* 26 Dirección */                           mergedField(ov, docs, 'domicilio'),
-    /* 27 Fecha de nacimiento */                 '',
-    /* 28 Género */                              '',
+    /* 27 Fecha de nacimiento */                 mergedField(ov, docs, 'fecha_nacimiento'),
+    /* 28 Género */                              mergedField(ov, docs, 'genero'),
     /* 29 Estado civil */                        estadoCivilLabel(a.estadoCivil),
     /* 30 Hijos */                               yesno(a.tieneHijos),
     /* 31 Infonavit */                           yesno(a.tieneInfonavit),
@@ -137,7 +146,7 @@ export async function appendCandidateRow(
     /* 49 Fecha onboarding iniciado */           fmtDateTime(candidate.activatedAt),
     /* 50 Fecha ejecución */                     fmtDateTime(new Date()),
     /* 51 Correo corporativo (dup) */            (candidate.corporateEmail as string) ?? '',
-    /* 52 Contraseña (dup) */                    '',
+    /* 52 Contraseña (dup) */                    (candidate.viterbitContrasena as string) ?? '',
     /* 53 Correo corporativo MANUAL */           '',
     /* 54 Contraseña MANUAL */                   '',
     /* 55 NSS */                                 mergedField(ov, docs, 'nss'),
@@ -145,7 +154,7 @@ export async function appendCandidateRow(
     /* 57 CURP */                                mergedField(ov, docs, 'curp'),
     /* 58 CP */                                  mergedField(ov, docs, 'cp'),
     /* 59 BANCO */                               mergedField(ov, docs, 'banco'),
-    /* 60 CUENTA */                              '',
+    /* 60 CUENTA */                              mergedField(ov, docs, 'numero_cuenta'),
     /* 61 CLABE INTERBANCARIA */                 mergedField(ov, docs, 'clabe'),
   ];
 

@@ -111,6 +111,7 @@ interface ViterbitCandidate {
   email: string;
   phone?: string;
   reference?: string;
+  contrasena?: string;
 }
 
 interface ViterbitJobInfo {
@@ -349,7 +350,16 @@ async function fetchViterbitCandidate(
     console.log('[viterbit] fetchCandidate resolved → name:', name, '| email:', email);
 
     if (!email) return null;
-    return { name, email, phone };
+
+    const reference = (data.reference as string) || undefined;
+
+    // Extract contrasena_correo_corporativo from candidate custom fields
+    const customFields = (data.custom_field_values as Array<{ field_id?: string; name?: string; value?: string }>) ?? [];
+    const contrasena = customFields.find(
+      f => f.field_id === 'contrasena_correo_corporativo' || f.name === 'contrasena_correo_corporativo'
+    )?.value || (data.contrasena_correo_corporativo as string) || undefined;
+
+    return { name, email, phone, reference, contrasena };
   } catch (err) {
     console.error('[viterbit] fetchCandidate error:', err);
     return null;
@@ -468,7 +478,7 @@ export async function handleAprobado(
     return { action: 'error' };
   }
 
-  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference } = viterbitCandidate;
+  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference, contrasena: viterbitContrasena } = viterbitCandidate;
   const nameParts = candidateName.trim().split(/\s+/);
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
@@ -539,6 +549,7 @@ export async function handleAprobado(
     viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
     viterbitReference: viterbitReference || null,
+    viterbitContrasena: viterbitContrasena || null,
     viterbitJobId: resolvedJobId,
     viterbitStageIds: {
       ofertaEnviada: ofertaEnviadaId,
@@ -628,7 +639,7 @@ async function handleDocumentos(
     return { action: 'error' };
   }
 
-  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference } = viterbitCandidate;
+  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference, contrasena: viterbitContrasena } = viterbitCandidate;
   const nameParts = candidateName.trim().split(/\s+/);
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
@@ -656,6 +667,7 @@ async function handleDocumentos(
     viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
     viterbitReference: viterbitReference || null,
+    viterbitContrasena: viterbitContrasena || null,
     viterbitJobId: jobId,
   });
 
