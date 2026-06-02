@@ -7,25 +7,20 @@ import { notifyPerformanceCheck } from '../integrations/slackService';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 
-// ─── Monthly deal targets per company/department ──────────────────────────────
+// ─── Monthly deal targets by Viterbit profile ────────────────────────────────
 // Source: "Meta de solicitudes durante el primer mes calendario completo"
-const DEAL_TARGETS: Record<string, number> = {
-  'aviva contigo':    72,
-  'aviva tu negocio': 17,
-  'aviva tu compra':  34,
-  'construrama':      17,
-  'casa marchand':    17,
+const DEAL_TARGETS_BY_PROFILE: Record<string, number> = {
+  'Promotor/a Aviva tu Compra':           34, // Aviva tu Compra
+  'Promotor/a Aviva tu Compra CM':        17, // Casa Marchand
+  'Promotor/a Aviva tu Compra (Comodín)': 34, // Aviva tu Compra
+  'Promotor/a Aviva tu Negocio':          17, // Aviva tu Negocio
+  'Promotor/a Aviva tu Casa':             17, // Construrama
+  'Trainee Sucursal (Kiosk Trainee)':     72, // Aviva Contigo
+  'Gerente de Sucursal (Kiosk Manager)':  72, // Aviva Contigo
 };
 
-function getMonthlyTarget(viterbitCompany: string, profile: string): number {
-  const key = (viterbitCompany || profile || '').toLowerCase();
-  for (const [name, target] of Object.entries(DEAL_TARGETS)) {
-    if (key.includes(name)) return target;
-  }
-  // Fallback matches by profile keyword
-  if (key.includes('negocio')) return 17;
-  if (key.includes('compra'))  return 34;
-  return 17;
+function getMonthlyTarget(profile: string): number {
+  return DEAL_TARGETS_BY_PROFILE[profile] ?? 17;
 }
 
 // Return YYYY-MM-DD for (today - n days) in UTC
@@ -72,9 +67,9 @@ async function runCheck(daysMark: 15 | 30): Promise<void> {
       continue;
     }
 
-    const company      = (c.viterbitCompany as string)         || '';
-    const profile      = (c.profile        as string)         || (c.position as string) || '';
-    const monthlyTarget = getMonthlyTarget(company, profile);
+    const company      = (c.viterbitCompany as string) || '';
+    const profile      = (c.profile        as string) || (c.position as string) || '';
+    const monthlyTarget = getMonthlyTarget(profile);
     const candidateName = `${c.firstName as string} ${c.lastName as string}`.trim();
 
     // Save result before sending Slack (idempotency)
