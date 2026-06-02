@@ -3,9 +3,13 @@ import { defineString } from 'firebase-functions/params';
 // ─── Primary workspace: full member ─────────────────────────────────────────
 const SLACK_BOT_TOKEN = defineString('SLACK_BOT_TOKEN');
 
-// ─── OCR alert channel ───────────────────────────────────────────────────────
-/** Slack channel ID where OCR data-integrity alerts are posted. Leave empty to disable. */
-const SLACK_OCR_CHANNEL_ID = defineString('SLACK_OCR_CHANNEL_ID', { default: '' });
+// ─── OCR alert incoming webhook ──────────────────────────────────────────────
+/**
+ * Slack Incoming Webhook URL for OCR data-integrity alerts.
+ * Create one at https://api.slack.com/apps → your app → Incoming Webhooks.
+ * Leave empty to disable alerts.
+ */
+const SLACK_OCR_WEBHOOK_URL = defineString('SLACK_OCR_WEBHOOK_URL', { default: '' });
 
 // ─── Secondary workspace: single-channel guest ─────────────────────────────
 const SLACK_GUEST_BOT_TOKEN = defineString('SLACK_GUEST_BOT_TOKEN', { default: '' });
@@ -231,17 +235,17 @@ const OCR_FIELD_LABELS: Record<string, string> = {
 };
 
 async function postOcrAlert(blocks: object[]): Promise<void> {
-  const token     = SLACK_BOT_TOKEN.value();
-  const channelId = SLACK_OCR_CHANNEL_ID.value();
-  if (!token || !channelId) return;
+  const webhookUrl = SLACK_OCR_WEBHOOK_URL.value();
+  if (!webhookUrl) return;
 
-  const resp = await fetch(`${SLACK_API_BASE}/chat.postMessage`, {
+  const resp = await fetch(webhookUrl, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channel: channelId, blocks }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blocks }),
   });
-  const data = (await resp.json()) as { ok: boolean; error?: string };
-  if (!data.ok) console.error(`[slack] OCR alert failed: ${data.error}`);
+  if (!resp.ok) {
+    console.error(`[slack] OCR webhook failed: ${resp.status} ${await resp.text()}`);
+  }
 }
 
 /**
