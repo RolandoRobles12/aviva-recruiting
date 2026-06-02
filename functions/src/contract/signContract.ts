@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { onRequest } from 'firebase-functions/v2/https';
 import { defineString, defineSecret } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -412,31 +413,39 @@ export const signContract = onRequest(
     const bucket = getStorage().bucket();
     const uploadedPaths: string[] = [];
 
+    // Helper: embed a Firebase download token so the URL works under Uniform Bucket-Level Access
+    const fbUrl = (bucketName: string, path: string, token: string) =>
+      `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+
     // Signature image
     const sigPath = `candidates/${candidateId}/contract_signature.png`;
     const sigBase64 = signatureBase64.replace(/^data:image\/png;base64,/, '');
+    const sigToken = randomUUID();
     const sigFile = bucket.file(sigPath);
     await sigFile.save(Buffer.from(sigBase64, 'base64'), {
-      metadata: { contentType: 'image/png' },
+      metadata: { contentType: 'image/png', metadata: { firebaseStorageDownloadTokens: sigToken } },
     });
-    await sigFile.makePublic();
-    const sigUrl = sigFile.publicUrl();
+    const sigUrl = fbUrl(bucket.name, sigPath, sigToken);
     uploadedPaths.push(sigPath);
 
     // Signed contract PDF (with certificate appended as last page)
     const pdfPath = `candidates/${candidateId}/contrato_firmado.pdf`;
+    const pdfToken = randomUUID();
     const pdfFile = bucket.file(pdfPath);
-    await pdfFile.save(mergedPdfBuffer, { metadata: { contentType: 'application/pdf' } });
-    await pdfFile.makePublic();
-    const pdfUrl = pdfFile.publicUrl();
+    await pdfFile.save(mergedPdfBuffer, {
+      metadata: { contentType: 'application/pdf', metadata: { firebaseStorageDownloadTokens: pdfToken } },
+    });
+    const pdfUrl = fbUrl(bucket.name, pdfPath, pdfToken);
     uploadedPaths.push(pdfPath);
 
     // Evidence certificate PDF
     const evidencePath = `candidates/${candidateId}/certificado_firma.pdf`;
+    const evidenceToken = randomUUID();
     const evidenceFile = bucket.file(evidencePath);
-    await evidenceFile.save(evidencePdfBuffer, { metadata: { contentType: 'application/pdf' } });
-    await evidenceFile.makePublic();
-    const evidenceUrl = evidenceFile.publicUrl();
+    await evidenceFile.save(evidencePdfBuffer, {
+      metadata: { contentType: 'application/pdf', metadata: { firebaseStorageDownloadTokens: evidenceToken } },
+    });
+    const evidenceUrl = fbUrl(bucket.name, evidencePath, evidenceToken);
     uploadedPaths.push(evidencePath);
 
     // Update Firestore FIRST — then trigger Viterbit move.

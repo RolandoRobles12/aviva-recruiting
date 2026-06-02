@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Users,
   UserX,
+  TableProperties,
 } from 'lucide-react';
 import { PARENTESCO_LABELS } from '../../types';
 import type { Candidate } from '../../types';
@@ -36,6 +37,7 @@ import {
   sendContractEmail,
   refreshCandidateViterbit,
   createDriveFolderManual,
+  appendSheetsRowManual,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
@@ -133,6 +135,8 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [driveFolderUrl, setDriveFolderUrl] = useState(
     c.driveFolderId ? `https://drive.google.com/drive/folders/${c.driveFolderId}` : ''
   );
+  const [appendingSheets, setAppendingSheets] = useState(false);
+  const [sheetsAppended, setSheetsAppended] = useState(false);
 
   // Reset tab/notes when candidate changes
   useEffect(() => {
@@ -232,6 +236,19 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
       console.error('[createDriveFolder]', err);
     } finally {
       setCreatingDriveFolder(false);
+    }
+  };
+
+  const handleAppendSheets = async () => {
+    setAppendingSheets(true);
+    setSheetsAppended(false);
+    try {
+      await appendSheetsRowManual({ candidateId: c.id });
+      setSheetsAppended(true);
+    } catch (err: unknown) {
+      console.error('[appendSheets]', err);
+    } finally {
+      setAppendingSheets(false);
     }
   };
 
@@ -487,6 +504,30 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                 {creatingDriveFolder ? 'Creando...' : 'Crear carpeta en Drive'}
               </button>
             )}
+          </div>
+
+          {/* Google Sheets */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
+              <TableProperties size={13} className="text-emerald-500" />
+              Hoja de control
+            </h4>
+            <button
+              onClick={handleAppendSheets}
+              disabled={appendingSheets}
+              className={`w-full flex items-center justify-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 ${
+                sheetsAppended
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              {appendingSheets ? (
+                <RefreshCw size={12} className="animate-spin" />
+              ) : (
+                <TableProperties size={12} />
+              )}
+              {appendingSheets ? 'Agregando...' : sheetsAppended ? 'Fila agregada ✓' : 'Agregar a Sheets'}
+            </button>
           </div>
 
           {/* Quick actions */}

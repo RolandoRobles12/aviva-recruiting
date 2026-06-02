@@ -17,6 +17,7 @@ export { checkViterbitEmail } from './integrations/checkViterbitEmail';
 export { checkActivations } from './integrations/checkActivations';
 export { provisionAccountsManual } from './integrations/provisionAccounts';
 export { createDriveFolderManual } from './integrations/createDriveFolderManual';
+export { appendSheetsRowManual } from './integrations/appendSheetsRowManual';
 export { backfillCandidateDocuments } from './utils/backfillDocuments';
 export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';
 export { processPendingApprovals } from './viterbit/processPendingApprovals';
