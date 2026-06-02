@@ -504,10 +504,9 @@ export const signContract = onRequest(
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
       const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
       const extraFiles: import('../integrations/driveSync').ExtraFile[] = [
-        { name: 'Contrato Firmado.pdf', url: pdfUrl },
+        { name: 'Contrato Firmado.pdf', storagePath: pdfPath },
+        { name: 'Carta Oferta Firmada.pdf', storagePath: `candidates/${candidateId}/carta_oferta_firmada.pdf` },
       ];
-      const offerPdfUrl = candidate.offerPdfUrl as string | undefined;
-      if (offerPdfUrl) extraFiles.push({ name: 'Carta Oferta Firmada.pdf', url: offerPdfUrl });
 
       createCandidateDriveFolder(
         candidate.firstName as string,

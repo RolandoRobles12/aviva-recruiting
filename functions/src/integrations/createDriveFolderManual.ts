@@ -49,11 +49,13 @@ export const createDriveFolderManual = onCall(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Sync all valid documents + signed PDFs to the new folder
+    // Sync all valid documents + signed PDFs to the new folder.
+    // Use Admin SDK storage paths — works regardless of bucket ACL / UBA settings.
     const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
-    const extraFiles: import('./driveSync').ExtraFile[] = [];
-    if (candidate.offerPdfUrl) extraFiles.push({ name: 'Carta Oferta Firmada.pdf', url: candidate.offerPdfUrl as string });
-    if (candidate.contractPdfUrl) extraFiles.push({ name: 'Contrato Firmado.pdf', url: candidate.contractPdfUrl as string });
+    const extraFiles: import('./driveSync').ExtraFile[] = [
+      { name: 'Contrato Firmado.pdf',     storagePath: `candidates/${candidateId}/contrato_firmado.pdf` },
+      { name: 'Carta Oferta Firmada.pdf', storagePath: `candidates/${candidateId}/carta_oferta_firmada.pdf` },
+    ];
     try {
       await syncValidDocumentsToDriveFolder(folderId, documents, serviceAccount, extraFiles);
     } catch (err) {
