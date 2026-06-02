@@ -88,7 +88,7 @@ export async function appendCandidateRow(
   const row: string[] = [
     /* 01 Expediente */                          `https://drive.google.com/drive/folders/${folderId}`,
     /* 02 Etapa actual */                        'Onboarding Iniciado',
-    /* 03 Candidate reference */                 (candidate.viterbitCandidatureId as string) ?? '',
+    /* 03 Candidate reference */                 (candidate.viterbitReference as string) ?? (candidate.viterbitCandidatureId as string) ?? '',
     /* 04 Nombre */                              `${candidate.firstName} ${candidate.lastName}`.toUpperCase(),
     /* 05 Email personal */                      (candidate.email as string) ?? '',
     /* 06 Telefono */                            (candidate.phone as string) ?? '',

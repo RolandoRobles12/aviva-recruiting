@@ -184,6 +184,7 @@ export interface Candidate {
   // Viterbit integration
   viterbitCandidateId?: string;
   viterbitCandidatureId?: string;
+  viterbitReference?: string;
   viterbitJobId?: string;
   viterbitStageIds?: {
     ofertaEnviada: string;

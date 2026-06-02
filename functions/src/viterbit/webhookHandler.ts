@@ -110,6 +110,7 @@ interface ViterbitCandidate {
   name: string;
   email: string;
   phone?: string;
+  reference?: string;
 }
 
 interface ViterbitJobInfo {
@@ -467,7 +468,7 @@ export async function handleAprobado(
     return { action: 'error' };
   }
 
-  const { name: candidateName, email: candidateEmail, phone: candidatePhone } = viterbitCandidate;
+  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference } = viterbitCandidate;
   const nameParts = candidateName.trim().split(/\s+/);
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
@@ -537,6 +538,7 @@ export async function handleAprobado(
     // Viterbit IDs
     viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
+    viterbitReference: viterbitReference || null,
     viterbitJobId: resolvedJobId,
     viterbitStageIds: {
       ofertaEnviada: ofertaEnviadaId,
@@ -626,7 +628,7 @@ async function handleDocumentos(
     return { action: 'error' };
   }
 
-  const { name: candidateName, email: candidateEmail, phone: candidatePhone } = viterbitCandidate;
+  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference } = viterbitCandidate;
   const nameParts = candidateName.trim().split(/\s+/);
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
@@ -653,6 +655,7 @@ async function handleDocumentos(
     createdBy: 'viterbit_webhook',
     viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
+    viterbitReference: viterbitReference || null,
     viterbitJobId: jobId,
   });
 
