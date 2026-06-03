@@ -13,7 +13,9 @@ const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 const DEAL_TARGETS_BY_PROFILE: Record<string, number> = {
   'Promotor/a Aviva tu Compra':           34,
   'Promotor/a Aviva tu Compra CM':        17,
-  'Promotor/a Aviva tu Compra (Comodín)': 34,
+  'Promotor/a Aviva tu Compra (Comodín)':        34,
+  'Promotor/a Aviva tu Compra (Temporal)':       34,
+  'Promotor/a Aviva tu Compra (Internalización)': 34,
   'Promotor/a Aviva tu Negocio':          17,
   'Promotor/a Aviva tu Casa':             17,
   'Trainee Sucursal (Kiosk Trainee)':     72,

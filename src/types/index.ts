@@ -7,6 +7,8 @@ export const CANDIDATE_PROFILES = [
   'Promotor/a Aviva tu Compra CM',
   'Promotor/a Aviva tu Casa',
   'Promotor/a Aviva tu Compra (Comodín)',
+  'Promotor/a Aviva tu Compra (Temporal)',
+  'Promotor/a Aviva tu Compra (Internalización)',
   'Promotor/a Aviva tu Negocio',
   'Trainee Sucursal (Kiosk Trainee)',
   'Gerente de Sucursal (Kiosk Manager)',

@@ -17,6 +17,7 @@ const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web
 // Comma-separated department profile names to process. Leave empty to allow all.
 const HIRING_PROFILES = defineString('HIRING_PROFILES', {
   default: 'Trainee Sucursal (Kiosk Trainee),Gerente de Sucursal (Kiosk Manager),Promotor/a Aviva tu Negocio,Promotor/a Aviva tu Compra',
+  // Note: substring match — "Promotor/a Aviva tu Compra" also covers (Comodín), (Temporal), (Internalización)
 });
 
 // Stage names (configurable, matched case-insensitively against webhook payload)

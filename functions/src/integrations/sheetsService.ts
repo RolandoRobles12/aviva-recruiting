@@ -161,7 +161,7 @@ export async function appendCandidateRow(
   const sheets = getSheetsClient(serviceAccountJson);
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'MASTER!A1',
+    range: 'MASTER_ROLANDO!A1',
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
