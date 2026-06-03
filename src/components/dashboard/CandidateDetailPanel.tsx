@@ -389,7 +389,9 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             {formUrl ? (
               <>
                 {formDone ? (
-                  <p className="text-[11px] text-gray-400 mb-2">Documentación completada</p>
+                  <p className="text-[11px] text-green-600 mb-2 flex items-center gap-1">
+                    <CheckCircle size={11} /> Documentación completada
+                  </p>
                 ) : formExpired ? (
                   <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2">
                     <AlertTriangle size={12} className="shrink-0 mt-0.5" />
