@@ -112,20 +112,22 @@ export interface FormQuestion {
 // ─── Candidate ────────────────────────────────────────────────────────────────
 
 export type CandidateStatus =
-  | 'offer_held'       // candidate created but offer withheld — missing salary or start date in Viterbit
-  | 'offer_sent'       // offer letter sent, pending candidate signature
-  | 'offer_signed'     // candidate signed offer, document collection active
-  | 'invited'          // documents link sent, no documents yet
-  | 'in_progress'      // uploading documents
-  | 'under_review'     // all documents uploaded, team reviewing
-  | 'approved'         // all documents valid
-  | 'rejected'         // rejected
-  | 'contract_sent'    // employment contract sent, pending signature
-  | 'contract_signed'  // candidate signed contract
-  | 'email_pending'    // waiting for IT to create corporate email (Jira ticket)
-  | 'email_ready'      // corporate email created, HubSpot/Slack accounts provisioned
-  | 'induction'        // induction email sent, training phase
-  | 'disqualified';    // manually disqualified at any stage
+  | 'offer_held'           // candidate created but offer withheld — missing salary or start date in Viterbit
+  | 'offer_sent'           // offer letter sent, pending candidate signature
+  | 'offer_signed'         // candidate signed offer, document collection active
+  | 'invited'              // documents link sent, no documents yet
+  | 'in_progress'          // uploading documents
+  | 'under_review'         // all documents uploaded, team reviewing
+  | 'approved'             // all documents valid
+  | 'rejected'             // rejected
+  | 'contract_sent'        // employment contract sent, pending signature
+  | 'contract_signed'      // candidate signed contract
+  | 'email_pending'        // legacy — waiting for corporate email (Jira flow, no longer used)
+  | 'email_ready'          // corporate email created and HubSpot owner provisioned
+  | 'induction'            // in Viterbit Onboarding stage, waiting for email provisioning
+  | 'onboarding_iniciado'  // first LMS login completed
+  | 'promotor_exitoso'     // met 30-day HubSpot deal target
+  | 'disqualified';        // manually disqualified at any stage
 
 export interface Candidate {
   id: string;
@@ -193,6 +195,7 @@ export interface Candidate {
     contrato: string;
     correos: string;
     induccion: string;
+    promotorExitoso?: string;
   };
   // Profile (canonical — set from Viterbit or manually on creation)
   profile?: string;

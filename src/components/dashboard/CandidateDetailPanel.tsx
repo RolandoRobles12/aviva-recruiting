@@ -155,6 +155,13 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
     ? c.formExpiresAt.toDate() < new Date()
     : false;
 
+  // Document collection is complete once the candidate moves past the review phase.
+  // After this point the form link expiry is irrelevant and the renewal button should be hidden.
+  const FORM_ACTIVE_STATUSES: import('../../types').CandidateStatus[] = [
+    'offer_signed', 'invited', 'in_progress', 'under_review',
+  ];
+  const formDone = !FORM_ACTIVE_STATUSES.includes(c.status);
+
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -381,7 +388,11 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             </h4>
             {formUrl ? (
               <>
-                {formExpired ? (
+                {formDone ? (
+                  <p className="text-[11px] text-green-600 mb-2 flex items-center gap-1">
+                    <CheckCircle size={11} /> Documentación completada
+                  </p>
+                ) : formExpired ? (
                   <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2">
                     <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                     <span>
@@ -396,9 +407,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                     Vigente hasta {format(c.formExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
                   </p>
                 )}
-                <div className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 border text-xs ${
-                  formExpired ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'
-                }`}>
+                <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 border text-xs bg-gray-50 border-gray-200">
                   <span className="flex-1 truncate font-mono text-gray-500">{formUrl}</span>
                   <button onClick={() => copyToClipboard(formUrl)} className="text-primary-600 hover:text-primary-700 shrink-0" title="Copiar">
                     {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -407,7 +416,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                     <ExternalLink size={13} />
                   </a>
                 </div>
-                {formExpired && c.status !== 'approved' && c.status !== 'rejected' && (
+                {formExpired && !formDone && (
                   <button
                     onClick={handleExtendToken}
                     disabled={extendingToken}

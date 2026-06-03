@@ -7,6 +7,8 @@ import {
   FileText,
   Mail,
   GraduationCap,
+  BookOpen,
+  Trophy,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { CandidateTable } from '../components/dashboard/CandidateTable';
@@ -22,14 +24,16 @@ export function DashboardPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   const pipelineStats = {
-    total: candidates.length,
-    offer: candidates.filter((c) => c.status === 'offer_sent' || c.status === 'offer_signed').length,
-    documentos: candidates.filter((c) =>
+    total:               candidates.length,
+    offer:               candidates.filter((c) => c.status === 'offer_sent' || c.status === 'offer_signed').length,
+    documentos:          candidates.filter((c) =>
       ['invited', 'in_progress', 'under_review', 'approved', 'rejected'].includes(c.status)
     ).length,
-    contrato: candidates.filter((c) => c.status === 'contract_sent' || c.status === 'contract_signed').length,
-    correos: candidates.filter((c) => c.status === 'email_pending' || c.status === 'email_ready').length,
-    induccion: candidates.filter((c) => c.status === 'induction').length,
+    contrato:            candidates.filter((c) => c.status === 'contract_sent' || c.status === 'contract_signed').length,
+    correos:             candidates.filter((c) => c.status === 'email_pending' || c.status === 'email_ready').length,
+    onboarding:          candidates.filter((c) => c.status === 'induction').length,
+    onboardingIniciado:  candidates.filter((c) => c.status === 'onboarding_iniciado').length,
+    promotorExitoso:     candidates.filter((c) => c.status === 'promotor_exitoso').length,
   };
 
   return (
@@ -49,12 +53,14 @@ export function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <StatChip icon={<Users size={13} />} label="Total" value={pipelineStats.total} color="gray" />
-            <StatChip icon={<FileSignature size={13} />} label="Carta oferta" value={pipelineStats.offer} color="purple" />
-            <StatChip icon={<FolderOpen size={13} />} label="Documentos" value={pipelineStats.documentos} color="amber" />
-            <StatChip icon={<FileText size={13} />} label="Contrato" value={pipelineStats.contrato} color="indigo" />
-            <StatChip icon={<Mail size={13} />} label="Correos" value={pipelineStats.correos} color="teal" />
-            <StatChip icon={<GraduationCap size={13} />} label="Inducción" value={pipelineStats.induccion} color="rose" />
+            <StatChip icon={<Users size={13} />}         label="Total"               value={pipelineStats.total}              color="gray" />
+            <StatChip icon={<FileSignature size={13} />} label="Carta oferta"        value={pipelineStats.offer}              color="purple" />
+            <StatChip icon={<FolderOpen size={13} />}    label="Documentos"          value={pipelineStats.documentos}         color="amber" />
+            <StatChip icon={<FileText size={13} />}      label="Contrato"            value={pipelineStats.contrato}           color="indigo" />
+            <StatChip icon={<Mail size={13} />}          label="Correos"             value={pipelineStats.correos}            color="teal" />
+            <StatChip icon={<GraduationCap size={13} />} label="Onboarding"         value={pipelineStats.onboarding}         color="rose" />
+            <StatChip icon={<BookOpen size={13} />}      label="Onboarding Iniciado" value={pipelineStats.onboardingIniciado} color="blue" />
+            <StatChip icon={<Trophy size={13} />}        label="Promotor Exitoso"    value={pipelineStats.promotorExitoso}    color="green" />
           </div>
         </div>
 

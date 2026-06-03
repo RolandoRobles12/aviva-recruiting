@@ -473,6 +473,7 @@ export async function handleAprobado(
   const contratoId = findStage(STAGE_CONTRATO.value()) ?? '';
   const correosId = findStage(STAGE_CORREOS.value()) ?? '';
   const induccionId = findStage(STAGE_INDUCCION.value()) ?? '';
+  const promotorExitosoId = findStage('Promotor Exitoso') ?? findStage('Promotor exitoso') ?? '';
 
   // Move to "Oferta Enviada" in Viterbit
   if (ofertaEnviadaId && candidatureId) {
@@ -566,6 +567,7 @@ export async function handleAprobado(
       documentos: documentosId,
       contrato: contratoId,
       induccion: induccionId || correosId, // correos stage removed; fallback for legacy candidates
+      promotorExitoso: promotorExitosoId || null,
     },
   });
 
