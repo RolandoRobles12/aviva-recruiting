@@ -7,93 +7,108 @@ import { createHubSpotUser } from './hubspotService';
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
-function extractCorporateEmailFromJson(json: Record<string, unknown>): string {
-  const data = (json.data as Record<string, unknown>) ?? json;
-  const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
-  const raw = customFields.correo_corporativo;
-  if (raw && typeof raw === 'object' && 'value' in raw) {
-    return String((raw as Record<string, unknown>).value ?? '');
-  }
-  return (raw as string) || '';
+interface ViterbitEmailResult {
+  corporateEmail: string;
+  contrasena: string;
 }
 
-async function fetchFromViterbitEndpoint(url: string, apiKey: string): Promise<string> {
+function extractFieldsFromJson(json: Record<string, unknown>): ViterbitEmailResult {
+  const data = (json.data as Record<string, unknown>) ?? json;
+  const customFields = (data.custom_field_values as Record<string, unknown>) ?? {};
+
+  const getField = (key: string): string => {
+    const raw = customFields[key];
+    if (raw && typeof raw === 'object' && 'value' in raw) {
+      return String((raw as Record<string, unknown>).value ?? '');
+    }
+    return (raw as string) || '';
+  };
+
+  return {
+    corporateEmail: getField('correo_corporativo'),
+    contrasena:     getField('contrasena_correo_corporativo'),
+  };
+}
+
+async function fetchFromViterbit(url: string, apiKey: string): Promise<ViterbitEmailResult> {
+  const empty = { corporateEmail: '', contrasena: '' };
   try {
     const resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (!resp.ok) {
       console.warn(`[checkViterbitEmail] GET ${url} failed: ${resp.status}`);
-      return '';
+      return empty;
     }
-    const json = (await resp.json()) as Record<string, unknown>;
-    return extractCorporateEmailFromJson(json);
+    return extractFieldsFromJson((await resp.json()) as Record<string, unknown>);
   } catch (err) {
     console.error(`[checkViterbitEmail] fetch error for ${url}:`, err);
-    return '';
+    return empty;
   }
 }
 
-async function processCandidateEmail(
+async function processCandidate(
   doc: FirebaseFirestore.QueryDocumentSnapshot,
   apiKey: string,
 ): Promise<boolean> {
   const candidate = doc.data();
-  const viterbitCandidateId = candidate.viterbitCandidateId as string | undefined;
+  const viterbitCandidateId   = candidate.viterbitCandidateId   as string | undefined;
   const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
 
-  let corporateEmail = '';
+  let result = { corporateEmail: '', contrasena: '' };
 
-  // Try candidate-level custom field first
+  // Try candidate-level custom fields first, then candidature-level
   if (viterbitCandidateId) {
-    corporateEmail = await fetchFromViterbitEndpoint(
+    result = await fetchFromViterbit(
       `${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}?includes[]=custom_field_values`,
       apiKey,
     );
   }
-
-  // Fallback: try candidature-level custom field
-  if (!corporateEmail && viterbitCandidatureId) {
-    corporateEmail = await fetchFromViterbitEndpoint(
+  if (!result.corporateEmail && viterbitCandidatureId) {
+    result = await fetchFromViterbit(
       `${VITERBIT_API_BASE}/candidatures/${viterbitCandidatureId}?includes[]=custom_field_values`,
       apiKey,
     );
   }
 
-  if (!corporateEmail) {
-    console.warn(`[checkViterbitEmail] ${doc.id}: no correo_corporativo found (candidateId=${viterbitCandidateId ?? 'null'}, candidatureId=${viterbitCandidatureId ?? 'null'})`);
+  if (!result.corporateEmail) {
+    console.warn(`[checkViterbitEmail] ${doc.id}: correo_corporativo not yet available`);
     return false;
   }
 
+  const { corporateEmail, contrasena } = result;
   console.info(`[checkViterbitEmail] correo_corporativo found for ${doc.id}: ${corporateEmail}`);
 
-  // Create HubSpot user and fetch owner ID
-  let hubspotCreated = false;
+  // Create HubSpot owner
   let hubspotOwnerId: string | null = null;
   try {
-    const result = await createHubSpotUser({
+    const hubspot = await createHubSpotUser({
       corporateEmail,
       firstName: candidate.firstName as string,
-      lastName: candidate.lastName as string,
+      lastName:  candidate.lastName  as string,
     });
-    hubspotCreated = true;
-    hubspotOwnerId = result.ownerId;
+    hubspotOwnerId = hubspot.ownerId;
   } catch (err) {
     console.error(`[checkViterbitEmail] HubSpot creation failed for ${doc.id}:`, err);
   }
 
-  // Update Firestore
-  const firestoreUpdate: Record<string, unknown> = {
+  const update: Record<string, unknown> = {
     corporateEmail,
-    status: 'induction',
-    hubspotCreated,
+    status: 'email_ready',
     emailProvisionedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  if (hubspotOwnerId) firestoreUpdate.hubspotOwnerId = hubspotOwnerId;
-  await doc.ref.update(firestoreUpdate);
+  if (hubspotOwnerId) update.hubspotOwnerId = hubspotOwnerId;
+  if (contrasena)     update.viterbitContrasena = contrasena;
 
+  await doc.ref.update(update);
   return true;
 }
 
+/**
+ * Runs every 2 hours. Finds candidates in 'induction' status without a
+ * corporate email and polls Viterbit for correo_corporativo + contrasena_correo_corporativo
+ * (stamped by the external provisioning process within ~48 h of reaching Onboarding).
+ * On success: creates HubSpot owner and moves candidate to 'email_ready'.
+ */
 export const checkViterbitEmail = onSchedule(
   {
     schedule: 'every 2 hours',
@@ -106,25 +121,28 @@ export const checkViterbitEmail = onSchedule(
 
     const snapshot = await db
       .collection('candidates')
-      .where('status', '==', 'email_pending')
+      .where('status', '==', 'induction')
       .get();
 
     if (snapshot.empty) {
-      console.info('[checkViterbitEmail] No candidates pending corporate email');
+      console.info('[checkViterbitEmail] No candidates in induction');
       return;
     }
 
-    // Skip candidates already provisioned (guard against double-processing)
     const pending = snapshot.docs.filter((doc) => !doc.data().corporateEmail);
+    if (pending.length === 0) {
+      console.info('[checkViterbitEmail] All induction candidates already have a corporate email');
+      return;
+    }
 
-    console.info(`[checkViterbitEmail] Checking ${pending.length} candidate(s) for correo_corporativo in Viterbit`);
+    console.info(`[checkViterbitEmail] Checking ${pending.length} candidate(s) for correo_corporativo`);
 
     const results = await Promise.allSettled(
-      pending.map((doc) => processCandidateEmail(doc, apiKey))
+      pending.map((doc) => processCandidate(doc, apiKey))
     );
 
     const resolved = results.filter((r) => r.status === 'fulfilled' && r.value).length;
-    const errors = results.filter((r) => r.status === 'rejected').length;
+    const errors   = results.filter((r) => r.status === 'rejected').length;
     console.info(`[checkViterbitEmail] Done: ${resolved} provisioned, ${errors} errors, ${pending.length - resolved - errors} still waiting`);
   }
 );

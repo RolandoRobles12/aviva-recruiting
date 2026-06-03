@@ -8,7 +8,6 @@ import { db } from '../utils/admin';
 import { sendEmail } from '../email/gmailClient';
 import { offerTemplate, contractTemplate, invitationTemplate as _invitationTemplate } from '../email/templates';
 import { getLogoUrl } from '../utils/branding';
-import { createEmailTicket } from '../integrations/jiraService';
 import { getLinkDuration } from '../utils/linkDuration';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 
@@ -834,9 +833,8 @@ async function handleContrato(
 }
 
 /**
- * Candidate reached "Onboarding" (previously went through a separate Correos stage):
- * 1. Create Jira ticket for IT to provision corporate email
- * 2. Update status to 'email_pending' / 'induction'
+ * Candidate reached "Correo corporativo & Accesos" or "Onboarding":
+ * Move status to 'induction' so the recruiter can manually provision accounts.
  */
 async function handleInduccion(
   parsed: ParsedViterbitEvent,
@@ -853,40 +851,16 @@ async function handleInduccion(
 
   const { ref: candidateRef, data: candidate } = found;
 
-  // Don't create duplicate Jira tickets
-  if (candidate.jiraTicketKey) {
-    if (candidate.status !== 'induction' && candidate.status !== 'email_pending') {
-      await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
-    }
-    await logRef.update({ status: 'ignored', reason: 'Jira ticket already exists', candidateId: candidateRef.id });
+  // Skip if already past this stage
+  const pastStages = ['email_pending', 'email_ready', 'induction', 'disqualified'];
+  if (pastStages.includes(candidate.status as string)) {
+    await logRef.update({ status: 'ignored', reason: `already at ${candidate.status}`, candidateId: candidateRef.id });
     return { action: 'ignored', candidateId: candidateRef.id };
   }
 
-  // Create Jira ticket for corporate email provisioning
-  try {
-    const { ticketKey, ticketId } = await createEmailTicket({
-      candidateName: `${candidate.firstName} ${candidate.lastName}`,
-      position: candidate.position as string,
-      candidateId: candidateRef.id,
-      personalEmail: candidate.email as string,
-    });
-
-    await candidateRef.update({
-      status: 'email_pending',
-      jiraTicketKey: ticketKey,
-      jiraTicketId: ticketId,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    console.info(`[webhook] Created Jira ticket ${ticketKey} for ${candidateRef.id}`);
-    await logRef.update({ status: 'processed', candidateId: candidateRef.id, jiraTicketKey: ticketKey });
-    return { action: 'email_pending', candidateId: candidateRef.id };
-  } catch (err) {
-    console.error('[webhook] Jira ticket creation failed at onboarding stage:', err);
-    await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
-    await logRef.update({ status: 'error', reason: `Jira ticket creation failed: ${err}`, candidateId: candidateRef.id });
-    return { action: 'induction', candidateId: candidateRef.id };
-  }
+  await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
+  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
+  return { action: 'induction', candidateId: candidateRef.id };
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -958,6 +932,11 @@ export const viterbitWebhook = onRequest(
         const cfg = configName.toLowerCase();
         return stageNameLower.includes(cfg) || stageIdLower === cfg;
       };
+      // Exact match — avoids "Onboarding" inadvertently matching "Onboarding Iniciado"
+      const exactMatches = (configName: string) => {
+        const cfg = configName.toLowerCase();
+        return stageNameLower === cfg || stageIdLower === cfg;
+      };
 
       if (matches(STAGE_APROBADO.value())) {
         // Delay processing 3 minutes so Viterbit has time to populate hired_info
@@ -977,7 +956,7 @@ export const viterbitWebhook = onRequest(
       } else if (matches(STAGE_CONTRATO.value())) {
         const result = await handleContrato(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
-      } else if (matches(STAGE_INDUCCION.value()) || matches('induccion') || matches('onboarding') || matches(STAGE_CORREOS.value())) {
+      } else if (exactMatches(STAGE_INDUCCION.value())) {
         const result = await handleInduccion(parsed, apiKey, logRef);
         res.status(200).json({ ok: true, ...result });
       } else {
