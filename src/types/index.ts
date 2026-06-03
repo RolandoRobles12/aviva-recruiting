@@ -193,6 +193,7 @@ export interface Candidate {
     contrato: string;
     correos: string;
     induccion: string;
+    promotorExitoso?: string;
   };
   // Profile (canonical — set from Viterbit or manually on creation)
   profile?: string;

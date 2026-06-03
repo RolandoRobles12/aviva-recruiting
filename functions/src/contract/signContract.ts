@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { onRequest } from 'firebase-functions/v2/https';
 import { defineString, defineSecret } from 'firebase-functions/params';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp as FsTimestamp } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -465,6 +465,30 @@ export const signContract = onRequest(
       console.error('[signContract] Firestore update failed, cleaning up Storage files:', firestoreErr);
       await Promise.allSettled(uploadedPaths.map((p) => bucket.file(p).delete()));
       throw firestoreErr;
+    }
+
+    // Schedule 15-day and 30-day performance checks (fire-and-forget).
+    // Only created when the candidate has a known start date.
+    const viterbitStartDate = candidate.viterbitStartDate as string | undefined;
+    if (viterbitStartDate) {
+      const startMs = new Date(viterbitStartDate + 'T00:00:00Z').getTime();
+      const after15 = new Date(startMs + 15 * 24 * 60 * 60 * 1000);
+      const after30 = new Date(startMs + 30 * 24 * 60 * 60 * 1000);
+      const baseCheck = {
+        candidateId,
+        processed: false,
+        createdAt: FieldValue.serverTimestamp(),
+      };
+      void Promise.allSettled([
+        db.collection('pending_performance_checks').doc(`${candidateId}_15d`).set(
+          { ...baseCheck, daysMark: 15, processAfter: FsTimestamp.fromDate(after15) },
+          { merge: true },
+        ),
+        db.collection('pending_performance_checks').doc(`${candidateId}_30d`).set(
+          { ...baseCheck, daysMark: 30, processAfter: FsTimestamp.fromDate(after30) },
+          { merge: true },
+        ),
+      ]);
     }
 
     // Move in Viterbit to "Onboarding" stage (correos stage removed from pipeline).
