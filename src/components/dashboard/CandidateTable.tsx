@@ -8,18 +8,20 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { computeCompletion } from '../../utils/candidateCompletion';
 
-// Pipeline stages matching Viterbit: Documentos → Contrato → Correos → Inducción
+// Pipeline stages matching Viterbit: Documentos → Contrato → Correos → Onboarding → Onboarding Iniciado → Promotor Exitoso
 // Each filter groups related sub-statuses together
-type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'offer' | 'descalificados';
+type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'onboarding_iniciado' | 'promotor_exitoso' | 'offer' | 'descalificados';
 
 const STATUS_FILTERS: { value: FilterValue; label: string; statuses: CandidateStatus[] }[] = [
-  { value: 'all',             label: 'Todos',           statuses: [] },
-  { value: 'offer',           label: 'Carta oferta',    statuses: ['offer_sent', 'offer_signed'] },
-  { value: 'documentos',      label: 'Documentos',      statuses: ['invited', 'in_progress', 'under_review', 'approved', 'rejected'] },
-  { value: 'contrato',        label: 'Contrato',        statuses: ['contract_sent', 'contract_signed'] },
-  { value: 'correos',         label: 'Correos',         statuses: ['email_pending', 'email_ready'] },
-  { value: 'induction',       label: 'Inducción',       statuses: ['induction'] },
-  { value: 'descalificados',  label: 'Descalificados',  statuses: ['disqualified'] },
+  { value: 'all',                label: 'Todos',               statuses: [] },
+  { value: 'offer',              label: 'Carta oferta',        statuses: ['offer_sent', 'offer_signed'] },
+  { value: 'documentos',        label: 'Documentos',          statuses: ['invited', 'in_progress', 'under_review', 'approved', 'rejected'] },
+  { value: 'contrato',          label: 'Contrato',            statuses: ['contract_sent', 'contract_signed'] },
+  { value: 'correos',           label: 'Correos',             statuses: ['email_pending', 'email_ready'] },
+  { value: 'induction',         label: 'Onboarding',          statuses: ['induction'] },
+  { value: 'onboarding_iniciado', label: 'Onboarding Iniciado', statuses: ['onboarding_iniciado'] },
+  { value: 'promotor_exitoso',  label: 'Promotor Exitoso',    statuses: ['promotor_exitoso'] },
+  { value: 'descalificados',    label: 'Descalificados',      statuses: ['disqualified'] },
 ];
 
 function PositionCell({ position }: { position: string }) {

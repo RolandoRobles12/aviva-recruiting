@@ -11,10 +11,12 @@ const CANDIDATE_STATUS_CONFIG: Record<CandidateStatus, { label: string; classNam
   rejected:        { label: 'Rechazado',        className: 'badge-invalid' },
   contract_sent:   { label: 'Contrato enviado', className: 'badge-review' },
   contract_signed: { label: 'Contrato firmado', className: 'badge-valid' },
-  email_pending:   { label: 'Correo pendiente', className: 'badge-review' },
-  email_ready:     { label: 'Correo listo',     className: 'badge-valid' },
-  induction:       { label: 'Inducción',        className: 'badge-valid' },
-  disqualified:    { label: 'Descalificado',    className: 'badge-invalid' },
+  email_pending:        { label: 'Correo pendiente',     className: 'badge-review' },
+  email_ready:          { label: 'Correo listo',         className: 'badge-valid' },
+  induction:            { label: 'Onboarding',           className: 'badge-valid' },
+  onboarding_iniciado:  { label: 'Onboarding Iniciado',  className: 'badge-review' },
+  promotor_exitoso:     { label: 'Promotor Exitoso',     className: 'badge-valid' },
+  disqualified:         { label: 'Descalificado',        className: 'badge-invalid' },
 };
 
 const DOCUMENT_STATUS_CONFIG: Record<DocumentStatus, { label: string; className: string }> = {

@@ -100,6 +100,10 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
     if (apiKey && candidatureId && promotorExitosoId) {
       try {
         await moveToPromotor(candidatureId, promotorExitosoId, apiKey);
+        await candidateSnap.ref.update({
+          status: 'promotor_exitoso',
+          updatedAt: FieldValue.serverTimestamp(),
+        });
         console.info(`[performanceCheck] Moved ${candidateName} to Promotor Exitoso (${dealCount}/${monthlyTarget})`);
       } catch (err) {
         console.error(`[performanceCheck] moveToPromotor error for ${candidateId}:`, err);
