@@ -148,13 +148,13 @@ Dirección registrada en INE del candidato: "{{INE_ADDRESS}}"
 
 Validaciones requeridas:
 1. ¿Es un recibo de servicios, estado de cuenta bancario, o documento que muestre un domicilio?
-2. ¿Se puede leer una dirección (calle, colonia, código postal, ciudad/estado)?
-3. Vigencia: Lee la fecha del documento (fecha de emisión, período de facturación, o fecha de estado de cuenta). Si la fecha es anterior a 3 meses respecto a hoy ({{TODAY_DATE}}), el documento está vencido y debes rechazarlo indicando la fecha encontrada. Si no se puede leer ninguna fecha, rechaza el documento.
+2. ¿Se puede leer una dirección del CLIENTE (calle, colonia, código postal, ciudad/estado)? IMPORTANTE: extrae la dirección del titular/cliente del servicio, NO la dirección corporativa u oficinas de la empresa emisora (CFE, Telmex, banco, etc.).
+3. Vigencia: Lee la fecha del documento. IMPORTANTE: si el documento muestra un PERIODO DE FACTURACIÓN (ej: "30 ENE 26 - 31 MAR 26"), usa la fecha FINAL del periodo para calcular la vigencia, no la inicial. Si la fecha final del periodo (o fecha de emisión) es anterior a 3 meses respecto a hoy ({{TODAY_DATE}}), el documento está vencido. Si no se puede leer ninguna fecha, rechaza el documento.
 {{#INE_ADDRESS}}
 4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa). No importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
 {{/INE_ADDRESS}}
 
-Datos a extraer: direccion (dirección completa, lo más completa posible), cp (código postal de 5 dígitos, solo los números), empresa_emisora, fecha_documento (fecha de emisión en formato YYYY-MM-DD si es legible).`,
+Datos a extraer: direccion (dirección completa del CLIENTE, lo más completa posible), cp (código postal de 5 dígitos del cliente, solo los números), empresa_emisora, fecha_documento (fecha FINAL del periodo de facturación o fecha de emisión, en formato YYYY-MM-DD).`,
 
   foto_profesional: `Analiza esta imagen y determina si es una foto profesional o tipo credencial de una persona.
 
