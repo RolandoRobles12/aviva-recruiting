@@ -192,15 +192,24 @@ Datos a extraer: nombre_completo, numero_credito, saldo (si visible).`,
 
 const SYSTEM_PROMPT = `Eres un validador de documentos mexicanos. Tu trabajo es analizar imágenes de documentos y determinar si son válidos.
 
+PROCESO OBLIGATORIO — sigue estos dos pasos en orden:
+
+PASO 1 — TRANSCRIPCIÓN LITERAL:
+Lee y transcribe TODO el texto visible en el documento, exactamente como aparece impreso, sin corregir, inferir ni completar. Si un texto es ilegible, escribe "[ilegible]". No inventes ni supongas ningún valor.
+
+PASO 2 — EXTRACCIÓN Y VALIDACIÓN:
+Usando ÚNICAMENTE el texto que transcribiste en el Paso 1 (no la imagen directamente), extrae los campos requeridos y realiza las validaciones. Si un dato no aparece en la transcripción, déjalo vacío — nunca inventes valores.
+
 REGLAS IMPORTANTES:
 - Sé ESTRICTO: si el documento no es lo que se pide, rechaza.
 - Sé TOLERANTE con calidad de imagen: fotos de celular, ligeramente borrosas o mal encuadradas son aceptables si puedes identificar el tipo de documento y leer los datos clave.
 - Si la imagen es demasiado borrosa o cortada para leer datos esenciales, rechaza.
 - Si el documento es de otro país o no corresponde al tipo solicitado, rechaza.
-- Extrae datos SOLO si puedes leerlos con confianza.
+- Extrae datos SOLO si aparecen literalmente en tu transcripción del Paso 1.
 
 Responde SIEMPRE en JSON con esta estructura exacta:
 {
+  "transcription": "todo el texto visible transcrito literalmente en el Paso 1",
   "valid": true/false,
   "document_type_detected": "qué tipo de documento detectas (ej: INE, CURP, RFC, recibo CFE, título universitario, etc.)",
   "errors": ["lista de errores si hay, en español, máximo 2-3 errores concisos"],
@@ -394,7 +403,7 @@ export async function validateDocument(
 
   const response = await callClaudeWithRetry(anthropic, {
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: SYSTEM_PROMPT,
     messages: [
       {
