@@ -500,6 +500,9 @@ export const signContract = onRequest(
     if (apiKey && onboardingStageId && candidatureId) {
       try {
         await moveToStage(candidatureId, onboardingStageId, apiKey);
+        // Update status directly — don't rely on Viterbit webhook firing for API-triggered moves.
+        // handleInduccion will no-op if the webhook does fire later (induction is in pastStages).
+        await candidateDoc.ref.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
       } catch (err) {
         console.error('[signContract] moveToStage onboarding error:', err);
         await db.collection('webhook_logs').add({
