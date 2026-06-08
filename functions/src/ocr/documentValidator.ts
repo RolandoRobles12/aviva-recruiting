@@ -60,7 +60,7 @@ Validaciones requeridas:
 3. ¿Se puede leer el nombre del titular? Es obligatorio — si no se puede leer el nombre, el documento no es válido.
 4. ¿La imagen es suficientemente clara para considerarse válida?
 
-Datos a extraer: curp, nombre_completo, clave_elector (si es visible), domicilio (dirección completa que aparece en la credencial, incluyendo calle, número, colonia, municipio y estado), sexo (la letra que aparece: H para hombre, M para mujer), nacionalidad (texto que aparece, normalmente "MEXICANA").`,
+Datos a extraer: curp, nombre_completo, clave_elector (si es visible), domicilio (dirección completa que aparece en el ANVERSO de la credencial en el campo "DOMICILIO", incluyendo calle, número, colonia, municipio y estado — por ejemplo "C 29 B POR 86 715, FRACC VIVA CAUCEL II, MÉRIDA, YUC."; IGNORA completamente el reverso y los códigos MRZ/OCR-B como "IDMEX", "MEX<", "<<" — esos son códigos de máquina que NO representan el estado de residencia), sexo (la letra que aparece: H para hombre, M para mujer), nacionalidad (texto que aparece, normalmente "MEXICANA").`,
 
   curp: `Analiza esta imagen y determina si es una constancia de CURP oficial de México.
 
@@ -141,6 +141,7 @@ Datos a extraer: nombre_recomendado, empresa_emisora, puesto (si visible).`,
 Documentos válidos: recibos de luz (CFE), agua, gas (Naturgy), teléfono/internet (Telmex, Telcel, Izzi, Totalplay, Megacable, AT&T, Movistar, Axtel), estados de cuenta bancarios, recibos de predial.
 
 La fecha de hoy es: {{TODAY_DATE}}.
+Fecha mínima aceptable del documento: {{THREE_MONTHS_AGO}} (documentos con fecha anterior a esta están vencidos).
 
 {{#INE_ADDRESS}}
 Dirección registrada en INE del candidato: "{{INE_ADDRESS}}"
@@ -148,10 +149,10 @@ Dirección registrada en INE del candidato: "{{INE_ADDRESS}}"
 
 Validaciones requeridas:
 1. ¿Es un recibo de servicios, estado de cuenta bancario, o documento que muestre un domicilio?
-2. ¿Se puede leer una dirección del CLIENTE (calle, colonia, código postal, ciudad/estado)? IMPORTANTE: extrae la dirección del titular/cliente del servicio, NO la dirección corporativa u oficinas de la empresa emisora (CFE, Telmex, banco, etc.).
-3. Vigencia: Lee la fecha del documento. IMPORTANTE: si el documento muestra un PERIODO DE FACTURACIÓN (ej: "30 ENE 26 - 31 MAR 26"), usa la fecha FINAL del periodo para calcular la vigencia, no la inicial. Si la fecha final del periodo (o fecha de emisión) es anterior a 3 meses respecto a hoy ({{TODAY_DATE}}), el documento está vencido. Si no se puede leer ninguna fecha, rechaza el documento.
+2. ¿Se puede leer una dirección del CLIENTE (calle, colonia, código postal, ciudad/estado)? IMPORTANTE: extrae la dirección del titular/cliente del servicio, NO la dirección corporativa u oficinas de la empresa emisora (CFE, Telmex, banco, etc.). Los recibos de CFE y otros servicios suelen tener el nombre y dirección del cliente en la esquina superior izquierda — usa esa dirección.
+3. Vigencia: Lee la fecha del documento. IMPORTANTE: si el documento muestra un PERIODO DE FACTURACIÓN (ej: "30 ENE 26 - 31 MAR 26"), usa la fecha FINAL del periodo, no la inicial. Compara esa fecha directamente contra la fecha mínima aceptable ({{THREE_MONTHS_AGO}}): si la fecha del documento es MAYOR O IGUAL a {{THREE_MONTHS_AGO}}, el documento está vigente; si es ANTERIOR a {{THREE_MONTHS_AGO}}, está vencido. Si no se puede leer ninguna fecha, rechaza el documento.
 {{#INE_ADDRESS}}
-4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa). No importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
+4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa) — no importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
 {{/INE_ADDRESS}}
 
 Datos a extraer: direccion (dirección completa del CLIENTE, lo más completa posible), cp (código postal de 5 dígitos del cliente, solo los números), empresa_emisora, fecha_documento (fecha FINAL del periodo de facturación o fecha de emisión, en formato YYYY-MM-DD).`,
@@ -346,10 +347,15 @@ export async function validateDocument(
   const anthropic = getClient();
   let prompt = DOCUMENT_PROMPTS[documentType];
 
-  // Inject today's date
+  // Inject today's date and precomputed 3-month cutoff (avoids asking the model to do date arithmetic)
   if (prompt) {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const now = new Date();
+    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const cutoff = new Date(now);
+    cutoff.setMonth(cutoff.getMonth() - 3);
+    const threeMonthsAgo = cutoff.toISOString().split('T')[0]; // YYYY-MM-DD
     prompt = prompt.replace(/\{\{TODAY_DATE\}\}/g, today);
+    prompt = prompt.replace(/\{\{THREE_MONTHS_AGO\}\}/g, threeMonthsAgo);
   }
 
   // Inject extra context variables and handle {{#KEY}}...{{/KEY}} conditional blocks
