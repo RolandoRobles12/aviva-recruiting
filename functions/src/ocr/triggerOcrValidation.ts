@@ -144,6 +144,30 @@ export const onDocumentUploaded = onObjectFinalized(
         }
       }
 
+      // ── Server-side date validation for comprobante_domicilio ────────────
+      // The model only extracts the date; expiry is checked here to avoid
+      // Claude Haiku making date arithmetic errors.
+      if (result.valid && documentType === 'comprobante_domicilio') {
+        const fechaDoc = result.extractedData.fecha_documento;
+        if (!fechaDoc) {
+          result.valid = false;
+          result.errors.push('No se pudo leer la fecha del documento. Asegúrate de que la fecha sea visible y sube la imagen de nuevo.');
+        } else {
+          const docDate = new Date(fechaDoc);
+          const cutoff = new Date();
+          cutoff.setMonth(cutoff.getMonth() - 3);
+          cutoff.setHours(0, 0, 0, 0);
+          if (isNaN(docDate.getTime())) {
+            result.valid = false;
+            result.errors.push(`No se pudo interpretar la fecha del documento: "${fechaDoc}". Verifica que el documento sea legible.`);
+          } else if (docDate < cutoff) {
+            result.valid = false;
+            const cutoffStr = cutoff.toISOString().split('T')[0];
+            result.errors.push(`Documento vencido: la fecha del documento (${fechaDoc}) es anterior a los 3 meses requeridos (mínimo ${cutoffStr}).`);
+          }
+        }
+      }
+
       // ── CURP cross-document consistency check ─────────────────────────────
       // INE and the CURP document both contain the CURP. If both are valid and
       // their CURPs disagree, at least one document does not belong to this
