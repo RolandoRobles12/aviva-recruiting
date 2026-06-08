@@ -136,26 +136,23 @@ Sé TOLERANTE: cartas personales con firma manuscrita, en papel simple, o sin me
 
 Datos a extraer: nombre_recomendado, empresa_emisora, puesto (si visible).`,
 
-  comprobante_domicilio: `Analiza esta imagen y determina si es un comprobante de domicilio válido de México con vigencia mínima de 3 meses.
+  comprobante_domicilio: `Analiza esta imagen y determina si es un comprobante de domicilio de México.
 
 Documentos válidos: recibos de luz (CFE), agua, gas (Naturgy), teléfono/internet (Telmex, Telcel, Izzi, Totalplay, Megacable, AT&T, Movistar, Axtel), estados de cuenta bancarios, recibos de predial.
-
-La fecha de hoy es: {{TODAY_DATE}}.
-Fecha mínima aceptable del documento: {{THREE_MONTHS_AGO}} (documentos con fecha anterior a esta están vencidos).
 
 {{#INE_ADDRESS}}
 Dirección registrada en INE del candidato: "{{INE_ADDRESS}}"
 {{/INE_ADDRESS}}
 
 Validaciones requeridas:
-1. ¿Es un recibo de servicios, estado de cuenta bancario, o documento que muestre un domicilio?
-2. ¿Se puede identificar una ubicación del CLIENTE (al menos ciudad/municipio y estado)? IMPORTANTE: extrae la información de ubicación del titular/cliente, NO la dirección corporativa de la empresa emisora. Los recibos de CFE usan un formato comprimido (ej: "29B 715 88 86 VIVA II C CP.9 FRACC VIVA CAUCEL II CAUCEL YUC") que puede parecer ilegible pero es válido — acéptalo aunque no tenga formato tradicional de calle/número/colonia. Solo rechaza por este punto si NO aparece ninguna información de ubicación del cliente en el documento.
-3. Vigencia: Lee la fecha del documento. IMPORTANTE: si el documento muestra un PERIODO DE FACTURACIÓN (ej: "30 ENE 26 - 31 MAR 26"), usa la fecha FINAL del periodo, no la inicial. Compara esa fecha directamente contra la fecha mínima aceptable ({{THREE_MONTHS_AGO}}): si la fecha del documento es MAYOR O IGUAL a {{THREE_MONTHS_AGO}}, el documento está vigente; si es ANTERIOR a {{THREE_MONTHS_AGO}}, está vencido. Si no se puede leer ninguna fecha, rechaza el documento.
+1. ¿Es un recibo de servicios, estado de cuenta bancario, o documento que muestre un domicilio? Si no es ninguno de los documentos válidos, rechaza.
+2. Extrae la dirección del CLIENTE (NO la dirección corporativa de la empresa emisora). Los recibos de CFE y similares usan formato comprimido — transcribe lo que aparezca aunque no sea un formato de dirección estándar. NO rechaces por este criterio; extrae lo que puedas.
+3. Extrae la fecha del documento. Si muestra PERIODO DE FACTURACIÓN (ej: "30 ENE 26 - 31 MAR 26"), usa la fecha FINAL. Si no hay ninguna fecha legible, rechaza. Devuelve la fecha en formato YYYY-MM-DD en el campo fecha_documento — NO valides la vigencia, solo extrae la fecha.
 {{#INE_ADDRESS}}
-4. Comparación de estado con INE: Extrae el estado de la república que aparece en el comprobante y compáralo con el estado que aparece en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa) — no importa si el municipio, colonia o código postal son diferentes. Si el estado es diferente, rechaza indicando los dos estados encontrados.
+4. Comparación de estado con INE: Extrae el estado de la república del comprobante y compáralo con el estado en el INE ("{{INE_ADDRESS}}"). Solo verifica que sea el mismo estado (entidad federativa) — ignora municipio, colonia y código postal. Si el estado es diferente, rechaza indicando ambos estados.
 {{/INE_ADDRESS}}
 
-Datos a extraer: direccion (dirección completa del CLIENTE, lo más completa posible), cp (código postal de 5 dígitos del cliente, solo los números), empresa_emisora, fecha_documento (fecha FINAL del periodo de facturación o fecha de emisión, en formato YYYY-MM-DD).`,
+Datos a extraer: direccion (dirección del CLIENTE tal como aparece, incluso si está en formato comprimido), cp (código postal de 5 dígitos del cliente, solo números), empresa_emisora, fecha_documento (fecha FINAL del periodo o fecha de emisión, en formato YYYY-MM-DD).`,
 
   foto_profesional: `Analiza esta imagen y determina si es una foto profesional o tipo credencial de una persona.
 
@@ -347,15 +344,10 @@ export async function validateDocument(
   const anthropic = getClient();
   let prompt = DOCUMENT_PROMPTS[documentType];
 
-  // Inject today's date and precomputed 3-month cutoff (avoids asking the model to do date arithmetic)
+  // Inject today's date (date arithmetic is done server-side, not by the model)
   if (prompt) {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const cutoff = new Date(now);
-    cutoff.setMonth(cutoff.getMonth() - 3);
-    const threeMonthsAgo = cutoff.toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     prompt = prompt.replace(/\{\{TODAY_DATE\}\}/g, today);
-    prompt = prompt.replace(/\{\{THREE_MONTHS_AGO\}\}/g, threeMonthsAgo);
   }
 
   // Inject extra context variables and handle {{#KEY}}...{{/KEY}} conditional blocks
