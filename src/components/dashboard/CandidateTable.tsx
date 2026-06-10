@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, Users } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Search, Users, ChevronDown } from 'lucide-react';
 import type { Candidate, CandidateStatus } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
@@ -49,6 +49,28 @@ interface Props {
 export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterValue>('all');
+  const [profileFilter, setProfileFilter] = useState('');
+  const [positionFilter, setPositionFilter] = useState('');
+
+  const uniqueProfiles = useMemo(() => {
+    const set = new Set<string>();
+    candidates.forEach((c) => {
+      const p = c.profile ?? c.viterbitDepartmentProfile;
+      if (p) set.add(p);
+    });
+    return Array.from(set).sort();
+  }, [candidates]);
+
+  const uniquePositions = useMemo(() => {
+    const set = new Set<string>();
+    candidates.forEach((c) => {
+      if (c.position) {
+        const dashIdx = c.position.indexOf(' - ');
+        set.add(dashIdx !== -1 ? c.position.slice(0, dashIdx) : c.position);
+      }
+    });
+    return Array.from(set).sort();
+  }, [candidates]);
 
   const activeFilter = STATUS_FILTERS.find((f) => f.value === statusFilter);
   const filtered = candidates.filter((c) => {
@@ -58,7 +80,17 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
         .toLowerCase()
         .includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || (activeFilter?.statuses.includes(c.status) ?? false);
-    return matchSearch && matchStatus;
+    const matchProfile =
+      !profileFilter ||
+      (c.profile ?? c.viterbitDepartmentProfile) === profileFilter;
+    const matchPosition =
+      !positionFilter ||
+      (() => {
+        const dashIdx = c.position?.indexOf(' - ') ?? -1;
+        const role = dashIdx !== -1 ? c.position.slice(0, dashIdx) : c.position;
+        return role === positionFilter;
+      })();
+    return matchSearch && matchStatus && matchProfile && matchPosition;
   });
 
   return (
@@ -74,6 +106,38 @@ export function CandidateTable({ candidates, onSelect, selectedId }: Props) {
             className="input-field pl-9 text-sm"
           />
         </div>
+        <div className="flex gap-2 flex-wrap">
+          {/* Profile filter */}
+          <div className="relative">
+            <select
+              value={profileFilter}
+              onChange={(e) => setProfileFilter(e.target.value)}
+              className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Perfil</option>
+              {uniqueProfiles.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* Position filter */}
+          <div className="relative">
+            <select
+              value={positionFilter}
+              onChange={(e) => setPositionFilter(e.target.value)}
+              className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Posición</option>
+              {uniquePositions.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
+
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {STATUS_FILTERS.map((f) => {
             const count = f.value === 'all'
