@@ -49,6 +49,7 @@ export async function createHubSpotUser(params: {
       lastName: params.lastName,
       sendWelcomeEmail: true,
       primaryTeamId: '11727817',
+      roleId: '569557',
     }),
   });
 
