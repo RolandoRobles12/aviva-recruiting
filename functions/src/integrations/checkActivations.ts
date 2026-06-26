@@ -56,16 +56,18 @@ export const checkActivations = onSchedule(
       const candidate = docSnap.data();
       const corporateEmail = candidate.corporateEmail as string | undefined;
       const viterbitStartDate = candidate.viterbitStartDate as string | undefined;
+      const viterbitStartDateISO = (candidate.viterbitStartDateISO as string | undefined) || viterbitStartDate;
       const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
 
-      if (!corporateEmail || !viterbitStartDate || !viterbitCandidatureId) {
+      if (!corporateEmail || !viterbitStartDateISO || !viterbitCandidatureId) {
         console.warn(`[checkActivations] ${docSnap.id}: missing required fields — skipping`);
         continue;
       }
 
-      const startDate = new Date(viterbitStartDate);
+      const isoString = viterbitStartDateISO.includes('T') ? viterbitStartDateISO : viterbitStartDateISO + 'T00:00:00Z';
+      const startDate = new Date(isoString);
       if (isNaN(startDate.getTime())) {
-        console.warn(`[checkActivations] ${docSnap.id}: invalid viterbitStartDate "${viterbitStartDate}" — skipping`);
+        console.warn(`[checkActivations] ${docSnap.id}: invalid viterbitStartDate "${viterbitStartDateISO}" — skipping`);
         continue;
       }
 

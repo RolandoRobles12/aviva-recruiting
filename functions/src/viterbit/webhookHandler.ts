@@ -465,6 +465,9 @@ export async function handleAprobado(
   const viterbitStartDate = rawStartDate
     ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
     : '';
+  // Raw ISO date (YYYY-MM-DD or full ISO) kept separately for date arithmetic in
+  // signContract and performanceCheck — viterbitStartDate is display-only.
+  const viterbitStartDateISO = rawStartDate || null;
 
   const findStage = (name: string) =>
     stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
@@ -554,6 +557,7 @@ export async function handleAprobado(
     // Viterbit job custom fields (used to interpolate offer letter variables)
     viterbitSalary: viterbitSalary || null,
     viterbitStartDate: viterbitStartDate || null,
+    viterbitStartDateISO: viterbitStartDateISO,
     viterbitHiringManager: viterbitHiringManager || null,
     viterbitCompany: viterbitCompany || null,
     viterbitDepartmentProfile: viterbitDepartmentProfile || null,

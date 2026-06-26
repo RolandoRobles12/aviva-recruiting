@@ -59,13 +59,15 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
   }
 
   const viterbitStartDate = c.viterbitStartDate as string | undefined;
-  if (!viterbitStartDate) {
+  const viterbitStartDateISO = (c.viterbitStartDateISO as string | undefined) || viterbitStartDate;
+  if (!viterbitStartDateISO) {
     console.warn(`[performanceCheck] ${candidateId} has no viterbitStartDate — marking processed`);
     await checkDoc.ref.update({ processed: true, processedAt: FieldValue.serverTimestamp() });
     return;
   }
 
-  const startDateMs = new Date(viterbitStartDate + 'T00:00:00Z').getTime();
+  const isoString = viterbitStartDateISO.includes('T') ? viterbitStartDateISO : viterbitStartDateISO + 'T00:00:00Z';
+  const startDateMs = new Date(isoString).getTime();
 
   let dealCount = 0;
   try {

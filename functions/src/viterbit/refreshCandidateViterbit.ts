@@ -164,7 +164,10 @@ export const refreshCandidateViterbit = onCall(
 
     if (title) updates.position = title;
     if (salary) updates.viterbitSalary = salary;
-    if (startDate) updates.viterbitStartDate = startDate;
+    if (startDate) {
+      updates.viterbitStartDate = format(new Date(startDate), "d 'de' MMMM 'de' yyyy", { locale: es });
+      updates.viterbitStartDateISO = startDate;
+    }
     if (hiringManager) updates.viterbitHiringManager = hiringManager;
     if (company) updates.viterbitCompany = company;
     if (departmentProfile) {
@@ -177,7 +180,7 @@ export const refreshCandidateViterbit = onCall(
     return {
       success: true,
       salary: (updates.viterbitSalary as string) || null,
-      startDate: (updates.viterbitStartDate as string) || null,
+      startDate: (updates.viterbitStartDateISO as string) || null,
       position: (updates.position as string) || null,
     };
   },

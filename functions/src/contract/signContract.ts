@@ -470,8 +470,9 @@ export const signContract = onRequest(
     // Schedule 15-day and 30-day performance checks (fire-and-forget).
     // Only created when the candidate has a known start date.
     const viterbitStartDate = candidate.viterbitStartDate as string | undefined;
-    if (viterbitStartDate) {
-      const startMs = new Date(viterbitStartDate + 'T00:00:00Z').getTime();
+    const viterbitStartDateISO = (candidate.viterbitStartDateISO as string | undefined) || viterbitStartDate;
+    if (viterbitStartDateISO) {
+      const startMs = new Date(viterbitStartDateISO.includes('T') ? viterbitStartDateISO : viterbitStartDateISO + 'T00:00:00Z').getTime();
       const after15 = new Date(startMs + 15 * 24 * 60 * 60 * 1000);
       const after30 = new Date(startMs + 30 * 24 * 60 * 60 * 1000);
       const baseCheck = {
