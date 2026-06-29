@@ -71,12 +71,16 @@ Validaciones requeridas:
 
 Datos a extraer: curp, nombre_completo.`,
 
-  nss: `Analiza esta imagen y determina si es un documento que contiene el Número de Seguridad Social (NSS) del IMSS de México.
+  nss: `Analiza esta imagen y determina si es un Comprobante de NSS o una Tarjeta de NSS del IMSS de México.
 
-Documentos válidos: constancia de NSS del IMSS, hoja rosa del IMSS, tarjeta de afiliación, documento IMSS con NSS visible, captura del portal IMSS digital.
+Documentos válidos ÚNICAMENTE:
+- Comprobante de Asignación de Número de Seguridad Social: página completa con encabezado "gob.mx" e "Instituto Mexicano del Seguro Social", sección "Asignación de Número de Seguridad Social", tabla con campos como "Número de Seguridad Social", "CURP", "Nombre(s)", "Primer apellido", etc., y al final "Cadena original", "Sello Digital", "Secuencia Notarial".
+- Tarjeta de NSS del IMSS: recuadro con línea punteada para recortar (puede estar ya recortada), logo del IMSS, texto "tu Número de Seguridad Social es:" seguido del NSS, y "Asociado a la CURP:". Puede presentarse sola (recortada) o como parte de la hoja completa de "Asignación o Localización de Número de Seguridad Social".
+
+RECHAZA cualquier otro documento aunque contenga un NSS: estados de cuenta INFONAVIT, nóminas, contratos, credenciales, capturas de pantalla de apps, o cualquier otro documento que no sea estrictamente los dos tipos anteriores.
 
 Validaciones requeridas:
-1. ¿Es un documento oficial del IMSS o contiene un NSS claramente visible?
+1. ¿Es exactamente un Comprobante de NSS o una Tarjeta de NSS del IMSS (incluyendo la tarjeta recortada)? Si no es ninguno de estos dos tipos, rechaza.
 2. ¿Se puede leer el NSS completo (11 dígitos)?
 3. ¿Se puede leer el nombre del titular?
 
@@ -91,16 +95,18 @@ Validaciones requeridas:
 
 Datos a extraer: nombre_completo, curp (si visible), fecha_nacimiento, lugar_nacimiento, sexo (Masculino o Femenino), nacionalidad (normalmente "Mexicana").`,
 
-  caratula_bancaria: `Analiza esta imagen y determina si es una carátula bancaria o estado de cuenta bancario de México.
+  caratula_bancaria: `Analiza esta imagen y determina si es una carátula bancaria o estado de cuenta de un banco tradicional mexicano.
 
-Documentos válidos: carátula de cuenta bancaria, estado de cuenta bancario, constancia de cuenta CLABE, captura de app bancaria que muestre datos de la cuenta.
+Bancos aceptados ÚNICAMENTE: BBVA (Bancomer), Banorte, Santander, HSBC, Scotiabank, Banamex (Citibanamex), Banco Azteca, BanCoppel, Inbursa, Afirme, Bajío, BANBAJÍO, Multiva, Bansí, Mifel, Compartamos Banco, Banregio, Hey Banco (solo si el documento muestra logo de Banregio/Hey Banco), BIMBO (Banco del Ejército), ABC Capital, Inmobiliario Mexicano, Bancrea, Consubanco, Invex, Ve por Más, HSBC, CIBanco, Intercam, Monexcb, Actinver, Ixe.
+
+RECHAZA los siguientes y cualquier otro neobanco o fintech: Nu (Nubank), Mercado Pago, Clip, Klar, Albo, Spin, Cuenca, Bitso, OXXO Pay, Stori, Tala, Kueski, Konfío, Cashi, Fondeadora, Vexi, Yuno, Pagando, Minu, o cualquier app de pagos digitales. Si el documento no muestra claramente el logo o nombre de un banco aceptado, rechaza.
 
 Validaciones requeridas:
-1. ¿Es un documento bancario que muestra datos de una cuenta? Busca logo de banco (BBVA, Banorte, Santander, HSBC, Scotiabank, Banamex/Citi, Banco Azteca, BanCoppel, etc.), número de cuenta o CLABE.
-2. ¿Se puede leer la CLABE interbancaria (18 dígitos) o número de cuenta?
+1. ¿Es un documento de un banco aceptado de la lista anterior? Busca el logo o nombre del banco claramente visible. Si es un neobanco/fintech o no se identifica el banco, rechaza.
+2. ¿Se puede leer la CLABE interbancaria (18 dígitos) o el número de cuenta?
 3. ¿Se puede leer el nombre del titular de la cuenta?
 
-Datos a extraer: nombre_completo, clabe, numero_cuenta, banco.`,
+Datos a extraer: nombre_completo, clabe (solo dígitos, sin espacios ni guiones), numero_cuenta (solo dígitos, sin espacios ni guiones), banco (nombre exacto del banco tal como aparece en el documento).`,
 
   certificado_estudios: `Analiza esta imagen y determina si es un comprobante de estudios válido de México.
 
@@ -115,13 +121,22 @@ Datos a extraer: nombre_completo, institucion, nivel_estudios, carrera (si aplic
 
   constancia_fiscal: `Analiza esta imagen y determina si es una Constancia de Situación Fiscal emitida por el SAT de México.
 
-Validaciones requeridas:
-1. ¿Es un documento oficial del SAT? Busca el logo del SAT, texto "Servicio de Administración Tributaria", "Constancia de Situación Fiscal", o "Cédula de Identificación Fiscal".
-2. ¿Se puede leer el RFC con homoclave (12 o 13 caracteres alfanuméricos)?
-3. ¿Se puede leer el nombre o razón social?
-4. ¿Incluye el domicilio fiscal?
+La Constancia de Situación Fiscal AUTÉNTICA tiene estas características visuales obligatorias:
+- Encabezado con el logo del SAT y texto "Servicio de Administración Tributaria"
+- Título explícito "Constancia de Situación Fiscal" (NO "Cédula de Identificación Fiscal", NO acuse de recibo, NO declaración, NO comprobante fiscal)
+- Secciones claramente definidas: datos del contribuyente (RFC, nombre/razón social, CURP si aplica), domicilio fiscal con código postal, régimen(es) fiscal(es) con fechas de alta, y obligaciones fiscales
+- Campo "Fecha de emisión" o "Fecha" con la fecha en que fue generada
+- Pie de página con número de folio o cadena de verificación del SAT
 
-Datos a extraer: rfc, nombre_completo, domicilio_fiscal, regimen_fiscal.`,
+RECHAZA cualquier otro documento del SAT aunque contenga un RFC: acuses de recibo, declaraciones anuales, opiniones de cumplimiento, comprobantes fiscales digitales (CFDI), cédulas de identificación fiscal antiguas sin las secciones de régimen y obligaciones, facturas, o cualquier otro trámite del SAT.
+
+Validaciones requeridas:
+1. ¿El documento tiene el título exacto "Constancia de Situación Fiscal" y muestra las secciones de régimen fiscal y obligaciones? Si no cumple ambas, rechaza.
+2. ¿Se puede leer el RFC completo con homoclave (12 caracteres para persona moral, 13 para persona física: 3-4 letras + 6 dígitos de fecha de nacimiento + 3 caracteres de homoclave)?
+3. ¿Se puede leer el nombre o razón social del contribuyente?
+4. ¿Se puede leer la fecha de emisión del documento?
+
+Datos a extraer: rfc (exactamente como aparece, sin espacios), nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue generada la constancia, en formato YYYY-MM-DD; busca el campo "Fecha de emisión" o "Fecha" en el encabezado o pie del documento — es la fecha de generación del PDF, NO la fecha de alta en el régimen fiscal).`,
 
   carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
 
@@ -219,11 +234,12 @@ No incluyas texto fuera del JSON. Solo responde con el JSON.`;
 
 // Regex patterns for critical fields — values that don't match are cleared rather than stored
 const FIELD_PATTERNS: Record<string, RegExp> = {
-  curp:  /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9]{2}$/,
-  rfc:   /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
-  nss:   /^[0-9]{11}$/,
-  clabe: /^[0-9]{18}$/,
-  cp:    /^[0-9]{5}$/,
+  curp:          /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9]{2}$/,
+  rfc:           /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
+  nss:           /^[0-9]{11}$/,
+  clabe:         /^[0-9]{18}$/,
+  cp:            /^[0-9]{5}$/,
+  fecha_emision: /^\d{4}-\d{2}-\d{2}$/,
 };
 
 /** Which critical fields each document type is expected to produce. */
@@ -232,17 +248,18 @@ export const CRITICAL_FIELDS_BY_DOC: Record<string, string[]> = {
   curp:                 ['curp'],
   nss:                  ['nss'],
   caratula_bancaria:    ['clabe'],
-  constancia_fiscal:    ['rfc'],
+  constancia_fiscal:    ['rfc', 'cp', 'fecha_emision'],
   comprobante_domicilio:['cp'],
 };
 
 // Focused single-field extraction prompts — used when the first pass misses a field
 const FIELD_RETRY_PROMPTS: Record<string, string> = {
   curp:  `Busca la CURP en este documento mexicano. La CURP tiene exactamente 18 caracteres: 4 letras + 6 dígitos de fecha (AAMMDD) + H o M (sexo) + 5 letras + 2 caracteres alfanuméricos. Ejemplo: VERM850304HDFRRR04. Responde SOLO con los 18 caracteres de la CURP, sin espacios ni guiones ni texto adicional. Si no puedes leerla claramente, responde exactamente: NO_ENCONTRADO`,
-  rfc:   `Busca el RFC en este documento del SAT de México. El RFC tiene 12 o 13 caracteres alfanuméricos (3-4 letras + 6 dígitos de fecha + 3 caracteres de homoclave). Responde SOLO con el RFC en mayúsculas, sin espacios ni texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  rfc:   `Busca el RFC en esta Constancia de Situación Fiscal del SAT de México. El RFC aparece en la sección de datos del contribuyente, normalmente etiquetado como "RFC:" o "R.F.C.". El RFC de persona física tiene 13 caracteres (4 letras + 6 dígitos de fecha AAMMDD + 3 caracteres de homoclave, ejemplo: GORJ850101ABC). El RFC de persona moral tiene 12 caracteres (3 letras + 6 dígitos + 3 caracteres, ejemplo: SAT970701NN3). Lee cada carácter con cuidado — las letras O e I pueden confundirse con los dígitos 0 y 1. Responde SOLO con el RFC en mayúsculas, sin espacios ni guiones ni texto adicional. Si no puedes leerlo con certeza, responde exactamente: NO_ENCONTRADO`,
   nss:   `Busca el Número de Seguridad Social (NSS) del IMSS en este documento. El NSS tiene exactamente 11 dígitos, sin letras. Responde SOLO con los 11 dígitos, sin espacios ni guiones. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
-  clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos, sin letras. Responde SOLO con los 18 dígitos, sin espacios ni guiones. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
+  clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos consecutivos, sin letras ni espacios. Normalmente aparece etiquetada como "CLABE", "CLABE Interbancaria", "Clave CLABE" o similar. Lee cada dígito con cuidado, uno por uno. Responde SOLO con los 18 dígitos juntos, sin espacios ni guiones ni texto adicional. Si no puedes leerla con certeza, responde exactamente: NO_ENCONTRADO`,
   cp:    `Busca el código postal en este documento. El código postal tiene exactamente 5 dígitos. Responde SOLO con los 5 dígitos, sin texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  fecha_emision: `Busca la fecha de emisión o generación de esta Constancia de Situación Fiscal del SAT. Puede aparecer como "Fecha de emisión", "Fecha", "Generado el" o similar. Responde SOLO con la fecha en formato YYYY-MM-DD. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
 };
 
 /**
@@ -258,6 +275,13 @@ function sanitizeExtractedData(
     if (!rawValue) { result[key] = ''; continue; }
 
     const value = String(rawValue).trim();
+
+    // numero_cuenta has no fixed length but must be digits only
+    if (key === 'numero_cuenta') {
+      const digitsOnly = value.replace(/\D/g, '');
+      result[key] = digitsOnly;
+      continue;
+    }
 
     // Only validate fields that have a known pattern
     const pattern = FIELD_PATTERNS[key];
@@ -303,9 +327,15 @@ export async function retryExtractField(
       ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data } }
       : { type: 'image' as const,    source: { type: 'base64' as const, media_type: mediaType, data: base64Data } };
 
+  // Fields prone to OCR errors use Sonnet for better precision on the retry pass
+  const HIGH_ACCURACY_FIELDS = new Set(['clabe', 'numero_cuenta', 'rfc', 'fecha_emision']);
+  const retryModel = HIGH_ACCURACY_FIELDS.has(fieldKey)
+    ? 'claude-sonnet-4-6'
+    : 'claude-haiku-4-5-20251001';
+
   try {
     const response = await callClaudeWithRetry(anthropic, {
-      model: 'claude-haiku-4-5-20251001',
+      model: retryModel,
       max_tokens: 64,
       messages: [{ role: 'user', content: [fileContent, { type: 'text', text: prompt }] }],
     });
