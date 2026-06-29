@@ -262,6 +262,31 @@ const FIELD_RETRY_PROMPTS: Record<string, string> = {
   fecha_emision: `Busca la fecha de emisión o generación de esta Constancia de Situación Fiscal del SAT. Puede aparecer como "Fecha de emisión", "Fecha", "Generado el" o similar. Responde SOLO con la fecha en formato YYYY-MM-DD. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
 };
 
+const BANK_ALIASES: Array<[RegExp, string]> = [
+  [/bbva/i,                    'BBVA'],
+  [/bancomer/i,                'BBVA'],
+  [/banorte/i,                 'BANORTE'],
+  [/hsbc/i,                    'HSBC'],
+  [/scotiabank/i,              'SCOTIABANK'],
+  [/santander/i,               'SANTANDER'],
+  [/banamex/i,                 'BANAMEX'],
+  [/citibanamex/i,             'BANAMEX'],
+  [/citi\b/i,                  'BANAMEX'],
+  [/azteca/i,                  'AZTECA'],
+  [/bancoppel/i,               'BANCOPPEL'],
+  [/coppel/i,                  'BANCOPPEL'],
+  [/inbursa/i,                 'INBURSA'],
+  [/mifel/i,                   'MIFEL'],
+];
+
+function normalizeBankName(raw: string): string {
+  const trimmed = raw.trim();
+  for (const [pattern, canonical] of BANK_ALIASES) {
+    if (pattern.test(trimmed)) return canonical;
+  }
+  return trimmed.toUpperCase();
+}
+
 /**
  * Strip or normalise extracted fields so only values that match their expected
  * format are persisted.  Unknown fields are passed through unchanged.
@@ -295,6 +320,8 @@ function sanitizeExtractedData(
         console.warn(`[ocr][${documentType}] field "${key}" failed format check — value discarded: "${value}"`);
         result[key] = '';
       }
+    } else if (key === 'banco') {
+      result[key] = normalizeBankName(value);
     } else {
       result[key] = value;
     }
