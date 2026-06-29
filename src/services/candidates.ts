@@ -236,3 +236,25 @@ export async function extendFormToken(candidateId: string, formDays = 7): Promis
   });
   return newToken;
 }
+
+export async function extendOfferToken(candidateId: string, offerDays = 7): Promise<string> {
+  const newToken = generateToken();
+  const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + offerDays * 24 * 60 * 60 * 1000));
+  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
+    offerToken: newToken,
+    offerExpiresAt: newExpiresAt,
+    updatedAt: serverTimestamp(),
+  });
+  return newToken;
+}
+
+export async function extendContractToken(candidateId: string, contractDays = 7): Promise<string> {
+  const newToken = generateToken();
+  const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + contractDays * 24 * 60 * 60 * 1000));
+  await updateDoc(doc(db, CANDIDATES_COLLECTION, candidateId), {
+    contractToken: newToken,
+    contractExpiresAt: newExpiresAt,
+    updatedAt: serverTimestamp(),
+  });
+  return newToken;
+}

@@ -40,7 +40,7 @@ import {
   appendSheetsRowManual,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
-import { updateCandidateStatus, updateCandidateNotes, extendFormToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
+import { updateCandidateStatus, updateCandidateNotes, extendFormToken, extendOfferToken, extendContractToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -126,6 +126,10 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [extendingToken, setExtendingToken] = useState(false);
   const [tokenExtended, setTokenExtended] = useState(false);
+  const [extendingOffer, setExtendingOffer] = useState(false);
+  const [offerExtended, setOfferExtended] = useState(false);
+  const [extendingContract, setExtendingContract] = useState(false);
+  const [contractExtended, setContractExtended] = useState(false);
   const [corpEmail, setCorpEmail] = useState('');
   const [provisioning, setProvisioning] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
@@ -189,6 +193,30 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
       setTimeout(() => setTokenExtended(false), 4000);
     } finally {
       setExtendingToken(false);
+    }
+  };
+
+  const handleExtendOffer = async () => {
+    setExtendingOffer(true);
+    try {
+      const linkSettings = await getLinkDurationSettings();
+      await extendOfferToken(c.id, linkSettings.offerDays);
+      setOfferExtended(true);
+      setTimeout(() => setOfferExtended(false), 4000);
+    } finally {
+      setExtendingOffer(false);
+    }
+  };
+
+  const handleExtendContract = async () => {
+    setExtendingContract(true);
+    try {
+      const linkSettings = await getLinkDurationSettings();
+      await extendContractToken(c.id, linkSettings.contractDays);
+      setContractExtended(true);
+      setTimeout(() => setContractExtended(false), 4000);
+    } finally {
+      setExtendingContract(false);
     }
   };
 
@@ -359,10 +387,28 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               />
             )}
             {tab === 'offer' && (
-              <TabOffer c={c} offerUrl={offerUrl} copied={copied} onCopy={copyToClipboard} onCandidateChange={() => {}} />
+              <TabOffer
+                c={c}
+                offerUrl={offerUrl}
+                copied={copied}
+                onCopy={copyToClipboard}
+                onCandidateChange={() => {}}
+                extendingOffer={extendingOffer}
+                offerExtended={offerExtended}
+                onExtendOffer={handleExtendOffer}
+              />
             )}
             {tab === 'contract' && (
-              <TabContract c={c} contractUrl={contractUrl} copied={copied} onCopy={copyToClipboard} onCandidateChange={() => {}} />
+              <TabContract
+                c={c}
+                contractUrl={contractUrl}
+                copied={copied}
+                onCopy={copyToClipboard}
+                onCandidateChange={() => {}}
+                extendingContract={extendingContract}
+                contractExtended={contractExtended}
+                onExtendContract={handleExtendContract}
+              />
             )}
             {tab === 'accounts' && (
               <TabAccounts
@@ -874,16 +920,20 @@ function ViterbitDataAlert({ c, onRefreshed }: { c: Candidate; onRefreshed: () =
    TAB: Carta Oferta
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange }: {
+function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOffer, offerExtended, onExtendOffer }: {
   c: Candidate;
   offerUrl: string | null;
   copied: boolean;
   onCopy: (text: string) => void;
   onCandidateChange: () => void;
+  extendingOffer: boolean;
+  offerExtended: boolean;
+  onExtendOffer: () => void;
 }) {
   const [sendingOffer, setSendingOffer] = useState(false);
   const [offerSent, setOfferSent] = useState(false);
   const [offerSendError, setOfferSendError] = useState('');
+  const offerExpired = c.offerExpiresAt?.toDate ? c.offerExpiresAt.toDate() < new Date() : false;
 
   const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
   const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
@@ -942,13 +992,26 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange }: {
             <Section title="Enlace de la carta">
               <LinkBox
                 url={offerUrl}
+                expired={offerExpired}
                 copied={copied}
                 onCopy={() => onCopy(offerUrl)}
               />
               {c.offerExpiresAt?.toDate && (
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Expira: {format(c.offerExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
+                <p className={`text-[11px] mt-1 ${offerExpired ? 'text-amber-500' : 'text-gray-400'}`}>
+                  {offerExpired
+                    ? `Venció el ${format(c.offerExpiresAt.toDate(), "d MMM yyyy", { locale: es })}`
+                    : `Expira: ${format(c.offerExpiresAt.toDate(), "d MMM yyyy", { locale: es })}`}
                 </p>
+              )}
+              {!c.offerSignedAt && (
+                <button
+                  onClick={onExtendOffer}
+                  disabled={extendingOffer}
+                  className="mt-2 flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 disabled:opacity-60"
+                >
+                  <RefreshCw size={12} className={extendingOffer ? 'animate-spin' : ''} />
+                  {extendingOffer ? 'Reactivando...' : offerExtended ? '¡Enlace reactivado!' : 'Reactivar enlace'}
+                </button>
               )}
             </Section>
           )}
@@ -1015,16 +1078,20 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange }: {
    TAB: Contrato
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange }: {
+function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extendingContract, contractExtended, onExtendContract }: {
   c: Candidate;
   contractUrl: string | null;
   copied: boolean;
   onCopy: (text: string) => void;
   onCandidateChange: () => void;
+  extendingContract: boolean;
+  contractExtended: boolean;
+  onExtendContract: () => void;
 }) {
   const [sendingContract, setSendingContract] = useState(false);
   const [contractSent, setContractSent] = useState(false);
   const [contractSendError, setContractSendError] = useState('');
+  const contractExpired = c.contractExpiresAt?.toDate ? c.contractExpiresAt.toDate() < new Date() : false;
 
   const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
   const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
@@ -1087,13 +1154,26 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange }: {
           <Section title="Enlace del contrato">
             <LinkBox
               url={contractUrl}
+              expired={contractExpired}
               copied={copied}
               onCopy={() => onCopy(contractUrl)}
             />
             {c.contractExpiresAt?.toDate && (
-              <p className="text-[11px] text-gray-400 mt-1">
-                Expira: {format(c.contractExpiresAt.toDate(), "d MMM yyyy", { locale: es })}
+              <p className={`text-[11px] mt-1 ${contractExpired ? 'text-amber-500' : 'text-gray-400'}`}>
+                {contractExpired
+                  ? `Venció el ${format(c.contractExpiresAt.toDate(), "d MMM yyyy", { locale: es })}`
+                  : `Expira: ${format(c.contractExpiresAt.toDate(), "d MMM yyyy", { locale: es })}`}
               </p>
+            )}
+            {!c.contractSignedAt && (
+              <button
+                onClick={onExtendContract}
+                disabled={extendingContract}
+                className="mt-2 flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 disabled:opacity-60"
+              >
+                <RefreshCw size={12} className={extendingContract ? 'animate-spin' : ''} />
+                {extendingContract ? 'Reactivando...' : contractExtended ? '¡Enlace reactivado!' : 'Reactivar enlace'}
+              </button>
             )}
           </Section>
 
