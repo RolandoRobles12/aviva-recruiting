@@ -121,13 +121,22 @@ Datos a extraer: nombre_completo, institucion, nivel_estudios, carrera (si aplic
 
   constancia_fiscal: `Analiza esta imagen y determina si es una Constancia de Situación Fiscal emitida por el SAT de México.
 
-Validaciones requeridas:
-1. ¿Es un documento oficial del SAT? Busca el logo del SAT, texto "Servicio de Administración Tributaria", "Constancia de Situación Fiscal", o "Cédula de Identificación Fiscal".
-2. ¿Se puede leer el RFC con homoclave (12 o 13 caracteres alfanuméricos)?
-3. ¿Se puede leer el nombre o razón social?
-4. ¿Incluye el domicilio fiscal?
+La Constancia de Situación Fiscal AUTÉNTICA tiene estas características visuales obligatorias:
+- Encabezado con el logo del SAT y texto "Servicio de Administración Tributaria"
+- Título explícito "Constancia de Situación Fiscal" (NO "Cédula de Identificación Fiscal", NO acuse de recibo, NO declaración, NO comprobante fiscal)
+- Secciones claramente definidas: datos del contribuyente (RFC, nombre/razón social, CURP si aplica), domicilio fiscal con código postal, régimen(es) fiscal(es) con fechas de alta, y obligaciones fiscales
+- Campo "Fecha de emisión" o "Fecha" con la fecha en que fue generada
+- Pie de página con número de folio o cadena de verificación del SAT
 
-Datos a extraer: rfc, nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue emitida/generada la constancia, en formato YYYY-MM-DD; busca campos como "Fecha de emisión", "Fecha", o la fecha de generación del documento).`,
+RECHAZA cualquier otro documento del SAT aunque contenga un RFC: acuses de recibo, declaraciones anuales, opiniones de cumplimiento, comprobantes fiscales digitales (CFDI), cédulas de identificación fiscal antiguas sin las secciones de régimen y obligaciones, facturas, o cualquier otro trámite del SAT.
+
+Validaciones requeridas:
+1. ¿El documento tiene el título exacto "Constancia de Situación Fiscal" y muestra las secciones de régimen fiscal y obligaciones? Si no cumple ambas, rechaza.
+2. ¿Se puede leer el RFC completo con homoclave (12 caracteres para persona moral, 13 para persona física: 3-4 letras + 6 dígitos de fecha de nacimiento + 3 caracteres de homoclave)?
+3. ¿Se puede leer el nombre o razón social del contribuyente?
+4. ¿Se puede leer la fecha de emisión del documento?
+
+Datos a extraer: rfc (exactamente como aparece, sin espacios), nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue generada la constancia, en formato YYYY-MM-DD; busca el campo "Fecha de emisión" o "Fecha" en el encabezado o pie del documento — es la fecha de generación del PDF, NO la fecha de alta en el régimen fiscal).`,
 
   carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
 
@@ -246,7 +255,7 @@ export const CRITICAL_FIELDS_BY_DOC: Record<string, string[]> = {
 // Focused single-field extraction prompts — used when the first pass misses a field
 const FIELD_RETRY_PROMPTS: Record<string, string> = {
   curp:  `Busca la CURP en este documento mexicano. La CURP tiene exactamente 18 caracteres: 4 letras + 6 dígitos de fecha (AAMMDD) + H o M (sexo) + 5 letras + 2 caracteres alfanuméricos. Ejemplo: VERM850304HDFRRR04. Responde SOLO con los 18 caracteres de la CURP, sin espacios ni guiones ni texto adicional. Si no puedes leerla claramente, responde exactamente: NO_ENCONTRADO`,
-  rfc:   `Busca el RFC en este documento del SAT de México. El RFC tiene 12 o 13 caracteres alfanuméricos (3-4 letras + 6 dígitos de fecha + 3 caracteres de homoclave). Responde SOLO con el RFC en mayúsculas, sin espacios ni texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  rfc:   `Busca el RFC en esta Constancia de Situación Fiscal del SAT de México. El RFC aparece en la sección de datos del contribuyente, normalmente etiquetado como "RFC:" o "R.F.C.". El RFC de persona física tiene 13 caracteres (4 letras + 6 dígitos de fecha AAMMDD + 3 caracteres de homoclave, ejemplo: GORJ850101ABC). El RFC de persona moral tiene 12 caracteres (3 letras + 6 dígitos + 3 caracteres, ejemplo: SAT970701NN3). Lee cada carácter con cuidado — las letras O e I pueden confundirse con los dígitos 0 y 1. Responde SOLO con el RFC en mayúsculas, sin espacios ni guiones ni texto adicional. Si no puedes leerlo con certeza, responde exactamente: NO_ENCONTRADO`,
   nss:   `Busca el Número de Seguridad Social (NSS) del IMSS en este documento. El NSS tiene exactamente 11 dígitos, sin letras. Responde SOLO con los 11 dígitos, sin espacios ni guiones. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
   clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos consecutivos, sin letras ni espacios. Normalmente aparece etiquetada como "CLABE", "CLABE Interbancaria", "Clave CLABE" o similar. Lee cada dígito con cuidado, uno por uno. Responde SOLO con los 18 dígitos juntos, sin espacios ni guiones ni texto adicional. Si no puedes leerla con certeza, responde exactamente: NO_ENCONTRADO`,
   cp:    `Busca el código postal en este documento. El código postal tiene exactamente 5 dígitos. Responde SOLO con los 5 dígitos, sin texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
@@ -318,8 +327,9 @@ export async function retryExtractField(
       ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data } }
       : { type: 'image' as const,    source: { type: 'base64' as const, media_type: mediaType, data: base64Data } };
 
-  // Numeric fields like CLABE are hard to read accurately — use Sonnet for better precision
-  const retryModel = (fieldKey === 'clabe' || fieldKey === 'numero_cuenta')
+  // Fields prone to OCR errors use Sonnet for better precision on the retry pass
+  const HIGH_ACCURACY_FIELDS = new Set(['clabe', 'numero_cuenta', 'rfc', 'fecha_emision']);
+  const retryModel = HIGH_ACCURACY_FIELDS.has(fieldKey)
     ? 'claude-sonnet-4-6'
     : 'claude-haiku-4-5-20251001';
 
