@@ -263,20 +263,52 @@ const FIELD_RETRY_PROMPTS: Record<string, string> = {
 };
 
 const BANK_ALIASES: Array<[RegExp, string]> = [
-  [/bbva/i,                    'BBVA'],
-  [/bancomer/i,                'BBVA'],
-  [/banorte/i,                 'BANORTE'],
-  [/hsbc/i,                    'HSBC'],
-  [/scotiabank/i,              'SCOTIABANK'],
-  [/santander/i,               'SANTANDER'],
-  [/banamex/i,                 'BANAMEX'],
-  [/citibanamex/i,             'BANAMEX'],
-  [/citi\b/i,                  'BANAMEX'],
-  [/azteca/i,                  'AZTECA'],
-  [/bancoppel/i,               'BANCOPPEL'],
-  [/coppel/i,                  'BANCOPPEL'],
-  [/inbursa/i,                 'INBURSA'],
-  [/mifel/i,                   'MIFEL'],
+  // BBVA — nombre comercial, histórico (Bancomer) y nombre legal
+  [/bbva/i,                              'BBVA'],
+  [/bancomer/i,                          'BBVA'],
+  [/banco\s+bilbao\s+vizcaya/i,          'BBVA'],
+
+  // BANORTE — nombre comercial, nombre legal y marca absorbida (IXE)
+  [/banorte/i,                           'BANORTE'],
+  [/banco\s+mercantil\s+del\s+norte/i,   'BANORTE'],
+  [/\bixe\b/i,                           'BANORTE'],
+
+  // HSBC — nombre comercial y nombre legal
+  [/hsbc/i,                              'HSBC'],
+  [/hongkong/i,                          'HSBC'],
+
+  // SCOTIABANK — nombre comercial y nombre legal (fusión con Inverlat)
+  [/scotiabank/i,                        'SCOTIABANK'],
+  [/inverlat/i,                          'SCOTIABANK'],
+  [/bank\s+of\s+nova\s+scotia/i,         'SCOTIABANK'],
+
+  // SANTANDER — nombre comercial y nombre legal
+  [/santander/i,                         'SANTANDER'],
+  [/banco\s+santander/i,                 'SANTANDER'],
+
+  // BANAMEX — nombre comercial, histórico (Citibanamex) y nombre legal
+  [/citibanamex/i,                       'BANAMEX'],
+  [/banamex/i,                           'BANAMEX'],
+  [/banco\s+nacional\s+de\s+m[eé]xico/i, 'BANAMEX'],
+  [/citibank/i,                          'BANAMEX'],
+  [/\bciti\b/i,                          'BANAMEX'],
+
+  // AZTECA — nombre comercial y nombre legal
+  [/banco\s+azteca/i,                    'AZTECA'],
+  [/azteca/i,                            'AZTECA'],
+
+  // BANCOPPEL — nombre comercial y variantes
+  [/bancoppel/i,                         'BANCOPPEL'],
+  [/banco\s+coppel/i,                    'BANCOPPEL'],
+  [/\bcoppel\b/i,                        'BANCOPPEL'],
+
+  // INBURSA — nombre comercial y nombre legal
+  [/inbursa/i,                           'INBURSA'],
+  [/banco\s+inbursa/i,                   'INBURSA'],
+
+  // MIFEL — nombre comercial y nombre legal
+  [/mifel/i,                             'MIFEL'],
+  [/banco\s+mifel/i,                     'MIFEL'],
 ];
 
 function normalizeBankName(raw: string): string {
