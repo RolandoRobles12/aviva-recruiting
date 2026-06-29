@@ -466,8 +466,16 @@ export async function handleAprobado(
     ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
     : '';
 
-  const findStage = (name: string) =>
-    stages.find((s) => s.name.toLowerCase().includes(name.toLowerCase()))?.id;
+  // Exact match first — "Onboarding" must not match "Onboarding Iniciado",
+  // and "Promotor Exitoso" must not match similarly-named stages.
+  // Falls back to substring match only when no exact match exists.
+  const findStage = (name: string) => {
+    const lower = name.toLowerCase();
+    return (
+      stages.find((s) => s.name.toLowerCase() === lower)?.id ??
+      stages.find((s) => s.name.toLowerCase().includes(lower))?.id
+    );
+  };
 
   const ofertaEnviadaId = findStage('Oferta Enviada') ?? findStage('oferta') ?? '';
   const documentosId = findStage(STAGE_DOCUMENTOS.value()) ?? '';

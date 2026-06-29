@@ -191,10 +191,14 @@ async function resolveOnboardingStageId(
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
     const stages = (data.stages as Array<{ id: string; name: string }>) ?? [];
-    const match = stages.find(
+    const isOnboardingName = (n: string) =>
+      n === 'onboarding' || n === 'inducción' || n === 'induccion';
+    // Exact match first — "Onboarding" must not match "Onboarding Iniciado".
+    const exact = stages.find((s) => isOnboardingName(s.name.toLowerCase()));
+    const partial = stages.find(
       (s) => s.name.toLowerCase().includes('onboarding') || s.name.toLowerCase().includes('inducción') || s.name.toLowerCase().includes('induccion'),
     );
-    return match?.id ?? '';
+    return (exact ?? partial)?.id ?? '';
   } catch {
     return '';
   }

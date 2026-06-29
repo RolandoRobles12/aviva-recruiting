@@ -38,6 +38,39 @@ async function moveToPromotor(candidatureId: string, stageId: string, apiKey: st
   }
 }
 
+/**
+ * Resolve the "Promotor Exitoso" stage id for a candidate's job.
+ * Prefers the cached id from viterbitStageIds; falls back to a live API lookup
+ * (exact stage-name match first, substring match second) when the cached id is
+ * missing or was never populated correctly — e.g. due to a previous caching bug.
+ */
+async function resolvePromotorExitosoStageId(
+  candidate: FirebaseFirestore.DocumentData,
+  apiKey: string,
+): Promise<string> {
+  const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
+  if (stageIds?.promotorExitoso) return stageIds.promotorExitoso;
+
+  const jobId = candidate.viterbitJobId as string | undefined;
+  if (!jobId || !apiKey) return '';
+
+  try {
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
+    if (!resp.ok) return '';
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    const stages = (data.stages as Array<{ id: string; name: string }>) ?? [];
+    const exact = stages.find((s) => s.name.toLowerCase() === 'promotor exitoso');
+    const partial = stages.find((s) => s.name.toLowerCase().includes('promotor exitoso'));
+    return (exact ?? partial)?.id ?? '';
+  } catch {
+    return '';
+  }
+}
+
 async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnapshot): Promise<void> {
   const check = checkDoc.data();
   const candidateId = check.candidateId as string;
@@ -97,8 +130,7 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
   if (daysMark === 30 && dealCount >= monthlyTarget) {
     const apiKey = VITERBIT_API_KEY.value();
     const candidatureId = c.viterbitCandidatureId as string | undefined;
-    const stageIds = c.viterbitStageIds as Record<string, string> | undefined;
-    const promotorExitosoId = stageIds?.promotorExitoso;
+    const promotorExitosoId = await resolvePromotorExitosoStageId(c, apiKey);
     if (apiKey && candidatureId && promotorExitosoId) {
       try {
         await moveToPromotor(candidatureId, promotorExitosoId, apiKey);
