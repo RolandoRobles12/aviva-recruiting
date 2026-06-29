@@ -71,12 +71,16 @@ Validaciones requeridas:
 
 Datos a extraer: curp, nombre_completo.`,
 
-  nss: `Analiza esta imagen y determina si es un documento que contiene el Número de Seguridad Social (NSS) del IMSS de México.
+  nss: `Analiza esta imagen y determina si es un Comprobante de NSS o una Tarjeta de NSS del IMSS de México.
 
-Documentos válidos: constancia de NSS del IMSS, hoja rosa del IMSS, tarjeta de afiliación, documento IMSS con NSS visible, captura del portal IMSS digital.
+Documentos válidos ÚNICAMENTE:
+- Comprobante de Asignación de Número de Seguridad Social: página completa con encabezado "gob.mx" e "Instituto Mexicano del Seguro Social", sección "Asignación de Número de Seguridad Social", tabla con campos como "Número de Seguridad Social", "CURP", "Nombre(s)", "Primer apellido", etc., y al final "Cadena original", "Sello Digital", "Secuencia Notarial".
+- Tarjeta de NSS del IMSS: recuadro con línea punteada para recortar (puede estar ya recortada), logo del IMSS, texto "tu Número de Seguridad Social es:" seguido del NSS, y "Asociado a la CURP:". Puede presentarse sola (recortada) o como parte de la hoja completa de "Asignación o Localización de Número de Seguridad Social".
+
+RECHAZA cualquier otro documento aunque contenga un NSS: estados de cuenta INFONAVIT, nóminas, contratos, credenciales, capturas de pantalla de apps, o cualquier otro documento que no sea estrictamente los dos tipos anteriores.
 
 Validaciones requeridas:
-1. ¿Es un documento oficial del IMSS o contiene un NSS claramente visible?
+1. ¿Es exactamente un Comprobante de NSS o una Tarjeta de NSS del IMSS (incluyendo la tarjeta recortada)? Si no es ninguno de estos dos tipos, rechaza.
 2. ¿Se puede leer el NSS completo (11 dígitos)?
 3. ¿Se puede leer el nombre del titular?
 
@@ -121,7 +125,7 @@ Validaciones requeridas:
 3. ¿Se puede leer el nombre o razón social?
 4. ¿Incluye el domicilio fiscal?
 
-Datos a extraer: rfc, nombre_completo, domicilio_fiscal, regimen_fiscal.`,
+Datos a extraer: rfc, nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue emitida/generada la constancia, en formato YYYY-MM-DD; busca campos como "Fecha de emisión", "Fecha", o la fecha de generación del documento).`,
 
   carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
 
@@ -219,11 +223,12 @@ No incluyas texto fuera del JSON. Solo responde con el JSON.`;
 
 // Regex patterns for critical fields — values that don't match are cleared rather than stored
 const FIELD_PATTERNS: Record<string, RegExp> = {
-  curp:  /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9]{2}$/,
-  rfc:   /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
-  nss:   /^[0-9]{11}$/,
-  clabe: /^[0-9]{18}$/,
-  cp:    /^[0-9]{5}$/,
+  curp:          /^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[A-Z0-9]{2}$/,
+  rfc:           /^[A-Z]{3,4}[0-9]{6}[A-Z0-9]{3}$/,
+  nss:           /^[0-9]{11}$/,
+  clabe:         /^[0-9]{18}$/,
+  cp:            /^[0-9]{5}$/,
+  fecha_emision: /^\d{4}-\d{2}-\d{2}$/,
 };
 
 /** Which critical fields each document type is expected to produce. */
@@ -232,7 +237,7 @@ export const CRITICAL_FIELDS_BY_DOC: Record<string, string[]> = {
   curp:                 ['curp'],
   nss:                  ['nss'],
   caratula_bancaria:    ['clabe'],
-  constancia_fiscal:    ['rfc'],
+  constancia_fiscal:    ['rfc', 'cp', 'fecha_emision'],
   comprobante_domicilio:['cp'],
 };
 
@@ -241,8 +246,9 @@ const FIELD_RETRY_PROMPTS: Record<string, string> = {
   curp:  `Busca la CURP en este documento mexicano. La CURP tiene exactamente 18 caracteres: 4 letras + 6 dígitos de fecha (AAMMDD) + H o M (sexo) + 5 letras + 2 caracteres alfanuméricos. Ejemplo: VERM850304HDFRRR04. Responde SOLO con los 18 caracteres de la CURP, sin espacios ni guiones ni texto adicional. Si no puedes leerla claramente, responde exactamente: NO_ENCONTRADO`,
   rfc:   `Busca el RFC en este documento del SAT de México. El RFC tiene 12 o 13 caracteres alfanuméricos (3-4 letras + 6 dígitos de fecha + 3 caracteres de homoclave). Responde SOLO con el RFC en mayúsculas, sin espacios ni texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
   nss:   `Busca el Número de Seguridad Social (NSS) del IMSS en este documento. El NSS tiene exactamente 11 dígitos, sin letras. Responde SOLO con los 11 dígitos, sin espacios ni guiones. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
-  clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos, sin letras. Responde SOLO con los 18 dígitos, sin espacios ni guiones. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
+  clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos consecutivos, sin letras ni espacios. Normalmente aparece etiquetada como "CLABE", "CLABE Interbancaria", "Clave CLABE" o similar. Lee cada dígito con cuidado, uno por uno. Responde SOLO con los 18 dígitos juntos, sin espacios ni guiones ni texto adicional. Si no puedes leerla con certeza, responde exactamente: NO_ENCONTRADO`,
   cp:    `Busca el código postal en este documento. El código postal tiene exactamente 5 dígitos. Responde SOLO con los 5 dígitos, sin texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
+  fecha_emision: `Busca la fecha de emisión o generación de esta Constancia de Situación Fiscal del SAT. Puede aparecer como "Fecha de emisión", "Fecha", "Generado el" o similar. Responde SOLO con la fecha en formato YYYY-MM-DD. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
 };
 
 /**
@@ -303,9 +309,14 @@ export async function retryExtractField(
       ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data } }
       : { type: 'image' as const,    source: { type: 'base64' as const, media_type: mediaType, data: base64Data } };
 
+  // Numeric fields like CLABE are hard to read accurately — use Sonnet for better precision
+  const retryModel = (fieldKey === 'clabe' || fieldKey === 'numero_cuenta')
+    ? 'claude-sonnet-4-6'
+    : 'claude-haiku-4-5-20251001';
+
   try {
     const response = await callClaudeWithRetry(anthropic, {
-      model: 'claude-haiku-4-5-20251001',
+      model: retryModel,
       max_tokens: 64,
       messages: [{ role: 'user', content: [fileContent, { type: 'text', text: prompt }] }],
     });

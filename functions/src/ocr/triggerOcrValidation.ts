@@ -144,6 +144,29 @@ export const onDocumentUploaded = onObjectFinalized(
         }
       }
 
+      // ── Server-side date validation for constancia_fiscal ───────────────
+      // Constancia de Situación Fiscal must not be older than 6 months.
+      if (result.valid && documentType === 'constancia_fiscal') {
+        const fechaDoc = result.extractedData.fecha_emision;
+        if (!fechaDoc) {
+          result.valid = false;
+          result.errors.push('No se pudo leer la fecha de emisión de la constancia. Asegúrate de que la fecha sea visible y sube el documento de nuevo.');
+        } else {
+          const docDate = new Date(fechaDoc);
+          const cutoff = new Date();
+          cutoff.setMonth(cutoff.getMonth() - 6);
+          cutoff.setHours(0, 0, 0, 0);
+          if (isNaN(docDate.getTime())) {
+            result.valid = false;
+            result.errors.push(`No se pudo interpretar la fecha de emisión: "${fechaDoc}". Verifica que el documento sea legible.`);
+          } else if (docDate < cutoff) {
+            result.valid = false;
+            const cutoffStr = cutoff.toISOString().split('T')[0];
+            result.errors.push(`Constancia de Situación Fiscal vencida: la fecha de emisión (${fechaDoc}) es mayor a 6 meses (mínimo ${cutoffStr}). Por favor descarga una constancia actualizada del portal del SAT.`);
+          }
+        }
+      }
+
       // ── Server-side date validation for comprobante_domicilio ────────────
       // The model only extracts the date; expiry is checked here to avoid
       // Claude Haiku making date arithmetic errors.
