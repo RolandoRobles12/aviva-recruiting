@@ -95,16 +95,18 @@ Validaciones requeridas:
 
 Datos a extraer: nombre_completo, curp (si visible), fecha_nacimiento, lugar_nacimiento, sexo (Masculino o Femenino), nacionalidad (normalmente "Mexicana").`,
 
-  caratula_bancaria: `Analiza esta imagen y determina si es una carátula bancaria o estado de cuenta bancario de México.
+  caratula_bancaria: `Analiza esta imagen y determina si es una carátula bancaria o estado de cuenta de un banco tradicional mexicano.
 
-Documentos válidos: carátula de cuenta bancaria, estado de cuenta bancario, constancia de cuenta CLABE, captura de app bancaria que muestre datos de la cuenta.
+Bancos aceptados ÚNICAMENTE: BBVA (Bancomer), Banorte, Santander, HSBC, Scotiabank, Banamex (Citibanamex), Banco Azteca, BanCoppel, Inbursa, Afirme, Bajío, BANBAJÍO, Multiva, Bansí, Mifel, Compartamos Banco, Banregio, Hey Banco (solo si el documento muestra logo de Banregio/Hey Banco), BIMBO (Banco del Ejército), ABC Capital, Inmobiliario Mexicano, Bancrea, Consubanco, Invex, Ve por Más, HSBC, CIBanco, Intercam, Monexcb, Actinver, Ixe.
+
+RECHAZA los siguientes y cualquier otro neobanco o fintech: Nu (Nubank), Mercado Pago, Clip, Klar, Albo, Spin, Cuenca, Bitso, OXXO Pay, Stori, Tala, Kueski, Konfío, Cashi, Fondeadora, Vexi, Yuno, Pagando, Minu, o cualquier app de pagos digitales. Si el documento no muestra claramente el logo o nombre de un banco aceptado, rechaza.
 
 Validaciones requeridas:
-1. ¿Es un documento bancario que muestra datos de una cuenta? Busca logo de banco (BBVA, Banorte, Santander, HSBC, Scotiabank, Banamex/Citi, Banco Azteca, BanCoppel, etc.), número de cuenta o CLABE.
-2. ¿Se puede leer la CLABE interbancaria (18 dígitos) o número de cuenta?
+1. ¿Es un documento de un banco aceptado de la lista anterior? Busca el logo o nombre del banco claramente visible. Si es un neobanco/fintech o no se identifica el banco, rechaza.
+2. ¿Se puede leer la CLABE interbancaria (18 dígitos) o el número de cuenta?
 3. ¿Se puede leer el nombre del titular de la cuenta?
 
-Datos a extraer: nombre_completo, clabe, numero_cuenta, banco.`,
+Datos a extraer: nombre_completo, clabe (solo dígitos, sin espacios ni guiones), numero_cuenta (solo dígitos, sin espacios ni guiones), banco (nombre exacto del banco tal como aparece en el documento).`,
 
   certificado_estudios: `Analiza esta imagen y determina si es un comprobante de estudios válido de México.
 
@@ -264,6 +266,13 @@ function sanitizeExtractedData(
     if (!rawValue) { result[key] = ''; continue; }
 
     const value = String(rawValue).trim();
+
+    // numero_cuenta has no fixed length but must be digits only
+    if (key === 'numero_cuenta') {
+      const digitsOnly = value.replace(/\D/g, '');
+      result[key] = digitsOnly;
+      continue;
+    }
 
     // Only validate fields that have a known pattern
     const pattern = FIELD_PATTERNS[key];

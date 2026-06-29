@@ -225,6 +225,11 @@ export const onDocumentUploaded = onObjectFinalized(
         extraErrors.push('No se pudo leer el nombre del titular en el documento. Asegúrate de que el nombre sea claramente visible y sube la imagen de nuevo.');
       }
 
+      // Require banco for caratula_bancaria — document must clearly show the bank name
+      if (result.valid && documentType === 'caratula_bancaria' && !result.extractedData.banco) {
+        extraErrors.push('No se pudo identificar el banco en el documento. Asegúrate de que el logo o nombre del banco sea claramente visible y sube la imagen de nuevo.');
+      }
+
       // Validate extracted name against candidate's registered name in Firestore
       if (result.valid && result.extractedData.nombre_completo && candidate) {
         const candidateName = `${(candidate.firstName as string) ?? ''} ${(candidate.lastName as string) ?? ''}`.trim();
