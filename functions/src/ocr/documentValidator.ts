@@ -273,18 +273,22 @@ const BANK_ALIASES: Array<[RegExp, string]> = [
   [/banco\s+mercantil\s+del\s+norte/i,   'BANORTE'],
   [/\bixe\b/i,                           'BANORTE'],
 
-  // HSBC — nombre comercial y nombre legal
+  // HSBC — nombre comercial, nombre legal y marca absorbida (Bital, 2002)
   [/hsbc/i,                              'HSBC'],
   [/hongkong/i,                          'HSBC'],
+  [/\bbital\b/i,                         'HSBC'],
+  [/grupo\s+financiero\s+bital/i,        'HSBC'],
 
   // SCOTIABANK — nombre comercial y nombre legal (fusión con Inverlat)
   [/scotiabank/i,                        'SCOTIABANK'],
   [/inverlat/i,                          'SCOTIABANK'],
   [/bank\s+of\s+nova\s+scotia/i,         'SCOTIABANK'],
 
-  // SANTANDER — nombre comercial y nombre legal
+  // SANTANDER — nombre comercial, nombre legal y marca absorbida (Serfin, 2000)
   [/santander/i,                         'SANTANDER'],
   [/banco\s+santander/i,                 'SANTANDER'],
+  [/serfin/i,                            'SANTANDER'],
+  [/banca\s+serfin/i,                    'SANTANDER'],
 
   // BANAMEX — nombre comercial, histórico (Citibanamex) y nombre legal
   [/citibanamex/i,                       'BANAMEX'],
