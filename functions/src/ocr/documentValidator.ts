@@ -262,6 +262,67 @@ const FIELD_RETRY_PROMPTS: Record<string, string> = {
   fecha_emision: `Busca la fecha de emisión o generación de esta Constancia de Situación Fiscal del SAT. Puede aparecer como "Fecha de emisión", "Fecha", "Generado el" o similar. Responde SOLO con la fecha en formato YYYY-MM-DD. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
 };
 
+const BANK_ALIASES: Array<[RegExp, string]> = [
+  // BBVA — nombre comercial, histórico (Bancomer) y nombre legal
+  [/bbva/i,                              'BBVA'],
+  [/bancomer/i,                          'BBVA'],
+  [/banco\s+bilbao\s+vizcaya/i,          'BBVA'],
+
+  // BANORTE — nombre comercial, nombre legal y marca absorbida (IXE)
+  [/banorte/i,                           'BANORTE'],
+  [/banco\s+mercantil\s+del\s+norte/i,   'BANORTE'],
+  [/\bixe\b/i,                           'BANORTE'],
+
+  // HSBC — nombre comercial, nombre legal y marca absorbida (Bital, 2002)
+  [/hsbc/i,                              'HSBC'],
+  [/hongkong/i,                          'HSBC'],
+  [/\bbital\b/i,                         'HSBC'],
+  [/grupo\s+financiero\s+bital/i,        'HSBC'],
+
+  // SCOTIABANK — nombre comercial y nombre legal (fusión con Inverlat)
+  [/scotiabank/i,                        'SCOTIABANK'],
+  [/inverlat/i,                          'SCOTIABANK'],
+  [/bank\s+of\s+nova\s+scotia/i,         'SCOTIABANK'],
+
+  // SANTANDER — nombre comercial, nombre legal y marca absorbida (Serfin, 2000)
+  [/santander/i,                         'SANTANDER'],
+  [/banco\s+santander/i,                 'SANTANDER'],
+  [/serfin/i,                            'SANTANDER'],
+  [/banca\s+serfin/i,                    'SANTANDER'],
+
+  // BANAMEX — nombre comercial, histórico (Citibanamex) y nombre legal
+  [/citibanamex/i,                       'BANAMEX'],
+  [/banamex/i,                           'BANAMEX'],
+  [/banco\s+nacional\s+de\s+m[eé]xico/i, 'BANAMEX'],
+  [/citibank/i,                          'BANAMEX'],
+  [/\bciti\b/i,                          'BANAMEX'],
+
+  // AZTECA — nombre comercial y nombre legal
+  [/banco\s+azteca/i,                    'AZTECA'],
+  [/azteca/i,                            'AZTECA'],
+
+  // BANCOPPEL — nombre comercial y variantes
+  [/bancoppel/i,                         'BANCOPPEL'],
+  [/banco\s+coppel/i,                    'BANCOPPEL'],
+  [/\bcoppel\b/i,                        'BANCOPPEL'],
+
+  // INBURSA — nombre comercial y nombre legal
+  [/inbursa/i,                           'INBURSA'],
+  [/banco\s+inbursa/i,                   'INBURSA'],
+
+  // MIFEL — nombre comercial y nombre legal
+  [/mifel/i,                             'MIFEL'],
+  [/banco\s+mifel/i,                     'MIFEL'],
+];
+
+function normalizeBankName(raw: string): string {
+  const trimmed = raw.trim();
+  for (const [pattern, canonical] of BANK_ALIASES) {
+    if (pattern.test(trimmed)) return canonical;
+  }
+  return trimmed.toUpperCase();
+}
+
 /**
  * Strip or normalise extracted fields so only values that match their expected
  * format are persisted.  Unknown fields are passed through unchanged.
@@ -295,6 +356,8 @@ function sanitizeExtractedData(
         console.warn(`[ocr][${documentType}] field "${key}" failed format check — value discarded: "${value}"`);
         result[key] = '';
       }
+    } else if (key === 'banco') {
+      result[key] = normalizeBankName(value);
     } else {
       result[key] = value;
     }
