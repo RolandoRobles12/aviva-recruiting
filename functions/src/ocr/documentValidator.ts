@@ -122,21 +122,22 @@ Datos a extraer: nombre_completo, institucion, nivel_estudios, carrera (si aplic
   constancia_fiscal: `Analiza esta imagen y determina si es una Constancia de Situación Fiscal emitida por el SAT de México.
 
 La Constancia de Situación Fiscal AUTÉNTICA tiene estas características visuales obligatorias:
-- Encabezado con el logo del SAT y texto "Servicio de Administración Tributaria"
-- Título explícito "Constancia de Situación Fiscal" (NO "Cédula de Identificación Fiscal", NO acuse de recibo, NO declaración, NO comprobante fiscal)
+- Título explícito "Constancia de Situación Fiscal" visible en el documento
+- Logos de SAT / Hacienda (Secretaría de Hacienda y Crédito Público)
 - Secciones claramente definidas: datos del contribuyente (RFC, nombre/razón social, CURP si aplica), domicilio fiscal con código postal, régimen(es) fiscal(es) con fechas de alta, y obligaciones fiscales
-- Campo "Fecha de emisión" o "Fecha" con la fecha en que fue generada
-- Pie de página con número de folio o cadena de verificación del SAT
+- Campo "Fecha de emisión", "Fecha" o "Lugar y Fecha de Emisión" con la fecha en que fue generada
 
-RECHAZA cualquier otro documento del SAT aunque contenga un RFC: acuses de recibo, declaraciones anuales, opiniones de cumplimiento, comprobantes fiscales digitales (CFDI), cédulas de identificación fiscal antiguas sin las secciones de régimen y obligaciones, facturas, o cualquier otro trámite del SAT.
+NOTA IMPORTANTE: El formato actual de la Constancia de Situación Fiscal del SAT incluye una sección llamada "Cédula de Identificación Fiscal" en su encabezado izquierdo — esto es NORMAL y no es motivo de rechazo. El documento es válido si también contiene el título "Constancia de Situación Fiscal" y las secciones de régimen y obligaciones.
+
+RECHAZA únicamente documentos que NO tengan el título "Constancia de Situación Fiscal": acuses de recibo, declaraciones anuales, opiniones de cumplimiento, comprobantes fiscales digitales (CFDI), facturas, o documentos que solo muestren la Cédula de Identificación Fiscal sin las secciones de régimen y obligaciones.
 
 Validaciones requeridas:
-1. ¿El documento tiene el título exacto "Constancia de Situación Fiscal" y muestra las secciones de régimen fiscal y obligaciones? Si no cumple ambas, rechaza.
+1. ¿El documento contiene el título "Constancia de Situación Fiscal"? Si no, rechaza.
 2. ¿Se puede leer el RFC completo con homoclave (12 caracteres para persona moral, 13 para persona física: 3-4 letras + 6 dígitos de fecha de nacimiento + 3 caracteres de homoclave)?
 3. ¿Se puede leer el nombre o razón social del contribuyente?
 4. ¿Se puede leer la fecha de emisión del documento?
 
-Datos a extraer: rfc (exactamente como aparece, sin espacios), nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue generada la constancia, en formato YYYY-MM-DD; busca el campo "Fecha de emisión" o "Fecha" en el encabezado o pie del documento — es la fecha de generación del PDF, NO la fecha de alta en el régimen fiscal).`,
+Datos a extraer: rfc (exactamente como aparece, sin espacios), nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue generada la constancia, en formato YYYY-MM-DD; busca el campo "Fecha de emisión", "Fecha" o "Lugar y Fecha de Emisión" — es la fecha de generación del PDF, NO la fecha de alta en el régimen fiscal).`,
 
   carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
 
