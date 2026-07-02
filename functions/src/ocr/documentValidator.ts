@@ -137,7 +137,7 @@ Validaciones requeridas:
 3. ¿Se puede leer el nombre o razón social del contribuyente?
 4. ¿Se puede leer la fecha de emisión del documento?
 
-Datos a extraer: rfc (exactamente como aparece, sin espacios), nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue generada la constancia, en formato YYYY-MM-DD; busca el campo "Fecha de emisión", "Fecha" o "Lugar y Fecha de Emisión" — es la fecha de generación del PDF, NO la fecha de alta en el régimen fiscal).`,
+Datos a extraer: rfc (exactamente como aparece, sin espacios), nombre_completo, domicilio_fiscal, regimen_fiscal, cp (código postal de 5 dígitos del domicilio fiscal, solo números), fecha_emision (fecha en que fue generada la constancia, en formato YYYY-MM-DD; busca el campo "Fecha de emisión", "Fecha" o "Lugar y Fecha de Emisión" — es la fecha de generación del PDF, NO la fecha de alta en el régimen fiscal. El formato actual del SAT suele escribir esta fecha como una frase que combina el lugar y la fecha con el mes en letras, por ejemplo "PACHUCA DE SOTO, HIDALGO A 05 DE JUNIO DE 2026" — ignora el lugar y convierte solo la fecha usando esta tabla de meses: enero=01, febrero=02, marzo=03, abril=04, mayo=05, junio=06, julio=07, agosto=08, septiembre=09, octubre=10, noviembre=11, diciembre=12; el ejemplo anterior debe extraerse como "2026-06-05").`,
 
   carta_recomendacion: `Analiza esta imagen y determina si es una carta de recomendación laboral o constancia laboral.
 
@@ -260,7 +260,7 @@ const FIELD_RETRY_PROMPTS: Record<string, string> = {
   nss:   `Busca el Número de Seguridad Social (NSS) del IMSS en este documento. El NSS tiene exactamente 11 dígitos, sin letras. Responde SOLO con los 11 dígitos, sin espacios ni guiones. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
   clabe: `Busca la CLABE interbancaria en este documento bancario mexicano. La CLABE tiene exactamente 18 dígitos consecutivos, sin letras ni espacios. Normalmente aparece etiquetada como "CLABE", "CLABE Interbancaria", "Clave CLABE" o similar. Lee cada dígito con cuidado, uno por uno. Responde SOLO con los 18 dígitos juntos, sin espacios ni guiones ni texto adicional. Si no puedes leerla con certeza, responde exactamente: NO_ENCONTRADO`,
   cp:    `Busca el código postal en este documento. El código postal tiene exactamente 5 dígitos. Responde SOLO con los 5 dígitos, sin texto adicional. Si no puedes leerlo, responde exactamente: NO_ENCONTRADO`,
-  fecha_emision: `Busca la fecha de emisión o generación de esta Constancia de Situación Fiscal del SAT. Puede aparecer como "Fecha de emisión", "Fecha", "Generado el" o similar. Responde SOLO con la fecha en formato YYYY-MM-DD. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
+  fecha_emision: `Busca la fecha de emisión o generación de esta Constancia de Situación Fiscal del SAT. Puede aparecer como "Fecha de emisión", "Fecha", "Generado el", o como parte de la frase "Lugar y Fecha de Emisión" que combina el lugar con la fecha y el mes escrito en letras, por ejemplo "PACHUCA DE SOTO, HIDALGO A 05 DE JUNIO DE 2026" (ignora el lugar; esa fecha es "2026-06-05"). Convierte el mes en letras a número usando: enero=01, febrero=02, marzo=03, abril=04, mayo=05, junio=06, julio=07, agosto=08, septiembre=09, octubre=10, noviembre=11, diciembre=12. Responde SOLO con la fecha en formato YYYY-MM-DD. Si no puedes leerla, responde exactamente: NO_ENCONTRADO`,
 };
 
 const BANK_ALIASES: Array<[RegExp, string]> = [
