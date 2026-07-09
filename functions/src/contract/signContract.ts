@@ -275,8 +275,18 @@ export const signContract = onRequest(
     const candidateId = candidateDoc.id;
     const candidate = candidateDoc.data();
 
+    if (candidate.status === 'contract_signed') {
+      res.status(409).json({
+        ok: false,
+        error: 'Este contrato ya ha sido firmado. Si no recibes una copia firmada en tu correo en los próximos minutos, ponte en contacto con tu reclutadora.',
+      });
+      return;
+    }
     if (candidate.status !== 'contract_sent') {
-      res.status(409).json({ ok: false, error: 'Contract already signed or invalid status' });
+      res.status(409).json({
+        ok: false,
+        error: 'Este contrato no está disponible para firma en este momento. Si crees que esto es un error, contacta a tu reclutadora.',
+      });
       return;
     }
 

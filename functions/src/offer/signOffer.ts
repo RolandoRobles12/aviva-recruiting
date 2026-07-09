@@ -268,7 +268,10 @@ export const signOffer = onRequest(
       const candidate = candidateDoc.data();
 
       if (candidate.status !== 'offer_sent' && candidate.status !== 'offer_held') {
-        res.status(409).json({ ok: false, error: 'Esta carta oferta ya fue firmada.' });
+        res.status(409).json({
+          ok: false,
+          error: 'Esta carta oferta ya ha sido firmada. Si no recibes una copia firmada en tu correo en los próximos minutos, ponte en contacto con tu reclutadora.',
+        });
         return;
       }
 
