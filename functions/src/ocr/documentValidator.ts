@@ -493,8 +493,13 @@ export async function validateDocument(
           },
         };
 
+  // Document types prone to small/dense print (e.g. dates next to barcodes) use
+  // Sonnet for the full first pass instead of Haiku for better recall.
+  const HIGH_ACCURACY_DOCS = new Set(['constancia_fiscal']);
+  const model = HIGH_ACCURACY_DOCS.has(documentType) ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+
   const response = await callClaudeWithRetry(anthropic, {
-    model: 'claude-haiku-4-5-20251001',
+    model,
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     messages: [
