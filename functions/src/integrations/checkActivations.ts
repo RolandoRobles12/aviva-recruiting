@@ -3,6 +3,7 @@ import { defineString, defineSecret } from 'firebase-functions/params';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as adminSdk from 'firebase-admin';
 import { db } from '../utils/admin';
+import { parseCandidateStartDate } from '../utils/startDate';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const CHECKINS_SERVICE_ACCOUNT = defineSecret('CHECKINS_SERVICE_ACCOUNT');
@@ -55,17 +56,16 @@ export const checkActivations = onSchedule(
     for (const docSnap of pending) {
       const candidate = docSnap.data();
       const corporateEmail = candidate.corporateEmail as string | undefined;
-      const viterbitStartDate = candidate.viterbitStartDate as string | undefined;
       const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
 
-      if (!corporateEmail || !viterbitStartDate || !viterbitCandidatureId) {
+      if (!corporateEmail || !viterbitCandidatureId) {
         console.warn(`[checkActivations] ${docSnap.id}: missing required fields — skipping`);
         continue;
       }
 
-      const startDate = new Date(viterbitStartDate);
-      if (isNaN(startDate.getTime())) {
-        console.warn(`[checkActivations] ${docSnap.id}: invalid viterbitStartDate "${viterbitStartDate}" — skipping`);
+      const startDate = parseCandidateStartDate(candidate);
+      if (!startDate) {
+        console.warn(`[checkActivations] ${docSnap.id}: missing or unparseable viterbitStartDate "${candidate.viterbitStartDate}" — skipping`);
         continue;
       }
 

@@ -21,3 +21,4 @@ export { backfillCandidateDocuments } from './utils/backfillDocuments';
 export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';
 export { processPendingApprovals } from './viterbit/processPendingApprovals';
 export { dailyPerformanceCheck } from './performance/performanceCheck';
+export { backfillPerformanceChecks } from './performance/backfillPerformanceChecks';

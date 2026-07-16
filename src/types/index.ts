@@ -207,7 +207,8 @@ export interface Candidate {
   dataOverrides?: Record<string, string>;
   // Viterbit job custom fields (populated from job API on webhook)
   viterbitSalary?: string;
-  viterbitStartDate?: string;
+  viterbitStartDate?: string;      // display text, e.g. "15 de julio de 2026"
+  viterbitStartDateIso?: string;   // canonical machine-readable date, e.g. "2026-07-15"
   viterbitHiringManager?: string;
   viterbitCompany?: string;
   viterbitDepartmentProfile?: string;
