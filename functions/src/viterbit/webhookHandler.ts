@@ -28,6 +28,8 @@ const STAGE_DOCUMENTOS   = defineString('STAGE_DOCUMENTOS',   { default: 'Docume
 const STAGE_CONTRATO     = defineString('STAGE_CONTRATO',     { default: 'Contrato' });
 const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correo corporativo' });
 const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Onboarding' });
+const STAGE_ONBOARDING_INICIADO = defineString('STAGE_ONBOARDING_INICIADO', { default: 'Onboarding Iniciado' });
+const STAGE_PROMOTOR_EXITOSO    = defineString('STAGE_PROMOTOR_EXITOSO',    { default: 'Promotor Exitoso' });
 
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
@@ -485,6 +487,7 @@ export async function handleAprobado(
   const contratoId = findStage(STAGE_CONTRATO.value()) ?? '';
   const correosId = findStage(STAGE_CORREOS.value()) ?? '';
   const induccionId = findStage(STAGE_INDUCCION.value()) ?? '';
+  const onboardingIniciadoId = findStage(STAGE_ONBOARDING_INICIADO.value()) ?? findStage('Activación Iniciada') ?? '';
   const promotorExitosoId = findStage('Promotor Exitoso') ?? findStage('Promotor exitoso') ?? '';
 
   // Move to "Oferta Enviada" in Viterbit
@@ -580,6 +583,7 @@ export async function handleAprobado(
       documentos: documentosId,
       contrato: contratoId,
       induccion: induccionId || correosId, // correos stage removed; fallback for legacy candidates
+      onboardingIniciado: onboardingIniciadoId || null,
       promotorExitoso: promotorExitosoId || null,
     },
   });
@@ -867,7 +871,7 @@ async function handleInduccion(
   const { ref: candidateRef, data: candidate } = found;
 
   // Skip if already past this stage
-  const pastStages = ['email_pending', 'email_ready', 'induction', 'disqualified'];
+  const pastStages = ['email_pending', 'email_ready', 'induction', 'onboarding_iniciado', 'promotor_exitoso', 'disqualified'];
   if (pastStages.includes(candidate.status as string)) {
     await logRef.update({ status: 'ignored', reason: `already at ${candidate.status}`, candidateId: candidateRef.id });
     return { action: 'ignored', candidateId: candidateRef.id };
@@ -876,6 +880,44 @@ async function handleInduccion(
   await candidateRef.update({ status: 'induction', updatedAt: FieldValue.serverTimestamp() });
   await logRef.update({ status: 'processed', candidateId: candidateRef.id });
   return { action: 'induction', candidateId: candidateRef.id };
+}
+
+/**
+ * Candidate moved in Viterbit to "Onboarding Iniciado"/"Activación Iniciada"
+ * or "Promotor Exitoso": sync the dashboard status. API-triggered moves
+ * (checkActivations, dailyPerformanceCheck) already set the status directly,
+ * so this mainly covers manual moves made by recruiters in Viterbit.
+ */
+async function handleStatusSync(
+  parsed: ParsedViterbitEvent,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference,
+  newStatus: 'onboarding_iniciado' | 'promotor_exitoso',
+): Promise<{ action: string; candidateId?: string }> {
+  const { candidatureId, candidateViterbitId } = parsed;
+
+  const found = await findCandidateDoc(candidatureId, candidateViterbitId, apiKey);
+  if (!found) {
+    await logRef.update({ status: 'ignored', reason: `no candidate record found for ${newStatus}` });
+    return { action: 'ignored' };
+  }
+
+  const { ref: candidateRef, data: candidate } = found;
+  const currentStatus = candidate.status as string;
+
+  // Never resurrect disqualified candidates, and never downgrade promotor_exitoso.
+  const skip =
+    currentStatus === newStatus ||
+    currentStatus === 'disqualified' ||
+    (newStatus === 'onboarding_iniciado' && currentStatus === 'promotor_exitoso');
+  if (skip) {
+    await logRef.update({ status: 'ignored', reason: `already at ${currentStatus}`, candidateId: candidateRef.id });
+    return { action: 'ignored', candidateId: candidateRef.id };
+  }
+
+  await candidateRef.update({ status: newStatus, updatedAt: FieldValue.serverTimestamp() });
+  await logRef.update({ status: 'processed', candidateId: candidateRef.id });
+  return { action: newStatus, candidateId: candidateRef.id };
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -973,6 +1015,12 @@ export const viterbitWebhook = onRequest(
         res.status(200).json({ ok: true, ...result });
       } else if (exactMatches(STAGE_INDUCCION.value())) {
         const result = await handleInduccion(parsed, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+      } else if (exactMatches(STAGE_ONBOARDING_INICIADO.value()) || exactMatches('Activación Iniciada')) {
+        const result = await handleStatusSync(parsed, apiKey, logRef, 'onboarding_iniciado');
+        res.status(200).json({ ok: true, ...result });
+      } else if (exactMatches(STAGE_PROMOTOR_EXITOSO.value())) {
+        const result = await handleStatusSync(parsed, apiKey, logRef, 'promotor_exitoso');
         res.status(200).json({ ok: true, ...result });
       } else {
         await logRef.update({
