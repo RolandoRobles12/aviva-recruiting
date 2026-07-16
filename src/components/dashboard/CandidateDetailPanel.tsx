@@ -41,6 +41,7 @@ import {
   appendSheetsRowManual,
 } from '../../services/functions';
 import type { ProvisionResult } from '../../services/functions';
+import { useAuth } from '../../hooks/useAuth';
 import { updateCandidateStatus, updateCandidateNotes, extendFormToken, extendOfferToken, extendContractToken, markDocumentAsValid, disqualifyCandidate, updateCandidateDataOverrides } from '../../services/candidates';
 import { getLinkDurationSettings } from '../../services/settings';
 import { format } from 'date-fns';
@@ -1085,10 +1086,14 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOff
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function ReissueOfferSection({ c, onDone }: { c: Candidate; onDone: () => void }) {
+  const { can } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [working, setWorking] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+
+  // Restricted action: only líder de reclutamiento, nómina, legal, and admin.
+  if (!can('process_reissue_offer')) return null;
 
   async function handleReissue() {
     setWorking(true);

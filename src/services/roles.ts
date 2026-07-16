@@ -19,7 +19,9 @@ export async function getRolePermissions(role: RoleType): Promise<RolePermission
   try {
     const snap = await getDoc(doc(db, 'roles', role));
     if (snap.exists() && snap.data().permissions) {
-      return snap.data().permissions as RolePermissions;
+      // Merge over defaults so permission keys added after the roles doc was
+      // last saved keep their default value instead of reading as false.
+      return { ...ROLE_DEFAULTS[role], ...(snap.data().permissions as Partial<RolePermissions>) };
     }
   } catch {
     // Firestore rules may deny — fall through to defaults

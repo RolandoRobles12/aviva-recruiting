@@ -19,6 +19,7 @@ export type PermissionKey =
   | 'candidates_create'
   // Proceso de reclutamiento
   | 'process_send_offer'
+  | 'process_reissue_offer'
   | 'process_review_docs'
   | 'process_view_contracts'
   | 'process_provision_accounts'
@@ -76,6 +77,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: 'process_send_offer',
         label: 'Enviar carta oferta',
         description: 'Reenviar el correo de carta oferta al candidato',
+      },
+      {
+        key: 'process_reissue_offer',
+        label: 'Reemitir carta oferta',
+        description: 'Reemitir la carta con datos corregidos — invalida la oferta y el contrato firmados',
       },
       {
         key: 'process_review_docs',
@@ -140,6 +146,7 @@ export const ALL_PERMISSIONS: RolePermissions = {
   candidates_view_all: true,
   candidates_create: true,
   process_send_offer: true,
+  process_reissue_offer: true,
   process_review_docs: true,
   process_view_contracts: true,
   process_provision_accounts: true,
@@ -160,6 +167,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     candidates_view_all: false,
     candidates_create: true,
     process_send_offer: true,
+    process_reissue_offer: false,
     process_review_docs: true,
     process_view_contracts: false,
     process_provision_accounts: false,
@@ -175,6 +183,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     candidates_view_all: true,
     candidates_create: true,
     process_send_offer: true,
+    process_reissue_offer: true,
     process_review_docs: true,
     process_view_contracts: true,
     process_provision_accounts: true,
@@ -190,6 +199,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     candidates_view_all: true,
     candidates_create: false,
     process_send_offer: false,
+    process_reissue_offer: true,
     process_review_docs: false,
     process_view_contracts: true,
     process_provision_accounts: true,
@@ -205,6 +215,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     candidates_view_all: true,
     candidates_create: false,
     process_send_offer: false,
+    process_reissue_offer: true,
     process_review_docs: true,
     process_view_contracts: true,
     process_provision_accounts: false,

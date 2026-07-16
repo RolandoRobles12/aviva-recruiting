@@ -7,6 +7,7 @@ import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { getLinkDuration } from '../utils/linkDuration';
 import { toIsoDateString } from '../utils/startDate';
+import { userHasPermission } from '../utils/permissions';
 import { sendOfferEmailCore } from './sendOfferEmail';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -58,6 +59,17 @@ export const reissueOffer = onCall(
   { region: 'us-central1' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'No autenticado');
+
+    // Restricted action — mirrors the process_reissue_offer permission defaults.
+    const allowed = await userHasPermission(request.auth.uid, 'process_reissue_offer', {
+      lider: true,
+      nomina: true,
+      legal: true,
+      reclutador: false,
+    });
+    if (!allowed) {
+      throw new HttpsError('permission-denied', 'Solo el líder de reclutamiento, nómina, legal o un admin pueden reemitir la carta oferta.');
+    }
 
     const { candidateId, reason } = request.data as { candidateId: string; reason?: string };
     if (!candidateId) throw new HttpsError('invalid-argument', 'candidateId es requerido');
