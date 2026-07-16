@@ -10,6 +10,8 @@ import { offerTemplate, contractTemplate, invitationTemplate as _invitationTempl
 import { getLogoUrl } from '../utils/branding';
 import { getLinkDuration } from '../utils/linkDuration';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
+import { getAllowedHiringProfiles } from '../utils/hiringProfiles';
+import { toIsoDateString } from '../utils/startDate';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -465,6 +467,7 @@ export async function handleAprobado(
   const viterbitStartDate = rawStartDate
     ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
     : '';
+  const viterbitStartDateIso = toIsoDateString(rawStartDate);
 
   // Exact match first — "Onboarding" must not match "Onboarding Iniciado",
   // and "Promotor Exitoso" must not match similarly-named stages.
@@ -562,6 +565,7 @@ export async function handleAprobado(
     // Viterbit job custom fields (used to interpolate offer letter variables)
     viterbitSalary: viterbitSalary || null,
     viterbitStartDate: viterbitStartDate || null,
+    viterbitStartDateIso: viterbitStartDateIso || null,
     viterbitHiringManager: viterbitHiringManager || null,
     viterbitCompany: viterbitCompany || null,
     viterbitDepartmentProfile: viterbitDepartmentProfile || null,
@@ -909,11 +913,11 @@ export const viterbitWebhook = onRequest(
         return;
       }
 
-      // Filter by allowed department profiles if configured
-      const allowedProfiles = HIRING_PROFILES.value()
-        .split(',')
-        .map((p) => p.trim().toLowerCase())
-        .filter(Boolean);
+      // Filter by allowed department profiles if configured.
+      // The list lives in Firestore (settings/hiringProfiles) so it survives
+      // deploys; the HIRING_PROFILES param is only the fallback.
+      const allowedProfiles = (await getAllowedHiringProfiles(HIRING_PROFILES.value()))
+        .map((p) => p.toLowerCase());
       if (allowedProfiles.length > 0) {
         const jobInfo = await fetchViterbitJob(jobId, apiKey);
         const profile = jobInfo.departmentProfile.toLowerCase();
