@@ -7,6 +7,7 @@ export { onDocumentUploaded } from './ocr/triggerOcrValidation';
 export { viterbitWebhook } from './viterbit/webhookHandler';
 export { signOffer, getOffer } from './offer/signOffer';
 export { sendOfferEmail } from './offer/sendOfferEmail';
+export { reissueOffer } from './offer/reissueOffer';
 export { onCandidateCreated } from './offer/onCandidateCreated';
 export { onCandidateUpdated } from './offer/onCandidateUpdated';
 export { signContract, getContract } from './contract/signContract';

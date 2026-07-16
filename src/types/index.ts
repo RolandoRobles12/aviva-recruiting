@@ -210,6 +210,11 @@ export interface Candidate {
   viterbitSalary?: string;
   viterbitStartDate?: string;      // display text, e.g. "15 de julio de 2026"
   viterbitStartDateIso?: string;   // canonical machine-readable date, e.g. "2026-07-15"
+  // Offer reissue (see reissueOffer function) — prior state archived in the
+  // reissue_history subcollection
+  reissuePriorStatus?: CandidateStatus;
+  reissuedAt?: Timestamp;
+  reissueCount?: number;
   viterbitHiringManager?: string;
   viterbitCompany?: string;
   viterbitDepartmentProfile?: string;

@@ -39,6 +39,11 @@ export const sendOfferEmail = httpsCallable<
   { success: boolean }
 >(functions, 'sendOfferEmail');
 
+export const reissueOffer = httpsCallable<
+  { candidateId: string; reason?: string },
+  { success: boolean }
+>(functions, 'reissueOffer');
+
 export const sendContractEmail = httpsCallable<
   { candidateId: string },
   { success: boolean }

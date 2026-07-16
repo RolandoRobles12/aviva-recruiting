@@ -33,6 +33,7 @@ import {
   sendReminderEmail,
   provisionAccountsManual,
   sendOfferEmail,
+  reissueOffer,
   sendInvitationEmail,
   sendContractEmail,
   refreshCandidateViterbit,
@@ -1068,9 +1069,83 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOff
               </button>
             </Section>
           )}
+
+          {/* Reissue offer — for signed offers whose hiring data was wrong */}
+          {(c.offerSignedAt || c.status === 'offer_signed') && (
+            <ReissueOfferSection c={c} onDone={onCandidateChange} />
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reissue offer — corrects wrong hiring data without deleting the candidate
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function ReissueOfferSection({ c, onDone }: { c: Candidate; onDone: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleReissue() {
+    setWorking(true);
+    setError('');
+    try {
+      await reissueOffer({ candidateId: c.id });
+      setDone(true);
+      setConfirming(false);
+      onDone();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al reemitir la carta oferta.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <Section title="Reemitir carta oferta">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+        <p className="text-xs text-amber-800">
+          Si la fecha de inicio u otro dato estaba mal, corrígelo primero en Viterbit y reemite la carta:
+          se enviará una nueva carta oferta para firma con los datos actualizados
+          {c.contractSignedAt ? ', el contrato firmado quedará invalidado (se generará y enviará uno nuevo tras la re-firma)' : ''}.
+          Los documentos ya subidos y sus validaciones se conservan — no hay que volver a subirlos.
+        </p>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        {done && <p className="text-xs text-green-700 font-medium">Nueva carta oferta enviada al candidato.</p>}
+        {!confirming ? (
+          <button
+            onClick={() => { setDone(false); setConfirming(true); }}
+            disabled={working}
+            className="flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} />
+            Reemitir carta oferta
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleReissue}
+              disabled={working}
+              className="flex items-center gap-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-60"
+            >
+              <RefreshCw size={12} className={working ? 'animate-spin' : ''} />
+              {working ? 'Reemitiendo...' : 'Confirmar reemisión'}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={working}
+              className="text-xs font-medium text-gray-500 hover:text-gray-700 px-2 py-1.5 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 

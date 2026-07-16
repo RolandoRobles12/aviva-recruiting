@@ -389,12 +389,25 @@ export const signOffer = onRequest(
         return;
       }
 
+      // ── Reissued offer? Resume the flow where it was before the reissue ───────
+      // reissueOffer stores the prior status; candidates whose documents were
+      // already complete go straight back to under_review, which makes
+      // onCandidateUpdated regenerate and send the contract with corrected data.
+      const reissuePriorStatus = candidate.reissuePriorStatus as string | undefined;
+      const DOCS_COMPLETE_STATUSES = [
+        'under_review', 'approved', 'contract_sent', 'contract_signed',
+        'email_pending', 'email_ready', 'induction', 'onboarding_iniciado', 'promotor_exitoso',
+      ];
+      const resumeDocsComplete = !!reissuePriorStatus && DOCS_COMPLETE_STATUSES.includes(reissuePriorStatus);
+
       // ── Move candidate in Viterbit to "Documentos" (fire-and-forget) ──────────
+      // Skipped when resuming a docs-complete reissue: onCandidateUpdated will
+      // move them to "Contrato" as soon as the new contract goes out.
       const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
       const documentosStageId = stageIds?.documentos;
       const candidatureId = candidate.viterbitCandidatureId as string | undefined;
 
-      if (apiKey && documentosStageId && candidatureId) {
+      if (apiKey && documentosStageId && candidatureId && !resumeDocsComplete) {
         void moveToStage(candidatureId, documentosStageId, apiKey).catch((err) =>
           console.error('[signOffer] moveToStage documentos error:', err)
         );
@@ -409,19 +422,28 @@ export const signOffer = onRequest(
       }
 
       // ── Generate documents form token ─────────────────────────────────────────
-      const formToken = randomBytes(32).toString('hex');
+      // Reissued offers keep the existing form link so already-uploaded documents
+      // and the candidate's original URL stay valid.
+      const existingFormToken = candidate.formToken as string | undefined;
+      const formToken = existingFormToken ?? randomBytes(32).toString('hex');
       const linkDurations = await withTimeout(getLinkDuration(), 8_000, 'getLinkDuration');
       const formExpiresAt = new Date(now.getTime() + linkDurations.formDays * 24 * 60 * 60 * 1000);
+
+      const nextStatus = resumeDocsComplete
+        ? 'under_review'
+        : (reissuePriorStatus === 'invited' || reissuePriorStatus === 'in_progress')
+          ? reissuePriorStatus
+          : 'offer_signed';
 
       // ── Update candidate in Firestore ─────────────────────────────────────────
       await withTimeout(
         candidateDoc.ref.update({
-          status: 'offer_signed',
+          status: nextStatus,
           offerSignedAt: now,
           offerSignatureUrl: sigUrl,
           offerPdfUrl: pdfUrl,
-          formToken,
-          formExpiresAt,
+          ...(existingFormToken ? {} : { formToken, formExpiresAt }),
+          reissuePriorStatus: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         }),
         10_000,
@@ -444,29 +466,33 @@ export const signOffer = onRequest(
           const offerLogoUrl = await getLogoUrl();
           const senderEmail = await getRecruiterEmail(createdBy).catch(() => undefined);
 
-          // Send invitation email (submit documents)
-          const { subject: invSubject, html: invHtml } = invitationTemplate({
-            firstName: candidate.firstName as string,
-            lastName: candidate.lastName as string,
-            position: candidate.position as string,
-            formUrl,
-            formExpiresAt: formExpiresAtStr,
-          }, undefined, offerLogoUrl);
-          await sendEmail({
-            to: candidate.email as string,
-            subject: invSubject,
-            html: invHtml,
-            senderEmail,
-            recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
-          });
-          await db.collection('email_logs').add({
-            candidateId,
-            templateType: 'invitation',
-            sentTo: candidate.email,
-            sentAt: FieldValue.serverTimestamp(),
-            sentBy: 'sign_offer',
-            success: true,
-          });
+          // Send invitation email (submit documents) — only for a newly minted
+          // form link. Reissued offers keep the old link and its documents, so
+          // re-inviting the candidate to upload would be confusing.
+          if (!existingFormToken) {
+            const { subject: invSubject, html: invHtml } = invitationTemplate({
+              firstName: candidate.firstName as string,
+              lastName: candidate.lastName as string,
+              position: candidate.position as string,
+              formUrl,
+              formExpiresAt: formExpiresAtStr,
+            }, undefined, offerLogoUrl);
+            await sendEmail({
+              to: candidate.email as string,
+              subject: invSubject,
+              html: invHtml,
+              senderEmail,
+              recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
+            });
+            await db.collection('email_logs').add({
+              candidateId,
+              templateType: 'invitation',
+              sentTo: candidate.email,
+              sentAt: FieldValue.serverTimestamp(),
+              sentBy: 'sign_offer',
+              success: true,
+            });
+          }
 
           // Send signed copy email to candidate (with PDF attached)
           const { subject: copySubject, html: copyHtml } = signedCopyTemplate({
