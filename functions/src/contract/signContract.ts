@@ -20,6 +20,7 @@ import { createCandidateDriveFolder } from '../integrations/driveService';
 import { syncValidDocumentsToDriveFolder } from '../integrations/driveSync';
 import { appendCandidateRow } from '../integrations/sheetsService';
 import { getRecruiterName } from '../utils/recruiters';
+import { parseCandidateStartDate } from '../utils/startDate';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
@@ -482,10 +483,14 @@ export const signContract = onRequest(
     }
 
     // Schedule 15-day and 30-day performance checks (fire-and-forget).
-    // Only created when the candidate has a known start date.
-    const viterbitStartDate = candidate.viterbitStartDate as string | undefined;
-    if (viterbitStartDate) {
-      const startMs = new Date(viterbitStartDate + 'T00:00:00Z').getTime();
+    // Only created when the candidate has a parseable start date.
+    // parseCandidateStartDate accepts both the ISO field and the legacy Spanish
+    // display text — the display text alone used to produce an Invalid Date here,
+    // which made Timestamp.fromDate throw and abort the rest of this flow
+    // (including the Onboarding stage move below).
+    const startDate = parseCandidateStartDate(candidate);
+    if (startDate) {
+      const startMs = startDate.getTime();
       const after15 = new Date(startMs + 15 * 24 * 60 * 60 * 1000);
       const after30 = new Date(startMs + 30 * 24 * 60 * 60 * 1000);
       const baseCheck = {
@@ -503,6 +508,8 @@ export const signContract = onRequest(
           { merge: true },
         ),
       ]);
+    } else if (candidate.viterbitStartDate) {
+      console.warn(`[signContract] unparseable viterbitStartDate "${candidate.viterbitStartDate}" for ${candidateId} — performance checks not scheduled`);
     }
 
     // Move in Viterbit to "Onboarding" stage (correos stage removed from pipeline).

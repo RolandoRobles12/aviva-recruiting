@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
+import { toIsoDateString } from '../utils/startDate';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -26,12 +27,12 @@ async function fetchViterbitUser(userId: string, apiKey: string): Promise<string
 async function fetchCandidatureHiredInfo(
   candidatureId: string,
   apiKey: string,
-): Promise<{ salary: string; startDate: string }> {
+): Promise<{ salary: string; startDate: string; startDateIso: string }> {
   try {
     const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
       headers: { 'X-API-Key': apiKey },
     });
-    if (!resp.ok) return { salary: '', startDate: '' };
+    if (!resp.ok) return { salary: '', startDate: '', startDateIso: '' };
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
     const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
@@ -42,9 +43,9 @@ async function fetchCandidatureHiredInfo(
     const startDate = rawStartDate
       ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
       : '';
-    return { salary, startDate };
+    return { salary, startDate, startDateIso: toIsoDateString(rawStartDate) };
   } catch {
-    return { salary: '', startDate: '' };
+    return { salary: '', startDate: '', startDateIso: '' };
   }
 }
 
@@ -76,7 +77,7 @@ export const refreshCandidateViterbit = onCall(
         `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
         { headers: { 'X-API-Key': apiKey } },
       ),
-      candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve({ salary: '', startDate: '' }),
+      candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve({ salary: '', startDate: '', startDateIso: '' }),
     ]);
 
     if (!jobResp.ok) {
@@ -117,6 +118,7 @@ export const refreshCandidateViterbit = onCall(
 
     // Start date: candidature hired_info takes priority over custom field
     const startDate = candidatureInfo.startDate || getCustom('hired_start_date_job') || getCustom('start_date') || '';
+    const startDateIso = candidatureInfo.startDateIso || toIsoDateString(startDate);
 
     // Department profile
     const deptProfileRaw = data.department_profile;
@@ -165,6 +167,7 @@ export const refreshCandidateViterbit = onCall(
     if (title) updates.position = title;
     if (salary) updates.viterbitSalary = salary;
     if (startDate) updates.viterbitStartDate = startDate;
+    if (startDateIso) updates.viterbitStartDateIso = startDateIso;
     if (hiringManager) updates.viterbitHiringManager = hiringManager;
     if (company) updates.viterbitCompany = company;
     if (departmentProfile) {

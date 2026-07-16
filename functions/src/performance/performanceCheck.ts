@@ -4,6 +4,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { countDealsByOwner } from '../integrations/hubspotService';
 import { notifyPerformanceCheck } from '../integrations/slackService';
+import { parseCandidateStartDate } from '../utils/startDate';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -91,14 +92,14 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
     return;
   }
 
-  const viterbitStartDate = c.viterbitStartDate as string | undefined;
-  if (!viterbitStartDate) {
-    console.warn(`[performanceCheck] ${candidateId} has no viterbitStartDate — marking processed`);
+  const startDate = parseCandidateStartDate(c);
+  if (!startDate) {
+    console.warn(`[performanceCheck] ${candidateId} has no parseable viterbitStartDate ("${c.viterbitStartDate}") — marking processed`);
     await checkDoc.ref.update({ processed: true, processedAt: FieldValue.serverTimestamp() });
     return;
   }
 
-  const startDateMs = new Date(viterbitStartDate + 'T00:00:00Z').getTime();
+  const startDateMs = startDate.getTime();
 
   let dealCount = 0;
   try {
@@ -157,7 +158,7 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
       daysMark,
       dealCount,
       monthlyTarget,
-      startDate: viterbitStartDate,
+      startDate: (c.viterbitStartDate as string) || startDate.toISOString().slice(0, 10),
       appUrl,
     });
   } catch (err) {
