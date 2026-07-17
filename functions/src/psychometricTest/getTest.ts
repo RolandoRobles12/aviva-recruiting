@@ -1,16 +1,7 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { db } from '../utils/admin';
-import {
-  shuffle,
-  type PsychometricQuestion,
-  type PsychometricTestConfig,
-} from './scoring';
-
-const DEFAULT_CONFIG: PsychometricTestConfig = {
-  weights: { responsabilidad: 0.2, estabilidad_emocional: 0.2, extraversion: 0.2, amabilidad: 0.2, sjt: 0.2 },
-  bandCutoffs: { lowMax: 40, highMin: 70 },
-  timeLimitMinutes: 30,
-};
+import { shuffle, type PsychometricQuestion } from './scoring';
+import { getQuestionBank, getOrSeedConfig } from './bankStore';
 
 /** Public endpoint: fetch (and start, if not yet started) a psychometric test session by token. */
 export const getPsychometricTest = onRequest(
@@ -54,7 +45,8 @@ export const getPsychometricTest = onRequest(
         return;
       }
 
-      const timeLimitMinutes = (session.timeLimitMinutes as number) || DEFAULT_CONFIG.timeLimitMinutes;
+      const config = await getOrSeedConfig();
+      const timeLimitMinutes = (session.timeLimitMinutes as number) || config.timeLimitMinutes;
 
       let questionOrder = session.questionOrder as string[] | undefined;
       let optionOrders = session.optionOrders as Record<string, number[]> | undefined;
@@ -69,9 +61,14 @@ export const getPsychometricTest = onRequest(
         }
       }
 
-      const bankSnap = await db.collection('settings').doc('psychometric_questions').get();
-      const bank = (bankSnap.data()?.questions as PsychometricQuestion[] | undefined) ?? [];
+      const bank = await getQuestionBank();
       const enabled = bank.filter((q) => q.enabled);
+
+      if (enabled.length === 0) {
+        res.status(503).json({ ok: false, error: 'No hay preguntas configuradas todavía. Contacta al equipo de reclutamiento.' });
+        return;
+      }
+
       const byId = new Map(enabled.map((q) => [q.id, q]));
 
       if (session.status === 'pending' || !questionOrder?.length) {

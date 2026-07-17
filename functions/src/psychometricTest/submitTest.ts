@@ -1,18 +1,8 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import {
-  scoreAnswers,
-  type PsychometricAnswer,
-  type PsychometricQuestion,
-  type PsychometricTestConfig,
-} from './scoring';
-
-const DEFAULT_CONFIG: PsychometricTestConfig = {
-  weights: { responsabilidad: 0.2, estabilidad_emocional: 0.2, extraversion: 0.2, amabilidad: 0.2, sjt: 0.2 },
-  bandCutoffs: { lowMax: 40, highMin: 70 },
-  timeLimitMinutes: 30,
-};
+import { scoreAnswers, type PsychometricAnswer } from './scoring';
+import { getQuestionBank, getOrSeedConfig } from './bankStore';
 
 // Grace period so a slow network doesn't fail a candidate who submitted in time.
 const SUBMIT_GRACE_MS = 60_000;
@@ -51,8 +41,10 @@ export const submitPsychometricTest = onRequest(
         return;
       }
 
+      const [bank, config] = await Promise.all([getQuestionBank(), getOrSeedConfig()]);
+
       const startedAt = session.startedAt?.toDate?.() as Date | undefined;
-      const timeLimitMinutes = (session.timeLimitMinutes as number) || DEFAULT_CONFIG.timeLimitMinutes;
+      const timeLimitMinutes = (session.timeLimitMinutes as number) || config.timeLimitMinutes;
       const now = new Date();
       if (startedAt && now.getTime() - startedAt.getTime() > timeLimitMinutes * 60 * 1000 + SUBMIT_GRACE_MS) {
         await sessionRef.update({ status: 'expired' });
@@ -60,12 +52,6 @@ export const submitPsychometricTest = onRequest(
         return;
       }
 
-      const [bankSnap, configSnap] = await Promise.all([
-        db.collection('settings').doc('psychometric_questions').get(),
-        db.collection('settings').doc('psychometric_config').get(),
-      ]);
-      const bank = (bankSnap.data()?.questions as PsychometricQuestion[] | undefined) ?? [];
-      const config = (configSnap.data() as PsychometricTestConfig | undefined) ?? DEFAULT_CONFIG;
       const optionOrders = (session.optionOrders as Record<string, number[]>) ?? {};
 
       const result = scoreAnswers(bank, answers, optionOrders, config);
