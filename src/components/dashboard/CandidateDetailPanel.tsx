@@ -1235,6 +1235,9 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
   const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
   const missingHiringDetails = missingSalary || missingDate;
   const reviewRequired = !!c.contractReviewRequired && !c.contractSignedAt && c.status !== 'contract_signed';
+  // Contract was sent (token/expiry exist) but a later Viterbit stage move overwrote
+  // `status` before the candidate signed — the public signing link is now blocked.
+  const statusMismatch = !c.contractSignedAt && c.status !== 'contract_signed' && !reviewRequired && c.status !== 'contract_sent';
   const dataBlocked = contractSendBlocked(c);
 
   async function handleResendContract() {
@@ -1295,6 +1298,16 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
                       {c.contractReviewReasons.map((r, i) => <li key={i}>{r}</li>)}
                     </ul>
                   )}
+                </div>
+              </div>
+            ) : statusMismatch ? (
+              <div className="flex items-start gap-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Enlace bloqueado — el candidato avanzó de etapa antes de firmar</p>
+                  <p className="mt-1 text-red-700">
+                    El estado en Viterbit cambió (a "{c.status}") antes de que el candidato firmara, así que el enlace público ya no funciona. Regresa al candidato a la etapa "Contrato" en Viterbit o pide soporte para restaurar el estado.
+                  </p>
                 </div>
               </div>
             ) : (

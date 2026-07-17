@@ -799,9 +799,23 @@ async function handleContrato(
 
   const { ref: candidateRef, data: candidate } = found;
 
-  // Idempotency: skip if contract already sent or signed
-  if (candidate.contractToken || candidate.contractSignedAt) {
-    await logRef.update({ status: 'ignored', reason: 'contract already sent or signed', candidateId: candidateRef.id });
+  // Idempotency: nothing to do once signed.
+  if (candidate.contractSignedAt) {
+    await logRef.update({ status: 'ignored', reason: 'contract already signed', candidateId: candidateRef.id });
+    return { action: 'ignored', candidateId: candidateRef.id };
+  }
+
+  // A contract was already generated for this candidate. If a later stage move
+  // (e.g. Onboarding) overwrote `status` before they signed, moving them back to
+  // "Contrato" should self-heal the status rather than silently no-op — otherwise
+  // the public signing link stays permanently blocked.
+  if (candidate.contractToken) {
+    if (candidate.status !== 'contract_sent') {
+      await candidateRef.update({ status: 'contract_sent', updatedAt: FieldValue.serverTimestamp() });
+      await logRef.update({ status: 'processed', reason: 'restored contract_sent status', candidateId: candidateRef.id });
+      return { action: 'contract_sent_restored', candidateId: candidateRef.id };
+    }
+    await logRef.update({ status: 'ignored', reason: 'contract already sent', candidateId: candidateRef.id });
     return { action: 'ignored', candidateId: candidateRef.id };
   }
 
@@ -870,6 +884,13 @@ async function handleInduccion(
 
   const { ref: candidateRef, data: candidate } = found;
 
+  // Don't advance past a contract that's been sent but not yet signed — a stage
+  // move in Viterbit (accidental or otherwise) shouldn't block the signing link.
+  if (candidate.status === 'contract_sent' && !candidate.contractSignedAt) {
+    await logRef.update({ status: 'ignored', reason: 'contract sent but not yet signed', candidateId: candidateRef.id });
+    return { action: 'ignored', candidateId: candidateRef.id };
+  }
+
   // Skip if already past this stage
   const pastStages = ['email_pending', 'email_ready', 'induction', 'onboarding_iniciado', 'promotor_exitoso', 'disqualified'];
   if (pastStages.includes(candidate.status as string)) {
@@ -905,10 +926,12 @@ async function handleStatusSync(
   const { ref: candidateRef, data: candidate } = found;
   const currentStatus = candidate.status as string;
 
-  // Never resurrect disqualified candidates, and never downgrade promotor_exitoso.
+  // Never resurrect disqualified candidates, never downgrade promotor_exitoso,
+  // and never clobber a contract that's been sent but not yet signed.
   const skip =
     currentStatus === newStatus ||
     currentStatus === 'disqualified' ||
+    (currentStatus === 'contract_sent' && !candidate.contractSignedAt) ||
     (newStatus === 'onboarding_iniciado' && currentStatus === 'promotor_exitoso');
   if (skip) {
     await logRef.update({ status: 'ignored', reason: `already at ${currentStatus}`, candidateId: candidateRef.id });
