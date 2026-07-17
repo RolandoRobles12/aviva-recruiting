@@ -1,7 +1,7 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { db } from '../utils/admin';
 import { shuffle, type PsychometricQuestion } from './scoring';
-import { DEFAULT_PSYCHOMETRIC_QUESTIONS, DEFAULT_PSYCHOMETRIC_CONFIG } from './defaultQuestions';
+import { getOrSeedQuestionBank, getOrSeedConfig } from './bankStore';
 
 /** Public endpoint: fetch (and start, if not yet started) a psychometric test session by token. */
 export const getPsychometricTest = onRequest(
@@ -45,7 +45,8 @@ export const getPsychometricTest = onRequest(
         return;
       }
 
-      const timeLimitMinutes = (session.timeLimitMinutes as number) || DEFAULT_PSYCHOMETRIC_CONFIG.timeLimitMinutes;
+      const config = await getOrSeedConfig();
+      const timeLimitMinutes = (session.timeLimitMinutes as number) || config.timeLimitMinutes;
 
       let questionOrder = session.questionOrder as string[] | undefined;
       let optionOrders = session.optionOrders as Record<string, number[]> | undefined;
@@ -60,9 +61,7 @@ export const getPsychometricTest = onRequest(
         }
       }
 
-      const bankSnap = await db.collection('settings').doc('psychometric_questions').get();
-      const rawBank = bankSnap.data()?.questions as PsychometricQuestion[] | undefined;
-      const bank = rawBank?.length ? rawBank : DEFAULT_PSYCHOMETRIC_QUESTIONS;
+      const bank = await getOrSeedQuestionBank();
       const enabled = bank.filter((q) => q.enabled);
       const byId = new Map(enabled.map((q) => [q.id, q]));
 
