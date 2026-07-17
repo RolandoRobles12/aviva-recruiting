@@ -1,10 +1,33 @@
-import type { PsychometricBand, PsychometricSession, PsychometricTrait, PsychometricTraitResult } from '../../types';
+import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import type {
+  PsychometricBand,
+  PsychometricBandCutoffs,
+  PsychometricSession,
+  PsychometricTrait,
+  PsychometricTraitResult,
+  PsychometricValidityFlag,
+} from '../../types';
 import { PSYCHOMETRIC_TRAIT_LABELS, PSYCHOMETRIC_TRAITS } from '../../types';
+import { getPsychometricConfig } from '../../services/psychometricQuestions';
 
 const BAND_META: Record<PsychometricBand, { label: string; chip: string; dot: string; bar: string; ring: string }> = {
   bajo: { label: 'Bajo', chip: 'bg-red-50 text-red-700', dot: 'bg-red-500', bar: 'bg-red-500', ring: '#ef4444' },
   medio: { label: 'Medio', chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500', bar: 'bg-amber-500', ring: '#f59e0b' },
   alto: { label: 'Alto', chip: 'bg-green-50 text-green-700', dot: 'bg-green-500', bar: 'bg-green-500', ring: '#22c55e' },
+};
+
+function bandRange(band: PsychometricBand, cutoffs: PsychometricBandCutoffs): string {
+  if (band === 'bajo') return `0–${cutoffs.lowMax - 1}`;
+  if (band === 'medio') return `${cutoffs.lowMax}–${cutoffs.highMin - 1}`;
+  return `${cutoffs.highMin}–100`;
+}
+
+const VALIDITY_FLAG_COPY: Record<PsychometricValidityFlag, string> = {
+  baja_variacion:
+    'Respondió con muy poca variación en las preguntas de personalidad (posible clic repetido en la misma opción). El resultado puede no reflejar su perfil real.',
+  respuestas_muy_rapidas:
+    'Respondió, en promedio, más rápido de lo que toma leer cada pregunta con detenimiento. Interpreta el resultado con cautela.',
 };
 
 // Short, job-relevant interpretation per trait+band — helps the recruiter
@@ -62,10 +85,12 @@ function TraitBar({
   label,
   result,
   interpretation,
+  cutoffs,
 }: {
   label: string;
   result: PsychometricTraitResult;
   interpretation: string;
+  cutoffs: PsychometricBandCutoffs;
 }) {
   const meta = BAND_META[result.band];
   return (
@@ -76,7 +101,7 @@ function TraitBar({
           <span className="text-gray-900 font-semibold">{result.normalizedScore}</span>
           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${meta.chip}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-            {meta.label}
+            {meta.label} ({bandRange(result.band, cutoffs)})
           </span>
         </div>
       </div>
@@ -88,17 +113,38 @@ function TraitBar({
   );
 }
 
+const DEFAULT_CUTOFFS: PsychometricBandCutoffs = { lowMax: 40, highMin: 70 };
+
 export function ResultView({ session }: { session: PsychometricSession }) {
   const result = session.result;
+  const [cutoffs, setCutoffs] = useState<PsychometricBandCutoffs>(DEFAULT_CUTOFFS);
+
+  useEffect(() => {
+    getPsychometricConfig().then((cfg) => setCutoffs(cfg.bandCutoffs));
+  }, []);
+
   if (!result) return null;
 
   const startedAt = session.startedAt?.toDate?.();
   const completedAt = session.completedAt?.toDate?.();
   const elapsedMinutes =
     startedAt && completedAt ? Math.round((completedAt.getTime() - startedAt.getTime()) / 60000) : null;
+  const validityFlags = result.validityFlags ?? [];
 
   return (
     <div className="space-y-5">
+      {validityFlags.length > 0 && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+            <AlertTriangle size={14} />
+            Revisar con cautela — posible respuesta poco confiable
+          </div>
+          {validityFlags.map((flag) => (
+            <p key={flag} className="text-xs text-amber-700">{VALIDITY_FLAG_COPY[flag]}</p>
+          ))}
+        </div>
+      )}
+
       {/* Header: candidate + composite gauge */}
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
@@ -111,7 +157,10 @@ export function ResultView({ session }: { session: PsychometricSession }) {
             </p>
           )}
         </div>
-        <ScoreRing score={result.compositeScore} band={result.compositeBand} />
+        <div className="text-right">
+          <ScoreRing score={result.compositeScore} band={result.compositeBand} />
+          <p className="text-xs text-gray-400 mt-1">{bandRange(result.compositeBand, cutoffs)}</p>
+        </div>
       </div>
       <p className="text-xs text-gray-500 -mt-3">{COMPOSITE_INTERPRETATION[result.compositeBand]}</p>
 
@@ -123,19 +172,22 @@ export function ResultView({ session }: { session: PsychometricSession }) {
             label={PSYCHOMETRIC_TRAIT_LABELS[trait]}
             result={result.traits[trait]}
             interpretation={TRAIT_INTERPRETATION[trait][result.traits[trait].band]}
+            cutoffs={cutoffs}
           />
         ))}
         <TraitBar
           label="Juicio situacional"
           result={result.sjt}
           interpretation={SJT_INTERPRETATION[result.sjt.band]}
+          cutoffs={cutoffs}
         />
       </div>
 
       <p className="text-xs text-gray-400 pt-2 border-t border-gray-100">
         Prueba piloto interna: los puntajes son relativos a esta primera versión del instrumento y aún no
         cuentan con validación estadística sobre una muestra amplia de candidatos. Úsalos como apoyo
-        cualitativo en la decisión, no como filtro determinante.
+        cualitativo en la decisión, no como filtro determinante. Los cortes de banda se pueden ajustar
+        desde la pestaña "Banco de preguntas".
       </p>
     </div>
   );

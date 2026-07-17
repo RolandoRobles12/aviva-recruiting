@@ -298,10 +298,18 @@ export interface PsychometricBandCutoffs {
   highMin: number;
 }
 
+export interface PsychometricQuestionCounts {
+  /** ítems Likert a aplicar POR RASGO en cada sesión. 0 = usar todos los habilitados. */
+  likertPerTrait: number;
+  /** escenarios SJT a aplicar por sesión. 0 = usar todos los habilitados. */
+  sjt: number;
+}
+
 export interface PsychometricTestConfig {
   weights: PsychometricTraitWeights;
   bandCutoffs: PsychometricBandCutoffs;
   timeLimitMinutes: number;
+  questionCounts: PsychometricQuestionCounts;
 }
 
 export type PsychometricBand = 'bajo' | 'medio' | 'alto';
@@ -312,11 +320,15 @@ export interface PsychometricTraitResult {
   band: PsychometricBand;
 }
 
+/** Signals that the response pattern may not be reliable (rushed, careless, straight-lined). */
+export type PsychometricValidityFlag = 'respuestas_muy_rapidas' | 'baja_variacion';
+
 export interface PsychometricResult {
   traits: Record<PsychometricTrait, PsychometricTraitResult>;
   sjt: PsychometricTraitResult;
   compositeScore: number; // 0-100
   compositeBand: PsychometricBand;
+  validityFlags: PsychometricValidityFlag[];
 }
 
 export type PsychometricSessionStatus = 'pending' | 'in_progress' | 'completed' | 'expired';
@@ -325,6 +337,8 @@ export interface PsychometricAnswer {
   questionId: string;
   /** likert: 1-5. sjt: índice de la opción tal como se mostró al candidato (post-aleatorización). */
   value: number;
+  /** milisegundos entre que se mostró la pregunta y se respondió — usado para detectar respuestas apresuradas. */
+  responseMs?: number;
 }
 
 export interface PsychometricSession {

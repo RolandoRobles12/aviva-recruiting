@@ -346,6 +346,61 @@ export function QuestionBankTab() {
               />
             </label>
           </div>
+          <p className="text-xs text-gray-400 pt-1">
+            Con estos cortes: <span className="text-red-600 font-medium">Bajo 0–{config.bandCutoffs.lowMax - 1}</span>,{' '}
+            <span className="text-amber-600 font-medium">Medio {config.bandCutoffs.lowMax}–{config.bandCutoffs.highMin - 1}</span>,{' '}
+            <span className="text-green-600 font-medium">Alto {config.bandCutoffs.highMin}–100</span>.
+          </p>
+        </div>
+      )}
+
+      {/* Question sampling per session */}
+      {config && (
+        <div className="card p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Preguntas aplicadas por sesión</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              En 0 (todas) se aplican todas las preguntas habilitadas. Si defines un número, cada sesión toma
+              esa cantidad al azar del banco — útil para acortar la prueba o variarla entre candidatos.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <label className="text-xs text-gray-600 space-y-1">
+              Ítems Likert por rasgo (0 = todos)
+              <input
+                type="number"
+                min={0}
+                value={config.questionCounts.likertPerTrait}
+                onChange={(e) => {
+                  markDirty();
+                  setConfig({
+                    ...config,
+                    questionCounts: { ...config.questionCounts, likertPerTrait: Number(e.target.value) },
+                  });
+                }}
+                className="input-field text-xs py-1.5 w-24"
+              />
+              <span className="block text-gray-400">
+                Disponibles: {PSYCHOMETRIC_TRAITS.map((t) => likertQuestions.filter((q) => q.trait === t && q.enabled).length).join('/')} por rasgo
+              </span>
+            </label>
+            <label className="text-xs text-gray-600 space-y-1">
+              Escenarios SJT (0 = todos)
+              <input
+                type="number"
+                min={0}
+                value={config.questionCounts.sjt}
+                onChange={(e) => {
+                  markDirty();
+                  setConfig({ ...config, questionCounts: { ...config.questionCounts, sjt: Number(e.target.value) } });
+                }}
+                className="input-field text-xs py-1.5 w-24"
+              />
+              <span className="block text-gray-400">
+                Disponibles: {sjtQuestions.filter((q) => q.enabled).length}
+              </span>
+            </label>
+          </div>
         </div>
       )}
 

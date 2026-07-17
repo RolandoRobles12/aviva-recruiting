@@ -49,7 +49,7 @@ export function usePsychometricTestSession(token: string | undefined) {
 
 export async function submitPsychometricTest(
   token: string,
-  answers: { questionId: string; value: number }[]
+  answers: { questionId: string; value: number; responseMs?: number }[]
 ): Promise<{ ok: boolean; error?: string }> {
   const resp = await fetch(`${API_BASE}/submitPsychometricTest`, {
     method: 'POST',
