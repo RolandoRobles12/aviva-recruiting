@@ -54,6 +54,11 @@ export const backfillCandidateDocuments = httpsCallable<
   { updated: number; message: string }
 >(functions, 'backfillCandidateDocuments');
 
+export const backfillPerformanceChecks = httpsCallable<
+  Record<string, never>,
+  { created: number; skipped: number; unparseable: string[]; message: string }
+>(functions, 'backfillPerformanceChecks');
+
 export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
   { success: boolean; salary: string | null; startDate: string | null; position: string | null }
