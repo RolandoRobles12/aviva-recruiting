@@ -555,7 +555,10 @@ export const signContract = onRequest(
       }
     }
 
-    // Create Drive folder → sync docs → append Sheets row (all fire-and-forget)
+    // Create Drive folder → sync docs → append Sheets row. This MUST be awaited
+    // before res.json(): Cloud Functions freezes the instance once the response
+    // is sent, so a fire-and-forget sync gets cut off mid-flight and leaves the
+    // folder with only some of the documents.
     const driveCandidateId = (candidate.viterbitCandidateId ?? candidate.viterbitCandidatureId) as string | undefined;
     if (driveCandidateId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
@@ -565,14 +568,24 @@ export const signContract = onRequest(
         { name: 'Carta Oferta Firmada.pdf', storagePath: `candidates/${candidateId}/carta_oferta_firmada.pdf` },
       ];
 
-      createCandidateDriveFolder(
-        candidate.firstName as string,
-        candidate.lastName as string,
-        driveCandidateId,
-        driveServiceAccount,
-      ).then(async (folderId) => {
+      try {
+        const folderId = await createCandidateDriveFolder(
+          candidate.firstName as string,
+          candidate.lastName as string,
+          driveCandidateId,
+          driveServiceAccount,
+        );
         await candidateDoc.ref.update({ driveFolderId: folderId, updatedAt: FieldValue.serverTimestamp() });
-        await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount, extraFiles);
+
+        const syncResult = await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount, extraFiles);
+        await candidateDoc.ref.update({
+          driveSyncStatus: {
+            syncedAt: FieldValue.serverTimestamp(),
+            uploaded: syncResult.uploaded,
+            failed: syncResult.failed.map((f) => f.name),
+            skipped: syncResult.skipped,
+          },
+        });
 
         // Append row to Google Sheets
         const viterbitJobId = candidate.viterbitJobId as string | undefined;
@@ -589,7 +602,10 @@ export const signContract = onRequest(
           externalId,
           driveServiceAccount,
         );
-      }).catch((err: unknown) => console.error('[signContract] Drive/Sheets error:', err));
+      } catch (err: unknown) {
+        // Signature already succeeded — Drive/Sheets problems shouldn't 500 the signer.
+        console.error('[signContract] Drive/Sheets error:', err);
+      }
     }
 
     // Send signed copy email BEFORE responding — fire-and-forget after res.json()

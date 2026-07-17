@@ -199,6 +199,7 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [driveFolderUrl, setDriveFolderUrl] = useState(
     c.driveFolderId ? `https://drive.google.com/drive/folders/${c.driveFolderId}` : ''
   );
+  const [driveSyncWarning, setDriveSyncWarning] = useState('');
   const [appendingSheets, setAppendingSheets] = useState(false);
   const [sheetsAppended, setSheetsAppended] = useState(false);
 
@@ -324,9 +325,15 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
 
   const handleCreateDriveFolder = async () => {
     setCreatingDriveFolder(true);
+    setDriveSyncWarning('');
     try {
       const res = await createDriveFolderManual({ candidateId: c.id });
       setDriveFolderUrl(res.data.folderUrl);
+      if (res.data.failed?.length) {
+        setDriveSyncWarning(
+          `No se pudieron subir: ${res.data.failed.join(', ')}. Vuelve a intentar para completar el expediente.`
+        );
+      }
     } catch (err: unknown) {
       console.error('[createDriveFolder]', err);
     } finally {
@@ -595,16 +602,26 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               Expediente Drive
             </h4>
             {driveFolderUrl ? (
-              <a
-                href={driveFolderUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2.5 py-2 hover:bg-green-100 transition-colors"
-              >
-                <FolderOpen size={12} />
-                <span className="flex-1 truncate font-medium">Ver carpeta en Drive</span>
-                <ExternalLink size={11} />
-              </a>
+              <div className="space-y-2">
+                <a
+                  href={driveFolderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2.5 py-2 hover:bg-green-100 transition-colors"
+                >
+                  <FolderOpen size={12} />
+                  <span className="flex-1 truncate font-medium">Ver carpeta en Drive</span>
+                  <ExternalLink size={11} />
+                </a>
+                <button
+                  onClick={handleCreateDriveFolder}
+                  disabled={creatingDriveFolder}
+                  className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-600 px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-60"
+                >
+                  <RefreshCw size={12} className={creatingDriveFolder ? 'animate-spin' : ''} />
+                  {creatingDriveFolder ? 'Sincronizando...' : 'Resincronizar documentos'}
+                </button>
+              </div>
             ) : (
               <button
                 onClick={handleCreateDriveFolder}
@@ -618,6 +635,11 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
                 )}
                 {creatingDriveFolder ? 'Creando...' : 'Crear carpeta en Drive'}
               </button>
+            )}
+            {driveSyncWarning && (
+              <p className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                {driveSyncWarning}
+              </p>
             )}
           </div>
 
