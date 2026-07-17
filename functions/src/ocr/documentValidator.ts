@@ -71,16 +71,17 @@ Validaciones requeridas:
 
 Datos a extraer: curp, nombre_completo.`,
 
-  nss: `Analiza esta imagen y determina si es un Comprobante de NSS o una Tarjeta de NSS del IMSS de México.
+  nss: `Analiza esta imagen y determina si es un Comprobante de NSS, una Tarjeta de NSS, o una Constancia de Vigencia de Derechos del IMSS de México.
 
 Documentos válidos ÚNICAMENTE:
 - Comprobante de Asignación de Número de Seguridad Social: página completa con encabezado "gob.mx" e "Instituto Mexicano del Seguro Social", sección "Asignación de Número de Seguridad Social", tabla con campos como "Número de Seguridad Social", "CURP", "Nombre(s)", "Primer apellido", etc., y al final "Cadena original", "Sello Digital", "Secuencia Notarial".
 - Tarjeta de NSS del IMSS: recuadro con línea punteada para recortar (puede estar ya recortada), logo del IMSS, texto "tu Número de Seguridad Social es:" seguido del NSS, y "Asociado a la CURP:". Puede presentarse sola (recortada) o como parte de la hoja completa de "Asignación o Localización de Número de Seguridad Social".
+- Constancia de Vigencia de Derechos del IMSS: documento oficial del IMSS con título "Constancia de Vigencia de Derechos" (o "Vigencia de Derechos"), que incluye el Número de Seguridad Social y la CURP del titular.
 
-RECHAZA cualquier otro documento aunque contenga un NSS: estados de cuenta INFONAVIT, nóminas, contratos, credenciales, capturas de pantalla de apps, o cualquier otro documento que no sea estrictamente los dos tipos anteriores.
+RECHAZA cualquier otro documento aunque contenga un NSS: estados de cuenta INFONAVIT, nóminas, contratos, credenciales, capturas de pantalla de apps, o cualquier otro documento que no sea estrictamente uno de los tres tipos anteriores.
 
 Validaciones requeridas:
-1. ¿Es exactamente un Comprobante de NSS o una Tarjeta de NSS del IMSS (incluyendo la tarjeta recortada)? Si no es ninguno de estos dos tipos, rechaza.
+1. ¿Es exactamente un Comprobante de NSS, una Tarjeta de NSS, o una Constancia de Vigencia de Derechos del IMSS (incluyendo la tarjeta recortada)? Si no es ninguno de estos tipos, rechaza.
 2. ¿Se puede leer el NSS completo (11 dígitos)?
 3. ¿Se puede leer el nombre del titular?
 
