@@ -2,21 +2,17 @@ import { useEffect, useState } from 'react';
 import { Plus, Copy, Check, ClipboardList } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Modal } from '../ui/Modal';
+import { ResultView } from './ResultView';
 import type { PsychometricSession, PsychometricSessionStatus } from '../../types';
-import { PSYCHOMETRIC_TRAIT_LABELS, PSYCHOMETRIC_TRAITS } from '../../types';
 import { createPsychometricSession, getAllPsychometricSessions } from '../../services/psychometricSessions';
 
+// Distinct colors per status (not the shared badge-* classes, which reuse the
+// same green for "review" and "valid" — that read as a false semáforo here).
 const STATUS_LABELS: Record<PsychometricSessionStatus, { label: string; className: string }> = {
-  pending: { label: 'Pendiente de iniciar', className: 'badge-pending' },
-  in_progress: { label: 'En progreso', className: 'badge-review' },
-  completed: { label: 'Completada', className: 'badge-valid' },
-  expired: { label: 'Expirada', className: 'badge-invalid' },
-};
-
-const BAND_CLASS: Record<string, string> = {
-  bajo: 'badge-invalid',
-  medio: 'badge-review',
-  alto: 'badge-valid',
+  pending: { label: 'Pendiente de iniciar', className: 'bg-yellow-100 text-yellow-800' },
+  in_progress: { label: 'En progreso', className: 'bg-blue-100 text-blue-700' },
+  completed: { label: 'Completada', className: 'bg-green-100 text-green-800' },
+  expired: { label: 'Expirada', className: 'bg-red-100 text-red-700' },
 };
 
 function testUrl(token: string): string {
@@ -96,7 +92,9 @@ export function SessionsTab() {
                   <p className="text-xs text-gray-500 truncate">{s.candidateEmail}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={status.className}>{status.label}</span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
+                    {status.label}
+                  </span>
                   {s.status === 'completed' && s.result && (
                     <button
                       onClick={() => setViewing(s)}
@@ -148,44 +146,7 @@ export function SessionsTab() {
       </Modal>
 
       <Modal isOpen={!!viewing} onClose={() => setViewing(null)} title="Resultado de la prueba" size="md">
-        {viewing?.result && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900">{viewing.candidateName}</p>
-                <p className="text-xs text-gray-500">{viewing.candidateEmail}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold text-gray-900">{viewing.result.compositeScore}</p>
-                <span className={BAND_CLASS[viewing.result.compositeBand]}>{viewing.result.compositeBand}</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {PSYCHOMETRIC_TRAITS.map((trait) => {
-                const r = viewing.result!.traits[trait];
-                return (
-                  <div key={trait} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">{PSYCHOMETRIC_TRAIT_LABELS[trait]}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-900 font-medium">{r.normalizedScore}</span>
-                      <span className={BAND_CLASS[r.band]}>{r.band}</span>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100">
-                <span className="text-gray-600">Juicio situacional</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-900 font-medium">{viewing.result.sjt.normalizedScore}</span>
-                  <span className={BAND_CLASS[viewing.result.sjt.band]}>{viewing.result.sjt.band}</span>
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400">
-              Este resultado es un insumo para la decisión de contratación, no un filtro automático.
-            </p>
-          </div>
-        )}
+        {viewing?.result && <ResultView session={viewing} />}
       </Modal>
     </div>
   );

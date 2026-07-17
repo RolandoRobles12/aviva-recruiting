@@ -46,10 +46,16 @@ export interface PsychometricBandCutoffs {
   highMin: number;
 }
 
+export interface PsychometricQuestionCounts {
+  likertPerTrait: number;
+  sjt: number;
+}
+
 export interface PsychometricTestConfig {
   weights: PsychometricTraitWeights;
   bandCutoffs: PsychometricBandCutoffs;
   timeLimitMinutes: number;
+  questionCounts: PsychometricQuestionCounts;
 }
 
 export type PsychometricBand = 'bajo' | 'medio' | 'alto';
@@ -60,16 +66,20 @@ export interface PsychometricTraitResult {
   band: PsychometricBand;
 }
 
+export type PsychometricValidityFlag = 'respuestas_muy_rapidas' | 'baja_variacion';
+
 export interface PsychometricResult {
   traits: Record<PsychometricTrait, PsychometricTraitResult>;
   sjt: PsychometricTraitResult;
   compositeScore: number;
   compositeBand: PsychometricBand;
+  validityFlags: PsychometricValidityFlag[];
 }
 
 export interface PsychometricAnswer {
   questionId: string;
   value: number;
+  responseMs?: number;
 }
 
 export const PSYCHOMETRIC_TRAITS: PsychometricTrait[] = [
@@ -93,6 +103,54 @@ function bandFor(score: number, cutoffs: PsychometricBandCutoffs): PsychometricB
   if (score < cutoffs.lowMax) return 'bajo';
   if (score < cutoffs.highMin) return 'medio';
   return 'alto';
+}
+
+const MIN_LIKERT_FOR_VARIATION_CHECK = 6;
+const LOW_VARIATION_STDDEV_THRESHOLD = 0.5;
+const FAST_RESPONSE_MEDIAN_MS = 1500;
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Flags response patterns that make the score unreliable: clicking the same
+ * Likert position on almost every item (straight-lining), or answering far
+ * faster than a sentence can be read. These don't change the score — they
+ * just tell the recruiter to weigh the result with caution.
+ */
+export function computeValidityFlags(
+  questions: PsychometricQuestion[],
+  answers: PsychometricAnswer[]
+): PsychometricValidityFlag[] {
+  const answerById = new Map(answers.map((a) => [a.questionId, a]));
+  const flags: PsychometricValidityFlag[] = [];
+
+  const likertValues: number[] = [];
+  const responseTimes: number[] = [];
+  for (const q of questions) {
+    const answer = answerById.get(q.id);
+    if (!answer) continue;
+    if (q.type === 'likert') likertValues.push(answer.value);
+    if (typeof answer.responseMs === 'number') responseTimes.push(answer.responseMs);
+  }
+
+  if (likertValues.length >= MIN_LIKERT_FOR_VARIATION_CHECK) {
+    const mean = likertValues.reduce((a, b) => a + b, 0) / likertValues.length;
+    const variance = likertValues.reduce((acc, v) => acc + (v - mean) ** 2, 0) / likertValues.length;
+    if (Math.sqrt(variance) < LOW_VARIATION_STDDEV_THRESHOLD) {
+      flags.push('baja_variacion');
+    }
+  }
+
+  if (responseTimes.length > 0 && median(responseTimes) < FAST_RESPONSE_MEDIAN_MS) {
+    flags.push('respuestas_muy_rapidas');
+  }
+
+  return flags;
 }
 
 export function scoreAnswers(
@@ -162,5 +220,6 @@ export function scoreAnswers(
     sjt,
     compositeScore,
     compositeBand: bandFor(compositeScore, config.bandCutoffs),
+    validityFlags: computeValidityFlags(questions, answers),
   };
 }

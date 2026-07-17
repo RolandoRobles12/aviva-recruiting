@@ -34,12 +34,24 @@ export function TakePsychometricTestPage() {
     answersRef.current = answers;
   }, [answers]);
 
+  // Tracks how long each question stayed on screen before the candidate moved
+  // on — used server-side to flag suspiciously fast (careless) responses.
+  const responseTimesRef = useRef<Record<string, number>>({});
+  const questionShownAtRef = useRef(0);
+  useEffect(() => {
+    questionShownAtRef.current = Date.now();
+  }, [currentIndex]);
+
   const submit = useMemo(
     () => async () => {
       if (!token || autoSubmitted.current) return;
       autoSubmitted.current = true;
       setSubmitting(true);
-      const payload = Object.entries(answersRef.current).map(([questionId, value]) => ({ questionId, value }));
+      const payload = Object.entries(answersRef.current).map(([questionId, value]) => ({
+        questionId,
+        value,
+        responseMs: responseTimesRef.current[questionId],
+      }));
       const result = await submitPsychometricTest(token, payload);
       setSubmitting(false);
       if (result.ok) {
@@ -163,6 +175,7 @@ export function TakePsychometricTestPage() {
   };
 
   const handleNext = () => {
+    responseTimesRef.current[question.id] = Date.now() - questionShownAtRef.current;
     if (isLast) {
       void submit();
     } else {

@@ -19,6 +19,7 @@ const DEFAULT_PSYCHOMETRIC_CONFIG: PsychometricTestConfig = {
   },
   bandCutoffs: { lowMax: 40, highMin: 70 },
   timeLimitMinutes: 30,
+  questionCounts: { likertPerTrait: 0, sjt: 0 },
 };
 
 export async function getPsychometricQuestions(): Promise<PsychometricQuestion[]> {
@@ -36,7 +37,14 @@ export async function getPsychometricConfig(): Promise<PsychometricTestConfig> {
     await setDoc(CONFIG_DOC, DEFAULT_PSYCHOMETRIC_CONFIG);
     return DEFAULT_PSYCHOMETRIC_CONFIG;
   }
-  return snap.data() as PsychometricTestConfig;
+  // Merge with defaults so configs saved before a field existed (e.g.
+  // questionCounts) don't come back with it missing.
+  const data = snap.data() as Partial<PsychometricTestConfig>;
+  return {
+    ...DEFAULT_PSYCHOMETRIC_CONFIG,
+    ...data,
+    questionCounts: { ...DEFAULT_PSYCHOMETRIC_CONFIG.questionCounts, ...(data.questionCounts ?? {}) },
+  };
 }
 
 export async function savePsychometricConfig(config: PsychometricTestConfig): Promise<void> {

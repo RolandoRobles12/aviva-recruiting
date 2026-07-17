@@ -1,7 +1,13 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { db } from '../utils/admin';
-import { shuffle, type PsychometricQuestion } from './scoring';
+import { shuffle, PSYCHOMETRIC_TRAITS, type PsychometricQuestion } from './scoring';
 import { getQuestionBank, getOrSeedConfig } from './bankStore';
+
+/** Sample `count` items at random (0 = keep all). Clamps to what's available. */
+function sample<T>(list: T[], count: number): T[] {
+  if (!count || count <= 0 || count >= list.length) return list;
+  return shuffle(list).slice(0, count);
+}
 
 /** Public endpoint: fetch (and start, if not yet started) a psychometric test session by token. */
 export const getPsychometricTest = onRequest(
@@ -72,10 +78,19 @@ export const getPsychometricTest = onRequest(
       const byId = new Map(enabled.map((q) => [q.id, q]));
 
       if (session.status === 'pending' || !questionOrder?.length) {
-        // First open — start the session, freeze randomized order.
-        questionOrder = shuffle(enabled.map((q) => q.id));
+        // First open — sample the pool per config.questionCounts (0 = use all
+        // enabled), then freeze the randomized order for the rest of the session.
+        const likertPerTrait = config.questionCounts?.likertPerTrait ?? 0;
+        const sjtCount = config.questionCounts?.sjt ?? 0;
+        const selectedLikert = PSYCHOMETRIC_TRAITS.flatMap((trait) =>
+          sample(enabled.filter((q) => q.type === 'likert' && q.trait === trait), likertPerTrait)
+        );
+        const selectedSjt = sample(enabled.filter((q) => q.type === 'sjt'), sjtCount);
+        const selected = [...selectedLikert, ...selectedSjt];
+
+        questionOrder = shuffle(selected.map((q) => q.id));
         optionOrders = {};
-        for (const q of enabled) {
+        for (const q of selected) {
           if (q.type === 'sjt') {
             optionOrders[q.id] = shuffle(q.options.map((_, i) => i));
           }
