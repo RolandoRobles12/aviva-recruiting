@@ -8,6 +8,8 @@
       { "source": "/api/signContract", "function": "signContract" },
       { "source": "/api/getContract", "function": "getContract" },
       { "source": "/api/analyzePdfTemplate", "function": "analyzePdfTemplate" },
+      { "source": "/api/getPsychometricTest", "function": "getPsychometricTest" },
+      { "source": "/api/submitPsychometricTest", "function": "submitPsychometricTest" },
       {
         "source": "**",
         "destination": "/index.html"
