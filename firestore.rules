@@ -91,6 +91,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ─── Psychometric Test Sessions ───────────────────────────────────────────
+    // Public candidate-facing reads/writes go through Cloud Functions (Admin SDK,
+    // bypasses these rules) — the client SDK never touches this collection with a token.
+
+    match /psychometric_sessions/{sessionId} {
+      allow read, write: if isRecruiter();
+    }
+
     // ─── Viterbit Webhook Logs ────────────────────────────────────────────────
 
     match /viterbit_webhook_logs/{logId} {

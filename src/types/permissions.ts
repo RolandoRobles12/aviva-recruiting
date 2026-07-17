@@ -23,6 +23,9 @@ export type PermissionKey =
   | 'process_review_docs'
   | 'process_view_contracts'
   | 'process_provision_accounts'
+  // Pruebas psicométricas
+  | 'psychometric_sessions'
+  | 'psychometric_manage_bank'
   // Configuración
   | 'config_templates'
   | 'config_settings'
@@ -101,6 +104,22 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    id: 'psychometric',
+    label: 'Pruebas Psicométricas',
+    items: [
+      {
+        key: 'psychometric_sessions',
+        label: 'Generar y revisar pruebas',
+        description: 'Crear sesiones de prueba psicométrica y ver los resultados de los candidatos',
+      },
+      {
+        key: 'psychometric_manage_bank',
+        label: 'Editar banco de preguntas',
+        description: 'Configurar preguntas, escenarios y ponderaciones de la prueba psicométrica',
+      },
+    ],
+  },
+  {
     id: 'config',
     label: 'Configuración',
     items: [
@@ -150,6 +169,8 @@ export const ALL_PERMISSIONS: RolePermissions = {
   process_review_docs: true,
   process_view_contracts: true,
   process_provision_accounts: true,
+  psychometric_sessions: true,
+  psychometric_manage_bank: true,
   config_templates: true,
   config_settings: true,
   config_form: true,
@@ -171,6 +192,8 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_review_docs: true,
     process_view_contracts: false,
     process_provision_accounts: false,
+    psychometric_sessions: true,
+    psychometric_manage_bank: false,
     config_templates: false,
     config_settings: false,
     config_form: false,
@@ -187,6 +210,8 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_review_docs: true,
     process_view_contracts: true,
     process_provision_accounts: true,
+    psychometric_sessions: true,
+    psychometric_manage_bank: false,
     config_templates: false,
     config_settings: true,
     config_form: false,
@@ -203,6 +228,8 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_review_docs: false,
     process_view_contracts: true,
     process_provision_accounts: true,
+    psychometric_sessions: false,
+    psychometric_manage_bank: false,
     config_templates: false,
     config_settings: false,
     config_form: false,
@@ -219,6 +246,8 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_review_docs: true,
     process_view_contracts: true,
     process_provision_accounts: false,
+    psychometric_sessions: false,
+    psychometric_manage_bank: false,
     config_templates: false,
     config_settings: false,
     config_form: false,
