@@ -1176,6 +1176,7 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
   const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
   const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
   const missingHiringDetails = missingSalary || missingDate;
+  const reviewRequired = !!c.contractReviewRequired && !c.contractSignedAt && c.status !== 'contract_signed';
 
   async function handleResendContract() {
     setSendingContract(true);
@@ -1221,6 +1222,21 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
                     ? `Firmado el ${format(c.contractSignedAt.toDate(), "d MMM yyyy 'a las' HH:mm", { locale: es })}`
                     : 'Contrato firmado'}
                 </span>
+              </div>
+            ) : reviewRequired ? (
+              <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Generado, NO enviado — requiere revisión manual</p>
+                  <p className="mt-1 text-amber-700">
+                    El OCR no está seguro de algunos datos del contrato. Revisa y corrige "Datos para el contrato" arriba, luego envíalo manualmente.
+                  </p>
+                  {c.contractReviewReasons && c.contractReviewReasons.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5 text-amber-700 list-disc list-inside">
+                      {c.contractReviewReasons.map((r, i) => <li key={i}>{r}</li>)}
+                    </ul>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
@@ -1300,12 +1316,12 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
             </Section>
           )}
 
-          {/* Resend contract email — only when not yet signed */}
+          {/* Send/resend contract email — only when not yet signed */}
           {!c.contractSignedAt && c.status !== 'contract_signed' && (
             <Section title="Correo del contrato">
               {contractSendError && <p className="text-xs text-red-600 mb-2">{contractSendError}</p>}
               {missingHiringDetails && (
-                <p className="text-xs text-amber-700 mb-2">Completa los datos de Viterbit antes de reenviar.</p>
+                <p className="text-xs text-amber-700 mb-2">Completa los datos de Viterbit antes de {reviewRequired ? 'enviar' : 'reenviar'}.</p>
               )}
               <button
                 onClick={handleResendContract}
@@ -1313,7 +1329,7 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
                 className="flex items-center gap-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60 w-full justify-center"
               >
                 {sendingContract ? <RefreshCw size={13} className="animate-spin" /> : contractSent ? <Check size={13} /> : <Send size={13} />}
-                {contractSent ? 'Correo enviado' : 'Reenviar correo de contrato'}
+                {contractSent ? 'Correo enviado' : reviewRequired ? 'Enviar correo de contrato' : 'Reenviar correo de contrato'}
               </button>
             </Section>
           )}

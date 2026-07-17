@@ -141,6 +141,8 @@ export const reissueOffer = onCall(
       contractToken: FieldValue.delete(),
       contractExpiresAt: FieldValue.delete(),
       contractTemplateId: FieldValue.delete(),
+      contractReviewRequired: FieldValue.delete(),
+      contractReviewReasons: FieldValue.delete(),
       contractSignedAt: FieldValue.delete(),
       contractSignatureUrl: FieldValue.delete(),
       contractPdfUrl: FieldValue.delete(),
