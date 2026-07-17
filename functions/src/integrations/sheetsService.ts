@@ -7,6 +7,7 @@ const SPREADSHEET_ID = '1LiuRz3AgJriRjCBnSCUcF7HGvzWIyx3v9FEesBLXgmA';
 // managed by that sheet's own automation, so we never write them.
 const SECONDARY_SPREADSHEET_ID = '1P50cy7O0Lzfm3E_FX19nV0nfB0WVkLWYQycttrWvaW8';
 const SECONDARY_SHEET_GID = 1726630616;
+const SECONDARY_SHEET_TITLE_FALLBACK = 'BD 09-03-2026';
 const SECONDARY_COLUMN_COUNT = 54;
 
 let secondarySheetTitle: string | null = null;
@@ -16,16 +17,21 @@ async function resolveSecondarySheetTitle(
   sheets: ReturnType<typeof google.sheets>,
 ): Promise<string> {
   if (secondarySheetTitle) return secondarySheetTitle;
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId: SECONDARY_SPREADSHEET_ID,
-    fields: 'sheets(properties(sheetId,title))',
-  });
-  const match = meta.data.sheets?.find((s) => s.properties?.sheetId === SECONDARY_SHEET_GID);
-  if (!match?.properties?.title) {
-    throw new Error(`No tab with gid ${SECONDARY_SHEET_GID} in spreadsheet ${SECONDARY_SPREADSHEET_ID}`);
+  try {
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: SECONDARY_SPREADSHEET_ID,
+      fields: 'sheets(properties(sheetId,title))',
+    });
+    const match = meta.data.sheets?.find((s) => s.properties?.sheetId === SECONDARY_SHEET_GID);
+    if (!match?.properties?.title) {
+      throw new Error(`No tab with gid ${SECONDARY_SHEET_GID} in spreadsheet ${SECONDARY_SPREADSHEET_ID}`);
+    }
+    secondarySheetTitle = match.properties.title;
+    return secondarySheetTitle;
+  } catch (err) {
+    console.warn(`[sheetsService] Could not resolve tab title from gid, using fallback "${SECONDARY_SHEET_TITLE_FALLBACK}":`, err);
+    return SECONDARY_SHEET_TITLE_FALLBACK;
   }
-  secondarySheetTitle = match.properties.title;
-  return secondarySheetTitle;
 }
 
 function getSheetsClient(serviceAccountJson: object) {
