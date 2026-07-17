@@ -1,7 +1,7 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { db } from '../utils/admin';
 import { shuffle, type PsychometricQuestion } from './scoring';
-import { getOrSeedQuestionBank, getOrSeedConfig } from './bankStore';
+import { getQuestionBank, getOrSeedConfig } from './bankStore';
 
 /** Public endpoint: fetch (and start, if not yet started) a psychometric test session by token. */
 export const getPsychometricTest = onRequest(
@@ -61,8 +61,14 @@ export const getPsychometricTest = onRequest(
         }
       }
 
-      const bank = await getOrSeedQuestionBank();
+      const bank = await getQuestionBank();
       const enabled = bank.filter((q) => q.enabled);
+
+      if (enabled.length === 0) {
+        res.status(503).json({ ok: false, error: 'No hay preguntas configuradas todavía. Contacta al equipo de reclutamiento.' });
+        return;
+      }
+
       const byId = new Map(enabled.map((q) => [q.id, q]));
 
       if (session.status === 'pending' || !questionOrder?.length) {

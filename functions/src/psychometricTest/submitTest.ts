@@ -2,7 +2,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { scoreAnswers, type PsychometricAnswer } from './scoring';
-import { getOrSeedQuestionBank, getOrSeedConfig } from './bankStore';
+import { getQuestionBank, getOrSeedConfig } from './bankStore';
 
 // Grace period so a slow network doesn't fail a candidate who submitted in time.
 const SUBMIT_GRACE_MS = 60_000;
@@ -41,7 +41,7 @@ export const submitPsychometricTest = onRequest(
         return;
       }
 
-      const [bank, config] = await Promise.all([getOrSeedQuestionBank(), getOrSeedConfig()]);
+      const [bank, config] = await Promise.all([getQuestionBank(), getOrSeedConfig()]);
 
       const startedAt = session.startedAt?.toDate?.() as Date | undefined;
       const timeLimitMinutes = (session.timeLimitMinutes as number) || config.timeLimitMinutes;
