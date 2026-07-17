@@ -139,6 +139,20 @@ export function TakePsychometricTestPage() {
     );
   }
 
+  if (data.questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-aviva-fondo px-4">
+        <div className="card p-8 max-w-md w-full text-center">
+          <AlertTriangle size={40} className="mx-auto text-yellow-400 mb-4" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Prueba no disponible</h2>
+          <p className="text-sm text-gray-500">
+            No hay preguntas configuradas todavía. Contacta al equipo de reclutamiento.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const question = data.questions[currentIndex];
   const isLast = currentIndex === data.questions.length - 1;
   const answered = answers[question.id] !== undefined;
