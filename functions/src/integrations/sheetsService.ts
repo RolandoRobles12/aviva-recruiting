@@ -2,6 +2,38 @@ import { google } from 'googleapis';
 
 const SPREADSHEET_ID = '1LiuRz3AgJriRjCBnSCUcF7HGvzWIyx3v9FEesBLXgmA';
 
+// Second spreadsheet: mirrors the master's first 54 columns (no NSS→CLABE
+// block); its trailing "Enviar correo / Confirmación / Status" columns are
+// managed by that sheet's own automation, so we never write them.
+const SECONDARY_SPREADSHEET_ID = '1P50cy7O0Lzfm3E_FX19nV0nfB0WVkLWYQycttrWvaW8';
+const SECONDARY_SHEET_GID = 1726630616;
+const SECONDARY_SHEET_TITLE_FALLBACK = 'BD 09-03-2026';
+const SECONDARY_COLUMN_COUNT = 54;
+
+let secondarySheetTitle: string | null = null;
+
+/** Resolve a tab's title from its gid (the URL only gives us the gid). */
+async function resolveSecondarySheetTitle(
+  sheets: ReturnType<typeof google.sheets>,
+): Promise<string> {
+  if (secondarySheetTitle) return secondarySheetTitle;
+  try {
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: SECONDARY_SPREADSHEET_ID,
+      fields: 'sheets(properties(sheetId,title))',
+    });
+    const match = meta.data.sheets?.find((s) => s.properties?.sheetId === SECONDARY_SHEET_GID);
+    if (!match?.properties?.title) {
+      throw new Error(`No tab with gid ${SECONDARY_SHEET_GID} in spreadsheet ${SECONDARY_SPREADSHEET_ID}`);
+    }
+    secondarySheetTitle = match.properties.title;
+    return secondarySheetTitle;
+  } catch (err) {
+    console.warn(`[sheetsService] Could not resolve tab title from gid, using fallback "${SECONDARY_SHEET_TITLE_FALLBACK}":`, err);
+    return SECONDARY_SHEET_TITLE_FALLBACK;
+  }
+}
+
 function getSheetsClient(serviceAccountJson: object) {
   const auth = new google.auth.GoogleAuth({
     credentials: serviceAccountJson,
@@ -78,8 +110,10 @@ function mergedField(ov: Record<string, string>, docs: Record<string, unknown>, 
 }
 
 /**
- * Appends one candidate row to the Base automatizada MASTER spreadsheet.
+ * Appends one candidate row to the Base automatizada MASTER spreadsheet and
+ * to the secondary spreadsheet (same layout, first 54 columns only).
  * Call this after contract signing + Drive folder creation.
+ * Each append is attempted independently; throws at the end if any failed.
  */
 export async function appendCandidateRow(
   candidate: Record<string, unknown>,
@@ -159,13 +193,38 @@ export async function appendCandidateRow(
   ];
 
   const sheets = getSheetsClient(serviceAccountJson);
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'MASTER_ROLANDO!A1',
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [row] },
-  });
+  const errors: string[] = [];
 
-  console.log(`[sheetsService] Row appended for ${candidate.email}`);
+  try {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'MASTER_ROLANDO!A1',
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [row] },
+    });
+    console.log(`[sheetsService] MASTER row appended for ${candidate.email}`);
+  } catch (err) {
+    console.error(`[sheetsService] MASTER append failed for ${candidate.email}:`, err);
+    errors.push(`MASTER: ${err}`);
+  }
+
+  try {
+    const title = await resolveSecondarySheetTitle(sheets);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SECONDARY_SPREADSHEET_ID,
+      range: `'${title}'!A1`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [row.slice(0, SECONDARY_COLUMN_COUNT)] },
+    });
+    console.log(`[sheetsService] Secondary row appended for ${candidate.email}`);
+  } catch (err) {
+    console.error(`[sheetsService] Secondary append failed for ${candidate.email}:`, err);
+    errors.push(`Secundario: ${err}`);
+  }
+
+  if (errors.length) {
+    throw new Error(`Sheets append incompleto — ${errors.join('; ')}`);
+  }
 }

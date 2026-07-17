@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "pending_performance_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "processed", "order": "ASCENDING" },
+        { "fieldPath": "processAfter", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "candidates",
       "queryScope": "COLLECTION",
       "fields": [
