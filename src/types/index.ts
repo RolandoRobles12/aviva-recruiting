@@ -183,6 +183,12 @@ export interface Candidate {
   jiraTicketId?: string;
   // Google Drive
   driveFolderId?: string;
+  driveSyncStatus?: {
+    syncedAt: Timestamp;
+    uploaded: string[];
+    failed: string[];
+    skipped: string[];
+  };
   // HubSpot
   hubspotOwnerId?: string;
   // 15/30-day performance checks

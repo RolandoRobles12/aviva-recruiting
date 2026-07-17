@@ -8,7 +8,10 @@ import { syncValidDocumentsToDriveFolder } from './driveSync';
 const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
 
 export const createDriveFolderManual = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30, secrets: [DRIVE_SERVICE_ACCOUNT] },
+  // 300s: syncing a full expediente (download from Storage + upload to Drive,
+  // one file at a time, with retries) can far exceed the old 30s timeout —
+  // which killed the sync halfway and left folders with only some documents.
+  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300, secrets: [DRIVE_SERVICE_ACCOUNT] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
@@ -56,8 +59,22 @@ export const createDriveFolderManual = onCall(
       { name: 'Contrato Firmado.pdf',     storagePath: `candidates/${candidateId}/contrato_firmado.pdf` },
       { name: 'Carta Oferta Firmada.pdf', storagePath: `candidates/${candidateId}/carta_oferta_firmada.pdf` },
     ];
+    let uploaded: string[] = [];
+    let failed: string[] = [];
+    let skipped: string[] = [];
     try {
-      await syncValidDocumentsToDriveFolder(folderId, documents, serviceAccount, extraFiles);
+      const syncResult = await syncValidDocumentsToDriveFolder(folderId, documents, serviceAccount, extraFiles);
+      uploaded = syncResult.uploaded;
+      failed = syncResult.failed.map((f) => f.name);
+      skipped = syncResult.skipped;
+      await docRef.update({
+        driveSyncStatus: {
+          syncedAt: FieldValue.serverTimestamp(),
+          uploaded,
+          failed,
+          skipped,
+        },
+      });
     } catch (err) {
       console.error('[createDriveFolderManual] Document sync error:', err);
     }
@@ -66,6 +83,9 @@ export const createDriveFolderManual = onCall(
       success: true,
       folderId,
       folderUrl: `https://drive.google.com/drive/folders/${folderId}`,
+      uploaded,
+      failed,
+      skipped,
     };
   },
 );

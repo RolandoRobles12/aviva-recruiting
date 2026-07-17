@@ -3,6 +3,11 @@ import { Readable } from 'stream';
 
 const EXPEDIENTES_FOLDER_ID = '1wVBfz7_Mx10bOcmpnkVTaeQBFRNVLwkp';
 
+/** Escape a string for use inside single quotes in a Drive query. */
+function escapeDriveQuery(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function getDriveClient(serviceAccount: object) {
   const auth = new google.auth.GoogleAuth({
     credentials: serviceAccount,
@@ -27,7 +32,7 @@ export async function createCandidateDriveFolder(
 
   // Check if folder already exists to avoid duplicates
   const existing = await drive.files.list({
-    q: `name='${folderName}' and '${EXPEDIENTES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    q: `name='${escapeDriveQuery(folderName)}' and '${EXPEDIENTES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id,name)',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
@@ -53,8 +58,10 @@ export async function createCandidateDriveFolder(
 }
 
 /**
- * Uploads a file buffer into a Drive folder.
- * Returns the created file ID. Throws on error.
+ * Uploads a file buffer into a Drive folder. If a file with the same name
+ * already exists in the folder, its content is replaced instead of creating a
+ * duplicate — this makes retries and manual re-syncs idempotent.
+ * Returns the file ID. Throws on error.
  */
 export async function uploadFileToDriveFolder(
   folderId: string,
@@ -64,6 +71,26 @@ export async function uploadFileToDriveFolder(
   serviceAccountJson: object,
 ): Promise<string> {
   const drive = getDriveClient(serviceAccountJson);
+
+  const existing = await drive.files.list({
+    q: `name='${escapeDriveQuery(fileName)}' and '${folderId}' in parents and trashed=false`,
+    fields: 'files(id)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const existingId = existing.data.files?.[0]?.id;
+
+  if (existingId) {
+    await drive.files.update({
+      fileId: existingId,
+      media: {
+        mimeType,
+        body: Readable.from(buffer),
+      },
+      supportsAllDrives: true,
+    });
+    return existingId;
+  }
 
   const res = await drive.files.create({
     requestBody: {

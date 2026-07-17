@@ -61,7 +61,14 @@ export const refreshCandidateViterbit = httpsCallable<
 
 export const createDriveFolderManual = httpsCallable<
   { candidateId: string },
-  { success: boolean; folderId: string; folderUrl: string }
+  {
+    success: boolean;
+    folderId: string;
+    folderUrl: string;
+    uploaded: string[];
+    failed: string[];
+    skipped: string[];
+  }
 >(functions, 'createDriveFolderManual');
 
 export const appendSheetsRowManual = httpsCallable<
