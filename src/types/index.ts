@@ -231,6 +231,122 @@ export interface Candidate {
   viterbitDepartmentProfile?: string;
 }
 
+// ─── Psychometric Test (standalone module — not yet linked to Candidate) ──────
+
+/** Personality traits scored by the Likert item bank (IPIP-style, adapted to Spanish). */
+export type PsychometricTrait =
+  | 'responsabilidad'
+  | 'estabilidad_emocional'
+  | 'extraversion'
+  | 'amabilidad';
+
+export const PSYCHOMETRIC_TRAITS: PsychometricTrait[] = [
+  'responsabilidad',
+  'estabilidad_emocional',
+  'extraversion',
+  'amabilidad',
+];
+
+export const PSYCHOMETRIC_TRAIT_LABELS: Record<PsychometricTrait, string> = {
+  responsabilidad: 'Responsabilidad',
+  estabilidad_emocional: 'Estabilidad emocional',
+  extraversion: 'Extraversión / Asertividad',
+  amabilidad: 'Amabilidad / Orientación de servicio',
+};
+
+export interface PsychometricLikertQuestion {
+  id: string;
+  type: 'likert';
+  text: string;
+  trait: PsychometricTrait;
+  /** true if a high score on this item means a LOW trait score (scored 6 - value) */
+  reverseScored: boolean;
+  enabled: boolean;
+  order: number;
+}
+
+export interface PsychometricSjtOption {
+  text: string;
+  /** 0 (menos deseable) a 2 (más deseable) */
+  score: number;
+}
+
+export interface PsychometricSjtQuestion {
+  id: string;
+  type: 'sjt';
+  text: string; // escenario
+  options: PsychometricSjtOption[];
+  enabled: boolean;
+  order: number;
+}
+
+export type PsychometricQuestion = PsychometricLikertQuestion | PsychometricSjtQuestion;
+
+export interface PsychometricTraitWeights {
+  responsabilidad: number;
+  estabilidad_emocional: number;
+  extraversion: number;
+  amabilidad: number;
+  /** peso del score de juicio situacional en el compuesto */
+  sjt: number;
+}
+
+export interface PsychometricBandCutoffs {
+  /** score < lowMax → banda "bajo" */
+  lowMax: number;
+  /** lowMax <= score < highMin → "medio"; score >= highMin → "alto" */
+  highMin: number;
+}
+
+export interface PsychometricTestConfig {
+  weights: PsychometricTraitWeights;
+  bandCutoffs: PsychometricBandCutoffs;
+  timeLimitMinutes: number;
+}
+
+export type PsychometricBand = 'bajo' | 'medio' | 'alto';
+
+export interface PsychometricTraitResult {
+  rawAverage: number;
+  normalizedScore: number; // 0-100
+  band: PsychometricBand;
+}
+
+export interface PsychometricResult {
+  traits: Record<PsychometricTrait, PsychometricTraitResult>;
+  sjt: PsychometricTraitResult;
+  compositeScore: number; // 0-100
+  compositeBand: PsychometricBand;
+}
+
+export type PsychometricSessionStatus = 'pending' | 'in_progress' | 'completed' | 'expired';
+
+export interface PsychometricAnswer {
+  questionId: string;
+  /** likert: 1-5. sjt: índice de la opción tal como se mostró al candidato (post-aleatorización). */
+  value: number;
+}
+
+export interface PsychometricSession {
+  id: string;
+  candidateName: string;
+  candidateEmail: string;
+  token: string;
+  status: PsychometricSessionStatus;
+  createdAt: Timestamp;
+  createdBy: string; // recruiter uid
+  expiresAt: Timestamp; // vencimiento del enlace para iniciar
+  timeLimitMinutes: number;
+  startedAt?: Timestamp;
+  /** orden aleatorio (fijo una vez iniciada la sesión) de ids de preguntas habilitadas */
+  questionOrder?: string[];
+  /** orden aleatorio de opciones por pregunta SJT (índices originales), fijo una vez iniciada */
+  optionOrders?: Record<string, number[]>;
+  answers?: PsychometricAnswer[];
+  completedAt?: Timestamp;
+  result?: PsychometricResult;
+}
+
 // ─── Offer Templates ──────────────────────────────────────────────────────────
 
 export interface OfferTemplate {

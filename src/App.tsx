@@ -15,6 +15,8 @@ import { GmailCallbackPage } from './pages/GmailCallbackPage';
 import { EmailTemplatesPage } from './pages/EmailTemplatesPage';
 import { FormConfigPage } from './pages/FormConfigPage';
 import { RolesPage } from './pages/RolesPage';
+import { PsychometricTestsPage } from './pages/PsychometricTestsPage';
+import { TakePsychometricTestPage } from './pages/TakePsychometricTestPage';
 
 function Spinner() {
   return (
@@ -54,6 +56,7 @@ export default function App() {
         <Route path="/form/:token"     element={<CandidateFormPage />} />
         <Route path="/offer/:token"    element={<OfferPage />} />
         <Route path="/contract/:token" element={<ContractPage />} />
+        <Route path="/prueba-psicometrica/:token" element={<TakePsychometricTestPage />} />
         <Route path="/gmail/callback"  element={<GmailCallbackPage />} />
         <Route path="/login"           element={<LoginPage />} />
 
@@ -98,6 +101,16 @@ export default function App() {
           element={
             <PermissionRoute permission="config_form">
               <FormConfigPage />
+            </PermissionRoute>
+          }
+        />
+
+        {/* ── Psychometric tests (requires psychometric_sessions) ── */}
+        <Route
+          path="/psychometric-tests"
+          element={
+            <PermissionRoute permission="psychometric_sessions">
+              <PsychometricTestsPage />
             </PermissionRoute>
           }
         />

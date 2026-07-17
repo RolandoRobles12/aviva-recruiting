@@ -11,6 +11,7 @@ import {
   Mail,
   ClipboardList,
   Shield,
+  Brain,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { ROLE_META, normalizeRole } from '../../types/permissions';
@@ -39,6 +40,7 @@ export function DashboardLayout({ children }: Props) {
   const showCandidates    = can('candidates_view_own') || can('candidates_view_all');
   const showDocs          = can('process_review_docs');
   const showFormConfig    = can('config_form');
+  const showPsychometric  = can('psychometric_sessions');
   const showTemplates     = can('config_templates');
   const showSettings      = can('config_settings');
   const showRoles         = can('admin_manage_roles');
@@ -63,7 +65,7 @@ export function DashboardLayout({ children }: Props) {
         {/* Nav */}
         <nav className="flex-1 py-4 px-2 lg:px-3 space-y-5 overflow-y-auto">
           {/* Principal */}
-          {(showCandidates || showDocs || showFormConfig) && (
+          {(showCandidates || showDocs || showFormConfig || showPsychometric) && (
             <div className="space-y-1">
               <p className="hidden lg:block px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
                 Principal
@@ -84,6 +86,12 @@ export function DashboardLayout({ children }: Props) {
                 <NavLink to="/form-config" className={navClass}>
                   <ClipboardList size={18} className="shrink-0" />
                   <span className="hidden lg:block">Preguntas y documentos</span>
+                </NavLink>
+              )}
+              {showPsychometric && (
+                <NavLink to="/psychometric-tests" className={navClass}>
+                  <Brain size={18} className="shrink-0" />
+                  <span className="hidden lg:block">Pruebas Psicométricas</span>
                 </NavLink>
               )}
             </div>

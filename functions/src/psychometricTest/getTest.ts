@@ -1,0 +1,125 @@
+import { onRequest } from 'firebase-functions/v2/https';
+import { db } from '../utils/admin';
+import {
+  shuffle,
+  type PsychometricQuestion,
+  type PsychometricTestConfig,
+} from './scoring';
+
+const DEFAULT_CONFIG: PsychometricTestConfig = {
+  weights: { responsabilidad: 0.2, estabilidad_emocional: 0.2, extraversion: 0.2, amabilidad: 0.2, sjt: 0.2 },
+  bandCutoffs: { lowMax: 40, highMin: 70 },
+  timeLimitMinutes: 30,
+};
+
+/** Public endpoint: fetch (and start, if not yet started) a psychometric test session by token. */
+export const getPsychometricTest = onRequest(
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 60 },
+  async (req, res) => {
+    if (req.method !== 'GET') {
+      res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+      return;
+    }
+
+    const token = req.query['token'] as string | undefined;
+    if (!token) {
+      res.status(400).json({ ok: false, error: 'token is required' });
+      return;
+    }
+
+    try {
+      const snap = await db.collection('psychometric_sessions').where('token', '==', token).limit(1).get();
+      if (snap.empty) {
+        res.status(404).json({ ok: false, error: 'No se encontró la prueba. Verifica tu enlace.' });
+        return;
+      }
+
+      const sessionRef = snap.docs[0].ref;
+      const session = snap.docs[0].data();
+      const now = new Date();
+
+      if (session.status === 'completed') {
+        res.status(409).json({ ok: false, error: 'already_completed' });
+        return;
+      }
+      if (session.status === 'expired') {
+        res.status(410).json({ ok: false, error: 'Este enlace ha expirado.' });
+        return;
+      }
+
+      const linkExpiresAt = session.expiresAt?.toDate?.() as Date | undefined;
+      if (session.status === 'pending' && linkExpiresAt && now > linkExpiresAt) {
+        await sessionRef.update({ status: 'expired' });
+        res.status(410).json({ ok: false, error: 'Este enlace ha expirado. Solicita uno nuevo.' });
+        return;
+      }
+
+      const timeLimitMinutes = (session.timeLimitMinutes as number) || DEFAULT_CONFIG.timeLimitMinutes;
+
+      let questionOrder = session.questionOrder as string[] | undefined;
+      let optionOrders = session.optionOrders as Record<string, number[]> | undefined;
+      let startedAt = session.startedAt?.toDate?.() as Date | undefined;
+
+      if (session.status === 'in_progress' && startedAt) {
+        const elapsedMs = now.getTime() - startedAt.getTime();
+        if (elapsedMs > timeLimitMinutes * 60 * 1000) {
+          await sessionRef.update({ status: 'expired' });
+          res.status(410).json({ ok: false, error: 'El tiempo para responder la prueba ha terminado.' });
+          return;
+        }
+      }
+
+      const bankSnap = await db.collection('settings').doc('psychometric_questions').get();
+      const bank = (bankSnap.data()?.questions as PsychometricQuestion[] | undefined) ?? [];
+      const enabled = bank.filter((q) => q.enabled);
+      const byId = new Map(enabled.map((q) => [q.id, q]));
+
+      if (session.status === 'pending' || !questionOrder?.length) {
+        // First open — start the session, freeze randomized order.
+        questionOrder = shuffle(enabled.map((q) => q.id));
+        optionOrders = {};
+        for (const q of enabled) {
+          if (q.type === 'sjt') {
+            optionOrders[q.id] = shuffle(q.options.map((_, i) => i));
+          }
+        }
+        startedAt = now;
+        await sessionRef.update({
+          status: 'in_progress',
+          startedAt: now,
+          questionOrder,
+          optionOrders,
+        });
+      }
+
+      const questions = questionOrder
+        .map((id) => byId.get(id))
+        .filter((q): q is PsychometricQuestion => !!q)
+        .map((q) => {
+          if (q.type === 'likert') {
+            return { id: q.id, type: 'likert' as const, text: q.text };
+          }
+          const order = optionOrders?.[q.id] ?? q.options.map((_, i) => i);
+          return {
+            id: q.id,
+            type: 'sjt' as const,
+            text: q.text,
+            options: order.map((origIdx) => q.options[origIdx].text),
+          };
+        });
+
+      res.status(200).json({
+        ok: true,
+        session: {
+          candidateName: session.candidateName as string,
+          timeLimitMinutes,
+          startedAtIso: startedAt?.toISOString(),
+          questions,
+        },
+      });
+    } catch (err) {
+      console.error('[getPsychometricTest] Unhandled error:', err);
+      res.status(500).json({ ok: false, error: 'Error al cargar la prueba. Intenta recargar la página.' });
+    }
+  }
+);

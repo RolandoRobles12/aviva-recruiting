@@ -23,3 +23,5 @@ export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';
 export { processPendingApprovals } from './viterbit/processPendingApprovals';
 export { dailyPerformanceCheck } from './performance/performanceCheck';
 export { backfillPerformanceChecks } from './performance/backfillPerformanceChecks';
+export { getPsychometricTest } from './psychometricTest/getTest';
+export { submitPsychometricTest } from './psychometricTest/submitTest';
