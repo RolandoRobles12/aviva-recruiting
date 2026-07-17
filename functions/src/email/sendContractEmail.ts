@@ -9,6 +9,7 @@ import { getRecruiterEmail } from '../utils/recruiters';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getLogoUrl } from '../utils/branding';
+import { evaluateContractDataReview } from '../contract/contractReview';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 
@@ -29,6 +30,17 @@ export const sendContractEmail = onCall(
     if (missingSalary || missingDate) {
       const missing = [missingSalary && 'salario', missingDate && 'fecha de inicio'].filter(Boolean).join(' y ');
       throw new HttpsError('failed-precondition', `Faltan datos de Viterbit: ${missing}. Refresca los datos antes de enviar.`);
+    }
+
+    // Block sending until OCR-sourced contract fields (CURP, RFC, domicilio,
+    // CLABE, banco, NSS) have been confirmed — either the OCR was confident
+    // enough, or a recruiter explicitly saved them in "Datos para el contrato".
+    const review = evaluateContractDataReview(candidate as Record<string, unknown>);
+    if (review.required) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Revisa y confirma los datos del contrato antes de enviarlo: ${review.reasons.join(' ')}`,
+      );
     }
 
     const appUrl = APP_URL.value();
@@ -70,14 +82,22 @@ export const sendContractEmail = onCall(
 
     await sendEmail({ to: candidate.email as string, subject, html, senderEmail, recruiterUid });
 
-    await db.collection('email_logs').add({
-      candidateId,
-      templateType: 'contract',
-      sentTo: candidate.email,
-      sentAt: FieldValue.serverTimestamp(),
-      sentBy: recruiterUid,
-      success: true,
-    });
+    await Promise.all([
+      db.collection('email_logs').add({
+        candidateId,
+        templateType: 'contract',
+        sentTo: candidate.email,
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: recruiterUid,
+        success: true,
+      }),
+      db.collection('candidates').doc(candidateId).update({
+        status: 'contract_sent',
+        contractReviewRequired: false,
+        contractReviewReasons: [],
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
 
     return { success: true };
   }

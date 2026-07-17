@@ -171,6 +171,11 @@ export interface Candidate {
   contractPdfUrl?: string;
   contractEvidenceUrl?: string;
   contractTemplateId?: string;
+  // True when OCR-sourced contract data (CURP, RFC, domicilio, CLABE, banco,
+  // NSS) is missing or below the confidence threshold — the contract was
+  // generated but held from the candidate until a recruiter confirms the data.
+  contractReviewRequired?: boolean;
+  contractReviewReasons?: string[];
   // Corporate email (Correos stage)
   corporateEmail?: string;
   activatedAt?: Timestamp;

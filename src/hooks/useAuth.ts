@@ -58,7 +58,12 @@ export function useAuth() {
       doc(db, 'roles', role),
       (snap) => {
         if (snap.exists() && snap.data().permissions) {
-          setPermissions(snap.data().permissions as RolePermissions);
+          // Merge over defaults so permission keys added after the roles doc
+          // was last saved keep their default value instead of reading as false.
+          setPermissions({
+            ...(ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS.reclutador),
+            ...(snap.data().permissions as Partial<RolePermissions>),
+          });
         }
       },
       () => {

@@ -11,6 +11,8 @@ import { getLogoUrl } from '../utils/branding';
 import { getLinkDuration } from '../utils/linkDuration';
 import { updateCandidateCompletion } from '../utils/candidates';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
+import { evaluateContractDataReview } from '../contract/contractReview';
+import { notifyContractReviewRequired } from '../integrations/slackService';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -190,41 +192,23 @@ export const onCandidateUpdated = functions
 
         const templateMatch = await findContractTemplate(after.position as string ?? '');
 
+        // Don't email a contract built from OCR data the model itself isn't
+        // confident about (missing or low-confidence CURP/RFC/domicilio/CLABE/
+        // banco/NSS) — hold it for a recruiter to review and confirm first.
+        const review = evaluateContractDataReview(after);
+
         await change.after.ref.update({
-          status: 'contract_sent',
+          status: review.required ? 'under_review' : 'contract_sent',
           contractToken: contractTokenValue,
           contractExpiresAt,
           contractTemplateId: templateMatch?.id ?? null,
+          contractReviewRequired: review.required,
+          contractReviewReasons: review.reasons,
           updatedAt: FieldValue.serverTimestamp(),
         });
 
-        const appUrl = APP_URL;
-        const contractUrl = `${appUrl}/contract/${contractTokenValue}`;
-        const contractExpiresAtStr = format(contractExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
-
-        const logoUrlContract = await getLogoUrl();
-        const { subject, html } = contractTemplate({
-          firstName: after.firstName as string,
-          lastName: after.lastName as string,
-          position: after.position as string,
-          contractUrl,
-          contractExpiresAt: contractExpiresAtStr,
-          logoUrl: logoUrlContract,
-        });
-
-        // Send email separately so a failure does not prevent the Viterbit movement.
-        try {
-          await sendEmail({ to: after.email as string, subject, html });
-          await db.collection('email_logs').add({
-            candidateId,
-            templateType: 'contract',
-            sentTo: after.email,
-            sentAt: FieldValue.serverTimestamp(),
-            sentBy: 'onCandidateUpdated_under_review',
-            success: true,
-          });
-        } catch (emailErr) {
-          console.error(`[onCandidateUpdated] contract email error for ${candidateId}:`, emailErr);
+        if (review.required) {
+          console.log(`[onCandidateUpdated] contract for ${candidateId} held for manual review: ${review.reasons.join(' | ')}`);
           await db.collection('email_logs').add({
             candidateId,
             templateType: 'contract',
@@ -232,8 +216,52 @@ export const onCandidateUpdated = functions
             sentAt: FieldValue.serverTimestamp(),
             sentBy: 'onCandidateUpdated_under_review',
             success: false,
-            error: String(emailErr),
+            error: `contract_review_required: ${review.reasons.join(' | ')}`,
           });
+          notifyContractReviewRequired(
+            candidateId,
+            `${(after.firstName as string) ?? ''} ${(after.lastName as string) ?? ''}`.trim(),
+            review.reasons,
+            APP_URL,
+          ).catch((e) => console.error('[onCandidateUpdated] Slack notify error:', e));
+        } else {
+          const appUrl = APP_URL;
+          const contractUrl = `${appUrl}/contract/${contractTokenValue}`;
+          const contractExpiresAtStr = format(contractExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+          const logoUrlContract = await getLogoUrl();
+          const { subject, html } = contractTemplate({
+            firstName: after.firstName as string,
+            lastName: after.lastName as string,
+            position: after.position as string,
+            contractUrl,
+            contractExpiresAt: contractExpiresAtStr,
+            logoUrl: logoUrlContract,
+          });
+
+          // Send email separately so a failure does not prevent the Viterbit movement.
+          try {
+            await sendEmail({ to: after.email as string, subject, html });
+            await db.collection('email_logs').add({
+              candidateId,
+              templateType: 'contract',
+              sentTo: after.email,
+              sentAt: FieldValue.serverTimestamp(),
+              sentBy: 'onCandidateUpdated_under_review',
+              success: true,
+            });
+          } catch (emailErr) {
+            console.error(`[onCandidateUpdated] contract email error for ${candidateId}:`, emailErr);
+            await db.collection('email_logs').add({
+              candidateId,
+              templateType: 'contract',
+              sentTo: after.email,
+              sentAt: FieldValue.serverTimestamp(),
+              sentBy: 'onCandidateUpdated_under_review',
+              success: false,
+              error: String(emailErr),
+            });
+          }
         }
 
         console.log(`[onCandidateUpdated] contractToken generated for ${candidateId}`);

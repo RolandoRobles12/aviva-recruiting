@@ -339,6 +339,46 @@ export async function notifyCurpMismatch(
   ]);
 }
 
+/**
+ * Alert that the contract was generated but NOT emailed to the candidate
+ * because one or more OCR-sourced fields (CURP, RFC, domicilio, CLABE, banco,
+ * NSS) are missing or below the confidence threshold. A recruiter must review
+ * and confirm the data in "Datos para el contrato" before it can be sent.
+ */
+export async function notifyContractReviewRequired(
+  candidateId: string,
+  candidateName: string,
+  reasons: string[],
+  appUrl: string,
+): Promise<void> {
+  await postOcrAlert([
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: '📝 Contrato pendiente de revisión manual' },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*Candidato:*\n${candidateName}` },
+      ],
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `El contrato NO se envió automáticamente — el OCR no está seguro de estos datos:\n${reasons.map((r) => `• ${r}`).join('\n')}\n\nRevisa y confirma los valores en la pestaña Contrato antes de enviarlo.`,
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        { type: 'button', text: { type: 'plain_text', text: 'Ir al dashboard' }, url: appUrl, style: 'primary' },
+      ],
+    },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `ID: \`${candidateId}\`` }] },
+  ]);
+}
+
 // ─── 15/30-day performance check alerts ──────────────────────────────────────
 
 export interface PerformanceCheckResult {
