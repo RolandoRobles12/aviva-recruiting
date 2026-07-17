@@ -18,14 +18,27 @@ const DOC_LABELS: Record<string, string> = {
   caratula_bancaria: 'carátula bancaria', nss: 'comprobante de NSS',
 };
 
+// Same shape rules as CONTRACT_FIELDS in CandidateDetailPanel.tsx — keep both
+// in sync. A field must satisfy this before it can be sent, whether the value
+// came straight from OCR or from a recruiter's saved correction.
+const FIELD_VALIDATORS: Record<string, (v: string) => boolean> = {
+  curp:      (v) => /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/i.test(v.trim()),
+  rfc:       (v) => /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i.test(v.trim()),
+  nss:       (v) => /^\d{11}$/.test(v.trim()),
+  clabe:     (v) => /^\d{18}$/.test(v.trim()),
+  banco:     (v) => v.trim().length > 1,
+  domicilio: (v) => v.trim().length > 5,
+};
+
 // Claude reports its own confidence (0.0–1.0) that a document was correctly
-// read. Below this, we don't trust the fields extracted from it enough to put
-// them, unreviewed, into a legal document the candidate signs.
+// read. Below this, an OCR value alone isn't enough — a recruiter must save
+// an explicit correction/confirmation for the field, even if the raw OCR
+// value happens to already look well-formed.
 export const CONTRACT_REVIEW_CONFIDENCE_THRESHOLD = 0.8;
 
 export interface ContractReviewResult {
   required: boolean;
-  /** Field keys (curp, rfc, ...) that still need a recruiter-confirmed value. */
+  /** Field keys (curp, rfc, ...) that still block sending. */
   fields: string[];
   /** Human-readable reasons, in Spanish, one per flagged field. */
   reasons: string[];
@@ -35,13 +48,15 @@ type DocMap = Record<string, { status?: string; ocrResult?: { extractedData?: Re
 
 /**
  * Determines whether the contract's OCR-sourced fields (CURP, RFC, domicilio,
- * CLABE, banco, NSS) are reliable enough to send to the candidate unreviewed.
+ * CLABE, banco, NSS) are reliable enough to email to the candidate.
  *
- * A field is considered reviewed/trusted once a recruiter has explicitly saved
- * it in dataOverrides (via "Datos para el contrato" → Guardar correcciones),
- * regardless of the underlying OCR confidence — that save IS the manual
- * verification. Otherwise, a field needs review when it's missing or its
- * source document's OCR confidence is below the threshold.
+ * A field blocks sending when either:
+ *  - it's missing, or its source document's OCR confidence is below the
+ *    threshold, AND no recruiter-saved correction (dataOverrides) exists for
+ *    it yet — doubt about a field always requires a manual look; or
+ *  - its final value (the override if present, otherwise the OCR value)
+ *    doesn't pass the same format check the contract-data editor uses — i.e.
+ *    it isn't "green" yet, whether that value came from OCR or was typed in.
  */
 export function evaluateContractDataReview(candidate: Record<string, unknown>): ContractReviewResult {
   const docs = (candidate.documents ?? {}) as DocMap;
@@ -51,28 +66,33 @@ export function evaluateContractDataReview(candidate: Record<string, unknown>): 
   const reasons: string[] = [];
 
   for (const [fieldKey, sources] of Object.entries(CONTRACT_FIELD_SOURCES)) {
-    if (overrides[fieldKey]?.trim()) continue; // recruiter already confirmed this field
-
-    let value = '';
+    let ocrValue = '';
     let confidence = 1;
     let sourceDocType = '';
     for (const { docType, ocrKey } of sources) {
       const doc = docs[docType];
       const extracted = doc?.status === 'valid' ? doc.ocrResult?.extractedData?.[ocrKey] : undefined;
       if (extracted) {
-        value = extracted;
+        ocrValue = extracted;
         confidence = doc?.ocrResult?.confidence ?? 1;
         sourceDocType = docType;
         break;
       }
     }
 
-    if (!value) {
+    const override = overrides[fieldKey]?.trim() ?? '';
+    const finalValue = override || ocrValue;
+    const validate = FIELD_VALIDATORS[fieldKey];
+
+    if (!override && !ocrValue) {
       fields.push(fieldKey);
-      reasons.push(`${FIELD_LABELS[fieldKey]}: no se pudo leer del documento.`);
-    } else if (confidence < CONTRACT_REVIEW_CONFIDENCE_THRESHOLD) {
+      reasons.push(`${FIELD_LABELS[fieldKey]}: no se pudo leer del documento — corrígelo manualmente.`);
+    } else if (!override && confidence < CONTRACT_REVIEW_CONFIDENCE_THRESHOLD) {
       fields.push(fieldKey);
-      reasons.push(`${FIELD_LABELS[fieldKey]}: confianza baja del OCR (${Math.round(confidence * 100)}%) en ${DOC_LABELS[sourceDocType] ?? sourceDocType}.`);
+      reasons.push(`${FIELD_LABELS[fieldKey]}: confianza baja del OCR (${Math.round(confidence * 100)}%) en ${DOC_LABELS[sourceDocType] ?? sourceDocType} — confírmalo o corrígelo manualmente.`);
+    } else if (validate && !validate(finalValue)) {
+      fields.push(fieldKey);
+      reasons.push(`${FIELD_LABELS[fieldKey]}: formato inválido ("${finalValue}") — corrígelo antes de enviar.`);
     }
   }
 

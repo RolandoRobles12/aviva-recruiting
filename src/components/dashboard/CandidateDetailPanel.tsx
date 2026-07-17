@@ -102,6 +102,47 @@ function contractDataIssues(c: Candidate): number {
   }).length;
 }
 
+// Which document (and OCR key) each contract field's confidence comes from —
+// mirrors CONTRACT_FIELD_SOURCES in functions/src/contract/contractReview.ts.
+const CONTRACT_FIELD_SOURCE_DOCS: Record<string, Array<{ docType: string; ocrKey: string }>> = {
+  curp:      [{ docType: 'curp', ocrKey: 'curp' }, { docType: 'ine', ocrKey: 'curp' }],
+  rfc:       [{ docType: 'constancia_fiscal', ocrKey: 'rfc' }],
+  domicilio: [{ docType: 'ine', ocrKey: 'domicilio' }],
+  clabe:     [{ docType: 'caratula_bancaria', ocrKey: 'clabe' }],
+  banco:     [{ docType: 'caratula_bancaria', ocrKey: 'banco' }],
+  nss:       [{ docType: 'nss', ocrKey: 'nss' }],
+};
+const CONTRACT_REVIEW_CONFIDENCE_THRESHOLD = 0.8;
+
+/**
+ * Mirrors the backend gate (evaluateContractDataReview): blocks sending when
+ * any field is missing/low-confidence without a saved correction, or when its
+ * final value (override or OCR) isn't in valid format — i.e. not "green" yet.
+ * Client-side mirror only, for instant button state; the server re-checks.
+ */
+function contractSendBlocked(c: Candidate): boolean {
+  const docs = (c.documents ?? {}) as Record<string, import('../../types').CandidateDocument>;
+  const ov = (c.dataOverrides ?? {}) as Record<string, string>;
+  const data = mergedContractData(c);
+
+  return CONTRACT_FIELDS.some(({ key, validate }) => {
+    const override = ov[key]?.trim();
+    if (!override) {
+      const sources = CONTRACT_FIELD_SOURCE_DOCS[key] ?? [];
+      let hasOcrValue = false;
+      let confidence = 1;
+      for (const { docType, ocrKey } of sources) {
+        const d = docs[docType];
+        const extracted = d?.status === 'valid' ? (d.ocrResult?.extractedData as Record<string, string> | undefined)?.[ocrKey] : undefined;
+        if (extracted) { hasOcrValue = true; confidence = d?.ocrResult?.confidence ?? 1; break; }
+      }
+      if (!hasOcrValue || confidence < CONTRACT_REVIEW_CONFIDENCE_THRESHOLD) return true;
+    }
+    const val = data[key] ?? '';
+    return !val || !validate(val);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -1177,6 +1218,7 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
   const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
   const missingHiringDetails = missingSalary || missingDate;
   const reviewRequired = !!c.contractReviewRequired && !c.contractSignedAt && c.status !== 'contract_signed';
+  const dataBlocked = contractSendBlocked(c);
 
   async function handleResendContract() {
     setSendingContract(true);
@@ -1323,9 +1365,12 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
               {missingHiringDetails && (
                 <p className="text-xs text-amber-700 mb-2">Completa los datos de Viterbit antes de {reviewRequired ? 'enviar' : 'reenviar'}.</p>
               )}
+              {!missingHiringDetails && dataBlocked && (
+                <p className="text-xs text-amber-700 mb-2">Corrige y guarda "Datos para el contrato" arriba (todos en verde) antes de {reviewRequired ? 'enviar' : 'reenviar'}.</p>
+              )}
               <button
                 onClick={handleResendContract}
-                disabled={sendingContract || missingHiringDetails}
+                disabled={sendingContract || missingHiringDetails || dataBlocked}
                 className="flex items-center gap-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-2 transition-colors disabled:opacity-60 w-full justify-center"
               >
                 {sendingContract ? <RefreshCw size={13} className="animate-spin" /> : contractSent ? <Check size={13} /> : <Send size={13} />}
