@@ -86,22 +86,6 @@ function extractOcrContractData(c: Candidate): Record<string, string> {
   };
 }
 
-/** Merge OCR data with manual overrides */
-function mergedContractData(c: Candidate): Record<string, string> {
-  const ocr = extractOcrContractData(c);
-  const ov  = (c.dataOverrides ?? {}) as Record<string, string>;
-  return Object.fromEntries(CONTRACT_FIELDS.map(({ key }) => [key, ov[key] ?? ocr[key] ?? '']));
-}
-
-/** Returns how many contract fields are missing or malformed */
-function contractDataIssues(c: Candidate): number {
-  const data = mergedContractData(c);
-  return CONTRACT_FIELDS.filter(({ key, validate }) => {
-    const val = data[key] ?? '';
-    return !val || !validate(val);
-  }).length;
-}
-
 // Which document (and OCR key) each contract field's confidence comes from —
 // mirrors CONTRACT_FIELD_SOURCES in functions/src/contract/contractReview.ts.
 const CONTRACT_FIELD_SOURCE_DOCS: Record<string, Array<{ docType: string; ocrKey: string }>> = {
@@ -114,33 +98,66 @@ const CONTRACT_FIELD_SOURCE_DOCS: Record<string, Array<{ docType: string; ocrKey
 };
 const CONTRACT_REVIEW_CONFIDENCE_THRESHOLD = 0.8;
 
+type ContractFieldReason = 'missing' | 'low_confidence' | 'invalid_format' | null;
+
+interface ContractFieldStatus {
+  key: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  ok: boolean;
+  reason: ContractFieldReason;
+}
+
 /**
- * Mirrors the backend gate (evaluateContractDataReview): blocks sending when
- * any field is missing/low-confidence without a saved correction, or when its
- * final value (override or OCR) isn't in valid format — i.e. not "green" yet.
- * Client-side mirror only, for instant button state; the server re-checks.
+ * Single source of truth for every contract field's status — the same rule
+ * the backend gate (evaluateContractDataReview) enforces server-side:
+ *
+ *   ok (verde)  = hay un valor y pasa el formato Y (ya fue guardado como
+ *                 corrección manual O el OCR tuvo suficiente confianza)
+ *   !ok (ámbar) = falta, formato inválido, o el OCR no está seguro y aún
+ *                 nadie lo ha confirmado guardando una corrección
+ *
+ * A field only counts as "manually confirmed" once dataOverrides has it
+ * saved — typing a correction without pressing "Guardar correcciones"
+ * does not count, so the color never invents a false green.
  */
-function contractSendBlocked(c: Candidate): boolean {
+function evaluateContractFields(c: Candidate): ContractFieldStatus[] {
   const docs = (c.documents ?? {}) as Record<string, import('../../types').CandidateDocument>;
   const ov = (c.dataOverrides ?? {}) as Record<string, string>;
-  const data = mergedContractData(c);
+  const ocrData = extractOcrContractData(c);
 
-  return CONTRACT_FIELDS.some(({ key, validate }) => {
-    const override = ov[key]?.trim();
+  return CONTRACT_FIELDS.map(({ key, label, placeholder, validate }) => {
+    const override = ov[key]?.trim() ?? '';
+    const ocrValue = ocrData[key] ?? '';
+    const value = override || ocrValue;
+
+    let confidence = 1;
     if (!override) {
-      const sources = CONTRACT_FIELD_SOURCE_DOCS[key] ?? [];
-      let hasOcrValue = false;
-      let confidence = 1;
-      for (const { docType, ocrKey } of sources) {
+      for (const { docType, ocrKey } of CONTRACT_FIELD_SOURCE_DOCS[key] ?? []) {
         const d = docs[docType];
         const extracted = d?.status === 'valid' ? (d.ocrResult?.extractedData as Record<string, string> | undefined)?.[ocrKey] : undefined;
-        if (extracted) { hasOcrValue = true; confidence = d?.ocrResult?.confidence ?? 1; break; }
+        if (extracted) { confidence = d?.ocrResult?.confidence ?? 1; break; }
       }
-      if (!hasOcrValue || confidence < CONTRACT_REVIEW_CONFIDENCE_THRESHOLD) return true;
     }
-    const val = data[key] ?? '';
-    return !val || !validate(val);
+
+    let reason: ContractFieldReason = null;
+    if (!value) reason = 'missing';
+    else if (!validate(value)) reason = 'invalid_format';
+    else if (!override && confidence < CONTRACT_REVIEW_CONFIDENCE_THRESHOLD) reason = 'low_confidence';
+
+    return { key, label, placeholder, value, ok: reason === null, reason };
   });
+}
+
+/** How many contract fields still need attention before the contract can be sent. */
+function contractDataIssues(c: Candidate): number {
+  return evaluateContractFields(c).filter((f) => !f.ok).length;
+}
+
+/** Mirrors the backend send gate, for instant button state (server re-checks). */
+function contractSendBlocked(c: Candidate): boolean {
+  return evaluateContractFields(c).some((f) => !f.ok);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1555,19 +1572,27 @@ function TabAnswers({ c }: { c: Candidate }) {
    Contract data editor: editable OCR fields with validation warnings
    ═══════════════════════════════════════════════════════════════════════════ */
 
+const CONTRACT_FIELD_REASON_TEXT: Record<Exclude<ContractFieldReason, null>, string> = {
+  missing:        'no se pudo leer del documento',
+  invalid_format: 'formato inválido',
+  low_confidence: 'el OCR no está seguro — confírmalo',
+};
+
 function ContractDataSection({ c }: { c: Candidate }) {
-  const ocr   = extractOcrContractData(c);
-  const saved = (c.dataOverrides ?? {}) as Record<string, string>;
+  const ocr    = extractOcrContractData(c);
+  const saved  = (c.dataOverrides ?? {}) as Record<string, string>;
+  // fieldStatus is the persisted source of truth (same rule the send button
+  // and backend use): green only once a field is genuinely resolved — either
+  // OCR was confident, or a correction was actually saved. Typing alone never
+  // flips it green, so the indicator never invents confidence that wasn't earned.
+  const fieldStatus = Object.fromEntries(evaluateContractFields(c).map((f) => [f.key, f]));
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(CONTRACT_FIELDS.map(({ key }) => [key, saved[key] ?? ocr[key] ?? '']))
   );
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
 
-  const issueFields = CONTRACT_FIELDS.filter(({ key, validate }) => {
-    const v = values[key] ?? '';
-    return !v || !validate(v);
-  });
+  const issueFields = CONTRACT_FIELDS.filter(({ key }) => !fieldStatus[key]?.ok);
 
   const handleSave = async () => {
     setSaving(true);
@@ -1597,11 +1622,16 @@ function ContractDataSection({ c }: { c: Candidate }) {
           <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-xs font-semibold text-amber-800">
-              {issueFields.length} dato{issueFields.length > 1 ? 's' : ''} incompleto{issueFields.length > 1 ? 's' : ''} o ilegible{issueFields.length > 1 ? 's' : ''}
+              {issueFields.length} dato{issueFields.length > 1 ? 's' : ''} requiere{issueFields.length > 1 ? 'n' : ''} corrección
             </p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {issueFields.map((f) => f.label).join(', ')} — corrige antes de firmar el contrato.
-            </p>
+            <ul className="text-xs text-amber-700 mt-0.5 space-y-0.5">
+              {issueFields.map((f) => (
+                <li key={f.key}>
+                  <span className="font-medium">{f.label}:</span> {CONTRACT_FIELD_REASON_TEXT[fieldStatus[f.key].reason as Exclude<ContractFieldReason, null>]}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-700 mt-1">Corrige y presiona "Guardar correcciones" — solo así se marcan como confirmados.</p>
           </div>
         </div>
       )}
@@ -1609,7 +1639,8 @@ function ContractDataSection({ c }: { c: Candidate }) {
       <div className="space-y-2">
         {CONTRACT_FIELDS.map(({ key, label, placeholder, validate }) => {
           const val    = values[key] ?? '';
-          const isOk   = val && validate(val);
+          const status = fieldStatus[key];
+          const looksWellFormed = !!val && validate(val); // live typing feedback only, not the official status
           const hasOcr = !!ocr[key];
           const overridden = saved[key] && saved[key] !== ocr[key];
           return (
@@ -1618,9 +1649,10 @@ function ContractDataSection({ c }: { c: Candidate }) {
                 <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
                   {label}
                   {overridden && <span className="ml-1 text-blue-500 normal-case font-normal">(corregido)</span>}
+                  {!overridden && status.reason === 'low_confidence' && <span className="ml-1 text-amber-500 normal-case font-normal">(confirma este valor)</span>}
                   {!hasOcr && !saved[key] && <span className="ml-1 text-amber-500 normal-case font-normal">(sin datos OCR)</span>}
                 </label>
-                {isOk
+                {status.ok
                   ? <CheckCircle size={11} className="text-green-500 shrink-0" />
                   : val
                     ? <AlertTriangle size={11} className="text-amber-500 shrink-0" />
@@ -1632,11 +1664,13 @@ function ContractDataSection({ c }: { c: Candidate }) {
                 onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                 placeholder={placeholder}
                 className={`w-full text-xs rounded-lg border px-2.5 py-1.5 font-mono focus:outline-none focus:ring-1 ${
-                  isOk
+                  status.ok
                     ? 'border-green-200 bg-green-50/40 focus:ring-green-300'
-                    : val
-                      ? 'border-amber-300 bg-amber-50/40 focus:ring-amber-300'
-                      : 'border-gray-200 bg-gray-50 focus:ring-primary-300'
+                    : looksWellFormed
+                      ? 'border-blue-200 bg-blue-50/40 focus:ring-blue-300'
+                      : val
+                        ? 'border-amber-300 bg-amber-50/40 focus:ring-amber-300'
+                        : 'border-gray-200 bg-gray-50 focus:ring-primary-300'
                 }`}
               />
             </div>
