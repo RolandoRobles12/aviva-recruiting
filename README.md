@@ -1,38 +1,74 @@
 # Aviva Recruiting
 
-Sistema de reclutamiento y gestión de documentación de ingreso para el equipo de Aviva.
+Sistema de reclutamiento y gestión de todo el proceso de ingreso para el equipo de Aviva: documentación, carta oferta, contrato, pruebas psicométricas, integración con el ATS (Viterbit) y seguimiento post-contratación.
 
 ## Stack
 
 | Capa | Tecnología |
 |------|-----------|
 | Frontend | React 19 + Vite + TypeScript + Tailwind CSS |
+| Estado / datos | TanStack Query, React Hook Form + Zod |
+| Editor de plantillas | Tiptap |
 | Base de datos | Firebase Firestore |
 | Almacenamiento | Firebase Storage |
 | Backend | Firebase Cloud Functions (Node 18) |
+| Autenticación | Firebase Authentication (Google) |
 | OCR | Google Cloud Vision API |
 | Email | Gmail API (Google Workspace) |
-| Integraciones | Google Drive + Google Sheets |
+| Integraciones | Google Drive, Google Sheets, Viterbit (ATS), HubSpot, Jira, Slack |
 
 ---
 
-## Módulo 1 — Gestión de Documentación
+## Módulos
 
-### Flujo completo
+### 1. Documentación de ingreso
 
-1. El reclutador crea un candidato desde el dashboard → se genera un **token único**
-2. Se envía automáticamente un **correo de invitación** con el enlace personalizado
-3. El candidato abre el enlace y sube sus documentos:
-   - INE / Identificación oficial
-   - CURP
-   - RFC con homoclave
-   - Comprobante de domicilio
-   - Comprobante de estudios
-4. **Cloud Function** dispara Google Cloud Vision para validar cada documento via OCR
-5. Los documentos válidos se guardan en **Firebase Storage** y Firestore
-6. El reclutador puede sincronizar a **Google Drive** (carpeta del candidato) y **Google Sheets**
-7. Si hay documentos pendientes, el reclutador puede enviar **correos de seguimiento**
-8. Con todos los documentos validados, el reclutador puede **aprobar o rechazar** al candidato
+1. El reclutador crea un candidato desde el dashboard (o llega automáticamente vía webhook de **Viterbit**) → se genera un **token único**
+2. Se envía un **correo de invitación** con el enlace personalizado al candidato
+3. El candidato sube sus documentos (INE, CURP, RFC, comprobante de domicilio, comprobante de estudios, etc. — configurables desde **Configuración del formulario**)
+4. Una **Cloud Function** dispara Google Cloud Vision para validar cada documento por OCR al subirse
+5. Los documentos válidos se guardan en **Firebase Storage** y Firestore; el reclutador puede sincronizar a **Google Drive** y **Google Sheets**
+6. Si hay documentos pendientes, se pueden enviar **correos de seguimiento** (manuales o programados)
+7. Con todos los documentos validados, el reclutador aprueba o rechaza al candidato
+
+### 2. Carta oferta
+
+- Generación de la carta oferta en PDF a partir de plantillas configurables (variables del candidato/puesto)
+- Envío por correo y **firma electrónica** del candidato con evidencia (fecha, IP, firma capturada)
+- Reemisión de oferta con datos corregidos, restringida a roles autorizados (líder, nómina, legal, admin) — invalida la oferta y el contrato previamente firmados
+
+### 3. Contrato
+
+- Generación del contrato en PDF a partir de plantillas Word/HTML con variables detectadas automáticamente
+- Firma electrónica del contrato con semáforo de estado según la validez de los campos capturados (verde = listo, ámbar = revisar)
+- Envío del contrato firmado por correo y registro de evidencia de firma
+
+### 4. Pruebas psicométricas
+
+- Banco de preguntas y escenarios configurable por el admin (ponderaciones, bandas de calificación, tamaño de la prueba)
+- El candidato resuelve la prueba desde un enlace dedicado
+- Calificación automática con semáforo de resultado y detección de respuestas poco confiables
+
+### 5. Integración con Viterbit (ATS)
+
+- Webhook que recibe candidatos y cambios de etapa desde Viterbit
+- Sincronización de datos del candidato y bloqueo de movimientos de etapa cuando hay documentos/contrato pendientes
+- Aprobaciones pendientes procesadas de forma programada
+
+### 6. Seguimiento de desempeño
+
+- Revisión automática (programada) a los 15/30 días de ingreso del colaborador
+- Backfill manual para candidatos ya contratados
+
+### 7. Provisión de cuentas y otras integraciones
+
+- Creación de cuentas/recursos corporativos (correo, Slack, HubSpot) al confirmarse la contratación
+- Integraciones auxiliares con Jira y tickets de correo para seguimiento operativo
+
+### 8. Roles y permisos
+
+- Roles: `admin`, `reclutador`, `lider` (líder de reclutamiento), `nomina`, `legal`
+- Permisos granulares por módulo (candidatos, proceso de reclutamiento, pruebas psicométricas, configuración, administración), editables desde **Configuración → Roles**
 
 ---
 
@@ -49,6 +85,7 @@ Sistema de reclutamiento y gestión de documentación de ingreso para el equipo 
   - Cloud Functions (plan Blaze)
 - Google Cloud Vision API habilitada en el proyecto
 - Google Workspace con OAuth 2.0 para Gmail, Drive y Sheets
+- (Opcional, según integraciones habilitadas) credenciales de Viterbit, HubSpot, Jira y Slack
 
 ### 2. Variables de entorno (Frontend)
 
@@ -56,7 +93,7 @@ Sistema de reclutamiento y gestión de documentación de ingreso para el equipo 
 cp .env.example .env
 ```
 
-Llena el archivo `.env` con las credenciales de tu proyecto Firebase.
+Llena el archivo `.env` con las credenciales de tu proyecto Firebase y la URL base de las Functions (`VITE_FUNCTIONS_URL`, normalmente `/api`).
 
 ### 3. Configuración de Cloud Functions
 
@@ -83,6 +120,8 @@ firebase functions:config:set \
 
 > Para obtener los tokens OAuth 2.0 de Google, usa el [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
 > con los scopes: Gmail Send, Drive, Spreadsheets.
+>
+> Las integraciones con Viterbit, HubSpot, Jira y Slack usan sus propias variables de configuración/secretos; revisa `functions/src/integrations/` para las que estén habilitadas en tu despliegue.
 
 ### 4. Instalar y correr en desarrollo
 
@@ -113,34 +152,34 @@ firebase deploy
 
 ```
 aviva-recruiting/
-├── src/                          # Frontend React
+├── src/                            # Frontend React
 │   ├── components/
-│   │   ├── candidate/            # Formulario del candidato
-│   │   ├── dashboard/            # Dashboard del reclutador
-│   │   ├── layout/               # Layout general
-│   │   └── ui/                   # Componentes reutilizables
-│   ├── hooks/                    # React hooks (auth, candidates, form)
-│   ├── pages/                    # Páginas (Login, Dashboard, CandidateForm)
-│   ├── services/                 # Servicios Firebase (Firestore, Storage, Functions)
-│   ├── types/                    # Tipos TypeScript
-│   └── lib/                      # Configuración Firebase
-├── functions/                    # Cloud Functions
+│   │   ├── candidate/              # Formulario y subida de documentos del candidato
+│   │   ├── dashboard/              # Dashboard del reclutador (lista y detalle de candidatos)
+│   │   ├── offer/                  # Firma y visualización de la carta oferta
+│   │   ├── psychometric/           # Banco de preguntas, sesiones y resultados de la prueba
+│   │   ├── settings/               # Pantallas de configuración
+│   │   ├── layout/                 # Layout general
+│   │   └── ui/                     # Componentes reutilizables
+│   ├── hooks/                      # React hooks (auth, candidates, form, psychometric session)
+│   ├── pages/                      # Páginas: Dashboard, Documentos, Oferta, Contrato,
+│   │                                #   Pruebas psicométricas, Plantillas, Roles, Ajustes, etc.
+│   ├── services/                   # Servicios Firebase (Firestore, Storage, Functions)
+│   ├── types/                      # Tipos TypeScript (incluye roles y permisos)
+│   └── lib/                        # Configuración Firebase
+├── functions/                      # Cloud Functions
 │   └── src/
-│       ├── email/                # sendInvitationEmail, sendReminderEmail
-│       ├── ocr/                  # triggerOcrValidation, onDocumentUploaded
-│       ├── drive/                # syncToGoogleDrive
-│       ├── sheets/               # syncToGoogleSheets
-│       └── utils/                # admin SDK, helpers
-├── firestore.rules               # Reglas de seguridad Firestore
-├── storage.rules                 # Reglas de seguridad Storage
-├── firestore.indexes.json        # Índices Firestore
-└── firebase.json                 # Configuración Firebase
+│       ├── email/                  # Invitaciones, recordatorios, OAuth de Gmail
+│       ├── ocr/                    # Validación de documentos por OCR
+│       ├── offer/                  # Generación, envío y firma de carta oferta
+│       ├── contract/               # Generación, análisis y firma de contrato
+│       ├── psychometricTest/       # Banco de preguntas, calificación y sesiones
+│       ├── viterbit/               # Webhook y sincronización con el ATS
+│       ├── performance/            # Seguimiento de desempeño a 15/30 días
+│       ├── integrations/           # Drive, Sheets, HubSpot, Jira, Slack, provisión de cuentas
+│       └── utils/                  # Admin SDK, permisos, helpers compartidos
+├── firestore.rules                 # Reglas de seguridad Firestore
+├── storage.rules                   # Reglas de seguridad Storage
+├── firestore.indexes.json          # Índices Firestore
+└── firebase.json                   # Configuración Firebase
 ```
-
----
-
-## Próximos módulos
-
-- **Módulo 2:** Generación y firma de contratos (integración con firma electrónica)
-- **Módulo 3:** Creación automática de usuarios en herramientas internas
-- **Módulo 4:** Integración con Humand (software de HR)
