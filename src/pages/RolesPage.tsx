@@ -292,7 +292,10 @@ function UsersTab() {
   });
 
   return (
-    <div className="p-6 bg-white min-h-full">
+    // The page shell keeps overflow hidden so the Roles tab can run its own
+    // two-pane scroll, which means this tab has to scroll itself — without it
+    // the user list was simply cut off with no way to reach the rest.
+    <div className="h-full overflow-y-auto p-6 bg-white">
       {/* Search */}
       <div className="mb-5 max-w-sm">
         <input
@@ -394,10 +397,12 @@ function UsersTab() {
 // PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type TabId = 'roles' | 'users';
+type TabId = 'users' | 'roles';
 
 export function RolesPage() {
-  const [tab, setTab] = useState<TabId>('roles');
+  // Users first: managing who has access is the everyday task; editing what a
+  // role can do is occasional.
+  const [tab, setTab] = useState<TabId>('users');
 
   return (
     <DashboardLayout>
@@ -412,8 +417,8 @@ export function RolesPage() {
           {/* Tabs */}
           <div className="flex gap-1">
             {([
-              { id: 'roles', label: 'Roles', icon: <Shield size={13} /> },
               { id: 'users', label: 'Usuarios', icon: <Users size={13} /> },
+              { id: 'roles', label: 'Roles', icon: <Shield size={13} /> },
             ] as { id: TabId; label: string; icon: React.ReactNode }[]).map((t) => (
               <button
                 key={t.id}
