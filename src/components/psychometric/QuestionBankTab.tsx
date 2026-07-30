@@ -10,6 +10,8 @@ import {
   Search,
   ChevronRight,
   X,
+  ArrowRight,
+  Wrench,
 } from 'lucide-react';
 import type {
   PsychometricAttentionQuestion,
@@ -32,6 +34,8 @@ import {
   getPsychometricConfig,
   savePsychometricConfig,
   validateBank,
+  applyBankFix,
+  type BankConfigField,
   type BankValidationIssue,
 } from '../../services/psychometricQuestions';
 import { seedPsychometricBank } from '../../services/functions';
@@ -102,6 +106,7 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
   const [showConfig, setShowConfig] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [highlightedField, setHighlightedField] = useState<BankConfigField | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -148,6 +153,37 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
     },
     [questions]
   );
+
+  const scrollTo = (elementId: string) =>
+    requestAnimationFrame(() =>
+      document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    );
+
+  /** Takes the admin to wherever an issue is actually fixed. */
+  const goToIssue = (issue: BankValidationIssue) => {
+    const anchor = issue.anchor;
+    if (!anchor) return;
+    setSearch('');
+
+    if (anchor.kind === 'question') {
+      revealQuestion(anchor.questionId);
+      return;
+    }
+    if (anchor.kind === 'section') {
+      setOpenSections((prev) => new Set(prev).add(anchor.section as SectionKey));
+      scrollTo(`sec-${anchor.section}`);
+      return;
+    }
+    // Config: open the panel, scroll to the field and ring it so it is obvious
+    // which input the message was talking about.
+    setShowConfig(true);
+    setHighlightedField(anchor.field);
+    scrollTo(`cfg-${anchor.field}`);
+    window.setTimeout(
+      () => setHighlightedField((current) => (current === anchor.field ? null : current)),
+      3000
+    );
+  };
 
   const handledFocusRef = useRef<string | null>(null);
   useEffect(() => {
@@ -399,26 +435,25 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
     <div className="max-w-3xl">
       {/* Save bar. Sticky because the item list is long: the old layout put the
           only save button below ~100 cards. */}
-      <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-aviva-fondo/95 backdrop-blur border-b border-gray-200 mb-5">
+      <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-white border-b border-gray-200 shadow-sm mb-5">
         <div className="flex items-center justify-between gap-3 max-w-3xl">
           <div className="min-w-0 text-xs">
             {errors.length > 0 ? (
               <button
-                onClick={() => {
-                  const first = errors.find((issue) => issue.questionId);
-                  if (first?.questionId) revealQuestion(first.questionId);
-                }}
+                onClick={() => scrollTo('bank-issues')}
                 className="flex items-center gap-1.5 text-red-600 font-medium hover:underline"
               >
                 <AlertTriangle size={13} />
-                {errors.length} {errors.length === 1 ? 'error' : 'errores'} por corregir
-                {errors.some((issue) => issue.questionId) && ' · ir al primero'}
+                {errors.length} {errors.length === 1 ? 'error' : 'errores'} por corregir · ver
               </button>
             ) : warnings.length > 0 ? (
-              <span className="flex items-center gap-1.5 text-amber-600">
+              <button
+                onClick={() => scrollTo('bank-issues')}
+                className="flex items-center gap-1.5 text-amber-600 hover:underline"
+              >
                 <AlertTriangle size={13} /> {warnings.length}{' '}
-                {warnings.length === 1 ? 'recomendación' : 'recomendaciones'}
-              </span>
+                {warnings.length === 1 ? 'recomendación' : 'recomendaciones'} · ver
+              </button>
             ) : (
               <span className="text-gray-400">{questions.length} preguntas en el banco</span>
             )}
@@ -519,8 +554,19 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
           )}
         </div>
 
-        {/* Bank-wide issues (scale coverage, cutoffs, weights). */}
-        <IssueList issues={issues.filter((issue) => !issue.questionId)} />
+        {/* Bank-wide issues (scale coverage, cutoffs, weights). Each one links
+            to where it is fixed, and offers the remedy when it is unambiguous. */}
+        <div id="bank-issues">
+          <IssuePanel
+            issues={issues.filter((issue) => !issue.questionId)}
+            onGo={goToIssue}
+            onFix={(fixId) => {
+              if (!config) return;
+              markDirty();
+              setConfig(applyBankFix(fixId, config));
+            }}
+          />
+        </div>
 
         {/* Configuration first: it decides how the whole instrument behaves. */}
         {config && (
@@ -533,6 +579,7 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
           >
             <ConfigPanel
               config={config}
+              highlightedField={highlightedField}
               setConfig={(next) => {
                 markDirty();
                 setConfig(next);
@@ -901,6 +948,78 @@ function DeleteButton({
   );
 }
 
+/**
+ * Bank-wide issues, split by severity and made actionable. The previous version
+ * dropped everything into one amber box, so an error that blocked saving looked
+ * exactly like a suggestion and nothing said where to go and fix it.
+ */
+function IssuePanel({
+  issues,
+  onGo,
+  onFix,
+}: {
+  issues: BankValidationIssue[];
+  onGo: (issue: BankValidationIssue) => void;
+  onFix: (fixId: NonNullable<BankValidationIssue['fix']>['id']) => void;
+}) {
+  const errors = issues.filter((issue) => issue.level === 'error');
+  const warnings = issues.filter((issue) => issue.level === 'warning');
+  if (issues.length === 0) return null;
+
+  const row = (issue: BankValidationIssue, index: number, tone: 'error' | 'warning') => (
+    <li key={index} className="flex items-start gap-2">
+      <AlertTriangle
+        size={13}
+        className={`shrink-0 mt-0.5 ${tone === 'error' ? 'text-red-500' : 'text-amber-500'}`}
+      />
+      <span className={`flex-1 ${tone === 'error' ? 'text-red-800' : 'text-amber-800'}`}>
+        {issue.message}
+      </span>
+      <span className="flex items-center gap-2 shrink-0">
+        {issue.fix && (
+          <button
+            onClick={() => onFix(issue.fix!.id)}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-gray-700 hover:border-gray-300 font-medium"
+          >
+            <Wrench size={11} /> {issue.fix.label}
+          </button>
+        )}
+        {issue.anchor && (
+          <button
+            onClick={() => onGo(issue)}
+            className={`inline-flex items-center gap-0.5 hover:underline font-medium ${
+              tone === 'error' ? 'text-red-700' : 'text-amber-700'
+            }`}
+          >
+            Ir <ArrowRight size={11} />
+          </button>
+        )}
+      </span>
+    </li>
+  );
+
+  return (
+    <div className="space-y-3">
+      {errors.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+          <p className="text-xs font-semibold text-red-800">
+            {errors.length === 1 ? 'Hay 1 error que impide guardar' : `Hay ${errors.length} errores que impiden guardar`}
+          </p>
+          <ul className="space-y-1.5 text-xs">{errors.map((issue, i) => row(issue, i, 'error'))}</ul>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-800">
+            Recomendaciones ({warnings.length}) — no impiden guardar
+          </p>
+          <ul className="space-y-1.5 text-xs">{warnings.map((issue, i) => row(issue, i, 'warning'))}</ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IssueList({ issues, compact }: { issues: BankValidationIssue[]; compact?: boolean }) {
   if (issues.length === 0) return null;
   return (
@@ -924,11 +1043,26 @@ function ConfigPanel({
   config,
   setConfig,
   counts,
+  highlightedField,
 }: {
   config: PsychometricTestConfig;
   setConfig: (config: PsychometricTestConfig) => void;
   counts: { traits: number[]; sjt: number; atencion: number; deseabilidad: number; infrecuencia: number };
+  /** Field an issue pointed at — ringed so the message and the input connect. */
+  highlightedField?: BankConfigField | null;
 }) {
+  /** Wraps a field so it can be scrolled to and flashed from an error message. */
+  const field = (name: BankConfigField, children: React.ReactNode) => (
+    <div
+      id={`cfg-${name}`}
+      className={`rounded-lg transition-all ${
+        highlightedField === name ? 'ring-2 ring-red-400 ring-offset-2 bg-red-50/40' : ''
+      }`}
+    >
+      {children}
+    </div>
+  );
+
   const totalItems =
     (config.questionCounts.likertPerTrait > 0
       ? counts.traits.reduce((sum, available) => sum + Math.min(config.questionCounts.likertPerTrait, available), 0)
@@ -953,36 +1087,51 @@ function ConfigPanel({
           </p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <CountField
-            label="Ítems Likert por rasgo"
-            hint={`Disponibles: ${counts.traits.join(' / ')}`}
-            value={config.questionCounts.likertPerTrait}
-            onChange={(likertPerTrait) => setCounts({ likertPerTrait })}
-          />
-          <CountField
-            label="Escenarios SJT"
-            hint={`Disponibles: ${counts.sjt}`}
-            value={config.questionCounts.sjt}
-            onChange={(sjt) => setCounts({ sjt })}
-          />
-          <CountField
-            label="Deseabilidad social"
-            hint={`Disponibles: ${counts.deseabilidad}`}
-            value={config.questionCounts.deseabilidadSocial}
-            onChange={(deseabilidadSocial) => setCounts({ deseabilidadSocial })}
-          />
-          <CountField
-            label="Infrecuencia"
-            hint={`Disponibles: ${counts.infrecuencia}`}
-            value={config.questionCounts.infrecuencia}
-            onChange={(infrecuencia) => setCounts({ infrecuencia })}
-          />
-          <CountField
-            label="Controles de atención"
-            hint={`Disponibles: ${counts.atencion}`}
-            value={config.questionCounts.atencion}
-            onChange={(atencion) => setCounts({ atencion })}
-          />
+          {field(
+            'likertPerTrait',
+            <CountField
+              label="Ítems Likert por rasgo"
+              hint={`Disponibles: ${counts.traits.join(' / ')}`}
+              value={config.questionCounts.likertPerTrait}
+              onChange={(likertPerTrait) => setCounts({ likertPerTrait })}
+            />
+          )}
+          {field(
+            'sjt',
+            <CountField
+              label="Escenarios SJT"
+              hint={`Disponibles: ${counts.sjt}`}
+              value={config.questionCounts.sjt}
+              onChange={(sjt) => setCounts({ sjt })}
+            />
+          )}
+          {field(
+            'deseabilidadSocial',
+            <CountField
+              label="Deseabilidad social"
+              hint={`Disponibles: ${counts.deseabilidad}`}
+              value={config.questionCounts.deseabilidadSocial}
+              onChange={(deseabilidadSocial) => setCounts({ deseabilidadSocial })}
+            />
+          )}
+          {field(
+            'infrecuencia',
+            <CountField
+              label="Infrecuencia"
+              hint={`Disponibles: ${counts.infrecuencia}`}
+              value={config.questionCounts.infrecuencia}
+              onChange={(infrecuencia) => setCounts({ infrecuencia })}
+            />
+          )}
+          {field(
+            'atencion',
+            <CountField
+              label="Controles de atención"
+              hint={`Disponibles: ${counts.atencion}`}
+              value={config.questionCounts.atencion}
+              onChange={(atencion) => setCounts({ atencion })}
+            />
+          )}
           <label className="text-xs text-gray-600 space-y-1">
             Tiempo límite (minutos)
             <input
@@ -1009,7 +1158,9 @@ function ConfigPanel({
             excluye y su peso se reparte entre las demás.
           </p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {field(
+          'weights',
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {PSYCHOMETRIC_SCORED_SCALES.map((scale) => (
             <label key={scale} className="text-xs text-gray-600 space-y-1">
               {PSYCHOMETRIC_SCALE_LABELS[scale]}
@@ -1026,7 +1177,8 @@ function ConfigPanel({
               />
             </label>
           ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Bands */}
@@ -1038,7 +1190,9 @@ function ConfigPanel({
             candidatos; mientras tanto se usan los cortes absolutos y el resultado se etiqueta como tal.
           </p>
         </div>
-        <div className="flex flex-wrap gap-4">
+        {field(
+          'percentileCutoffs',
+          <div className="flex flex-wrap gap-4">
           <label className="text-xs text-gray-600 space-y-1">
             "Bajo" hasta percentil &lt;
             <input
@@ -1080,8 +1234,11 @@ function ConfigPanel({
             />
             Usar normas locales cuando alcancen
           </label>
-        </div>
-        <div className="flex flex-wrap gap-4 pt-1">
+          </div>
+        )}
+        {field(
+          'bandCutoffs',
+          <div className="flex flex-wrap gap-4 pt-1">
           <label className="text-xs text-gray-600 space-y-1">
             Corte absoluto "bajo" (&lt;)
             <input
@@ -1104,17 +1261,21 @@ function ConfigPanel({
               className="input-field text-xs py-1.5 w-24"
             />
           </label>
-          <label className="text-xs text-gray-600 space-y-1">
-            Mínimo de ítems por escala
-            <input
-              type="number"
-              min={1}
-              value={config.minItemsPerScale}
-              onChange={(e) => setConfig({ ...config, minItemsPerScale: Number(e.target.value) })}
-              className="input-field text-xs py-1.5 w-24"
-            />
-          </label>
-        </div>
+          {field(
+            'minItemsPerScale',
+            <label className="text-xs text-gray-600 space-y-1 block">
+              Mínimo de ítems por escala
+              <input
+                type="number"
+                min={1}
+                value={config.minItemsPerScale}
+                onChange={(e) => setConfig({ ...config, minItemsPerScale: Number(e.target.value) })}
+                className="input-field text-xs py-1.5 w-24"
+              />
+            </label>
+          )}
+          </div>
+        )}
         <p className="text-xs text-gray-400">
           Con estos cortes absolutos:{' '}
           <span className="text-red-600 font-medium">Bajo 0–{config.bandCutoffs.lowMax - 1}</span>,{' '}

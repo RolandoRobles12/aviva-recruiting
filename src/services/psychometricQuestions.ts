@@ -2,8 +2,6 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
   PSYCHOMETRIC_LIKERT_SCALES,
-  PSYCHOMETRIC_TRAITS,
-  type PsychometricLikertQuestion,
   type PsychometricLikertScale,
   type PsychometricQuestion,
   type PsychometricTestConfig,
@@ -166,132 +164,14 @@ export async function savePsychometricConfig(config: PsychometricTestConfig): Pr
   await setDoc(CONFIG_DOC, config);
 }
 
-// ─── Editor-side validation ───────────────────────────────────────────────────
-
-export interface BankValidationIssue {
-  level: 'error' | 'warning';
-  questionId?: string;
-  message: string;
-}
-
-/**
- * Checks the bank *before* it is saved. The server drops malformed items rather
- * than guessing, so catching these here is the difference between an admin
- * seeing the problem and a candidate silently taking a shorter test than the
- * configuration says.
- */
-export function validateBank(
-  questions: PsychometricQuestion[],
-  config: PsychometricTestConfig
-): BankValidationIssue[] {
-  const issues: BankValidationIssue[] = [];
-  const seen = new Set<string>();
-
-  for (const question of questions) {
-    if (seen.has(question.id)) {
-      issues.push({
-        level: 'error',
-        questionId: question.id,
-        message: 'Hay dos preguntas con el mismo identificador.',
-      });
-    }
-    seen.add(question.id);
-
-    if (!question.text.trim()) {
-      issues.push({ level: 'error', questionId: question.id, message: 'Falta el texto de la pregunta.' });
-    }
-
-    if (question.type === 'sjt') {
-      const filled = question.options.filter((option) => option.text.trim());
-      if (filled.length < 2) {
-        issues.push({
-          level: 'error',
-          questionId: question.id,
-          message: 'Un escenario necesita al menos 2 opciones con texto.',
-        });
-      }
-      const scores = new Set(filled.map((option) => option.score));
-      if (filled.length >= 2 && scores.size < 2) {
-        issues.push({
-          level: 'error',
-          questionId: question.id,
-          message: 'Todas las opciones tienen el mismo puntaje: el escenario no distingue nada.',
-        });
-      }
-    }
-
-    if (question.type === 'attention' && (question.expectedValue < 1 || question.expectedValue > 5)) {
-      issues.push({
-        level: 'error',
-        questionId: question.id,
-        message: 'La respuesta esperada del control de atención debe estar entre 1 y 5.',
-      });
-    }
-  }
-
-  const enabled = questions.filter((question) => question.enabled);
-  const likert = enabled.filter((q): q is PsychometricLikertQuestion => q.type === 'likert');
-
-  for (const trait of PSYCHOMETRIC_TRAITS) {
-    const items = likert.filter((question) => question.scale === trait);
-    const applied =
-      config.questionCounts.likertPerTrait > 0
-        ? Math.min(config.questionCounts.likertPerTrait, items.length)
-        : items.length;
-
-    if (items.length === 0) {
-      issues.push({ level: 'error', message: `El rasgo "${trait}" no tiene ítems activos.` });
-      continue;
-    }
-    if (applied < config.minItemsPerScale) {
-      issues.push({
-        level: 'error',
-        message: `"${trait}": se aplicarían ${applied} ítems y el mínimo para reportar puntaje es ${config.minItemsPerScale}.`,
-      });
-    } else if (applied < 6) {
-      issues.push({
-        level: 'warning',
-        message: `"${trait}": con ${applied} ítems la consistencia interna suele quedar por debajo de .70.`,
-      });
-    }
-    const reversed = items.filter((question) => question.reverseScored).length;
-    if (reversed === 0 || reversed === items.length) {
-      issues.push({
-        level: 'warning',
-        message: `"${trait}": todos los ítems van en la misma dirección. Mezcla normales e invertidos.`,
-      });
-    }
-  }
-
-  if (!enabled.some((question) => question.type === 'sjt')) {
-    issues.push({ level: 'warning', message: 'No hay escenarios de juicio situacional activos.' });
-  }
-
-  const checks = enabled.filter((question) => question.type === 'attention').length;
-  if (config.questionCounts.atencion > 0 && checks === 0) {
-    issues.push({
-      level: 'error',
-      message: 'La configuración aplica controles de atención pero no hay ninguno activo en el banco.',
-    });
-  } else if (Math.min(config.questionCounts.atencion, checks) < 2) {
-    issues.push({
-      level: 'warning',
-      message: 'Con menos de 2 controles de atención no se distingue un descuido de responder al azar.',
-    });
-  }
-
-  if (config.bandCutoffs.lowMax >= config.bandCutoffs.highMin) {
-    issues.push({ level: 'error', message: 'El corte de "bajo" debe ser menor que el de "alto".' });
-  }
-  if (config.percentileCutoffs.lowMaxPercentile >= config.percentileCutoffs.highMinPercentile) {
-    issues.push({ level: 'error', message: 'Los percentiles de corte están invertidos.' });
-  }
-  if (Object.values(config.weights).reduce((a, b) => a + b, 0) <= 0) {
-    issues.push({
-      level: 'error',
-      message: 'Todos los pesos están en 0: no se puede calcular el score compuesto.',
-    });
-  }
-
-  return issues;
-}
+// Validation lives in lib/bankValidation.ts, which has no Firebase import so it
+// can be unit tested. Re-exported here because the editor imports both from the
+// same place.
+export {
+  validateBank,
+  applyBankFix,
+  type BankValidationIssue,
+  type BankIssueAnchor,
+  type BankIssueFixId,
+  type BankConfigField,
+} from '../lib/bankValidation';
