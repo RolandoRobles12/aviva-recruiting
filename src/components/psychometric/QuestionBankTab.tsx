@@ -451,8 +451,8 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
                 onClick={() => scrollTo('bank-issues')}
                 className="flex items-center gap-1.5 text-amber-600 hover:underline"
               >
-                <AlertTriangle size={13} /> {warnings.length}{' '}
-                {warnings.length === 1 ? 'recomendación' : 'recomendaciones'} · ver
+                <AlertTriangle size={13} /> Sin errores · {warnings.length}{' '}
+                {warnings.length === 1 ? 'sugerencia' : 'sugerencias'} · ver
               </button>
             ) : (
               <span className="text-gray-400">{questions.length} preguntas en el banco</span>
@@ -1010,9 +1010,18 @@ function IssuePanel({
       )}
       {warnings.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-          <p className="text-xs font-semibold text-amber-800">
-            Recomendaciones ({warnings.length}) — no impiden guardar
-          </p>
+          <div>
+            <p className="text-xs font-semibold text-amber-800">
+              {errors.length === 0
+                ? 'No hay errores: el banco se puede guardar y aplicar tal como está'
+                : 'Además, hay sugerencias para mejorar la prueba'}
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {warnings.length === 1
+                ? 'Esta sugerencia mejora la calidad de la prueba, pero no es obligatoria.'
+                : `Estas ${warnings.length} sugerencias mejoran la calidad de la prueba, pero no son obligatorias.`}
+            </p>
+          </div>
           <ul className="space-y-1.5 text-xs">{warnings.map((issue, i) => row(issue, i, 'warning'))}</ul>
         </div>
       )}

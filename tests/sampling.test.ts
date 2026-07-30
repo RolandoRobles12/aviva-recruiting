@@ -157,7 +157,7 @@ describe('auditBank', () => {
     const warnings = auditBank(bank, DEFAULT_TEST_CONFIG);
     expect(
       warnings.some(
-        (warning) => warning.scope === 'responsabilidad' && warning.message.includes('misma dirección')
+        (warning) => warning.scope === 'responsabilidad' && warning.message.includes('mismo sentido')
       )
     ).toBe(true);
   });

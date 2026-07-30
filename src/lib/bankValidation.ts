@@ -39,8 +39,15 @@ export type BankIssueAnchor =
 /** Remedies that are unambiguous enough to apply with one click. */
 export type BankIssueFixId =
   | 'aplicar_minimo_por_rasgo'
+  | 'aplicar_recomendado_por_rasgo'
   | 'ordenar_cortes_absolutos'
   | 'ordenar_percentiles';
+
+/**
+ * Questions per trait below which a scale's score gets noticeably noisy. Eight
+ * is where a short Likert scale usually reaches an acceptable reliability.
+ */
+export const RECOMMENDED_PER_TRAIT = 8;
 
 export interface BankValidationIssue {
   level: 'error' | 'warning';
@@ -61,6 +68,11 @@ export function applyBankFix(
       return {
         ...config,
         questionCounts: { ...config.questionCounts, likertPerTrait: config.minItemsPerScale },
+      };
+    case 'aplicar_recomendado_por_rasgo':
+      return {
+        ...config,
+        questionCounts: { ...config.questionCounts, likertPerTrait: RECOMMENDED_PER_TRAIT },
       };
     case 'ordenar_cortes_absolutos':
       return {
@@ -134,13 +146,35 @@ export function validateBank(
   if (capBlocksEveryTrait) {
     issues.push({
       level: 'error',
-      message: `Se aplican ${counts.likertPerTrait} ítems por rasgo y el mínimo para reportar un puntaje es ${config.minItemsPerScale}: con esta configuración ningún rasgo se podría calificar.`,
+      message: `Cada candidato responde ${counts.likertPerTrait} preguntas por rasgo, y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje: así, ningún rasgo se podría calificar.`,
       anchor: { kind: 'config', field: 'likertPerTrait' },
       fix: { id: 'aplicar_minimo_por_rasgo', label: `Aplicar ${config.minItemsPerScale} por rasgo` },
     });
   }
 
+  // The same cap, one notch up: it is not blocking, but it makes every trait
+  // score noisier. Again a single field, so a single message — anchored at the
+  // field and not at the traits, whose own items are perfectly fine.
+  if (!capBlocksEveryTrait && counts.likertPerTrait > 0 && counts.likertPerTrait < RECOMMENDED_PER_TRAIT) {
+    const capIsWhatBinds = PSYCHOMETRIC_TRAITS.some(
+      (trait) => likert.filter((question) => question.scale === trait).length > counts.likertPerTrait
+    );
+    if (capIsWhatBinds) {
+      issues.push({
+        level: 'warning',
+        message: `Cada candidato responde ${counts.likertPerTrait} preguntas por rasgo. Con tan pocas, el puntaje de cada rasgo sale con bastante margen de error: se recomiendan ${RECOMMENDED_PER_TRAIT} o más.`,
+        anchor: { kind: 'config', field: 'likertPerTrait' },
+        fix: {
+          id: 'aplicar_recomendado_por_rasgo',
+          label: `Aplicar ${RECOMMENDED_PER_TRAIT} por rasgo`,
+        },
+      });
+    }
+  }
+
   // ── Per-trait coverage ──
+  // Everything below is about the bank being short, which is fixed by adding
+  // questions to that scale — hence the anchor pointing at its section.
   for (const trait of PSYCHOMETRIC_TRAITS) {
     const items = likert.filter((question) => question.scale === trait);
     const anchor: BankIssueAnchor = { kind: 'section', section: trait };
@@ -148,26 +182,22 @@ export function validateBank(
     if (items.length === 0) {
       issues.push({
         level: 'error',
-        message: `${label(trait)} no tiene ítems activos: el rasgo no se podrá calificar.`,
+        message: `${label(trait)} no tiene preguntas activas: el rasgo no se podrá calificar.`,
         anchor,
       });
       continue;
     }
 
-    const applied =
-      counts.likertPerTrait > 0 ? Math.min(counts.likertPerTrait, items.length) : items.length;
-
-    // Only report the bank being short — the config cap is reported once above.
     if (items.length < config.minItemsPerScale) {
       issues.push({
         level: 'error',
-        message: `${label(trait)} tiene ${items.length} ítems activos y el mínimo para reportar un puntaje es ${config.minItemsPerScale}.`,
+        message: `${label(trait)} tiene ${items.length} preguntas activas y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje.`,
         anchor,
       });
-    } else if (!capBlocksEveryTrait && applied < 6) {
+    } else if (items.length < RECOMMENDED_PER_TRAIT) {
       issues.push({
         level: 'warning',
-        message: `${label(trait)}: con ${applied} ítems por sesión la consistencia interna suele quedar por debajo de .70.`,
+        message: `${label(trait)} tiene ${items.length} preguntas activas. Con menos de ${RECOMMENDED_PER_TRAIT} el puntaje del rasgo sale con más margen de error.`,
         anchor,
       });
     }
@@ -176,7 +206,7 @@ export function validateBank(
     if (reversed === 0 || reversed === items.length) {
       issues.push({
         level: 'warning',
-        message: `${label(trait)}: todos los ítems van en la misma dirección. Mezcla normales e invertidos para controlar el sesgo de aquiescencia.`,
+        message: `${label(trait)}: todas las preguntas están redactadas en el mismo sentido. Conviene marcar algunas como "invertidas" (donde estar de acuerdo sea lo desfavorable), porque hay gente que tiende a decir que sí a todo.`,
         anchor,
       });
     }
@@ -204,8 +234,8 @@ export function validateBank(
     issues.push({
       level: 'warning',
       message: limitedByConfig
-        ? `Se aplica ${counts.atencion} control de atención por sesión: con menos de 2 no se distingue un descuido de responder al azar.`
-        : `Hay ${checks} control(es) de atención activo(s): con menos de 2 no se distingue un descuido de responder al azar.`,
+        ? `Se aplica ${counts.atencion} pregunta de control por sesión. Con menos de 2 no se puede distinguir un descuido de alguien que responde sin leer.`
+        : `Hay ${checks} pregunta(s) de control activa(s). Con menos de 2 no se puede distinguir un descuido de alguien que responde sin leer.`,
       anchor: limitedByConfig
         ? { kind: 'config', field: 'atencion' }
         : { kind: 'section', section: 'atencion' },
@@ -232,7 +262,7 @@ export function validateBank(
   if (Object.values(config.weights).reduce((sum, weight) => sum + weight, 0) <= 0) {
     issues.push({
       level: 'error',
-      message: 'Todos los pesos están en 0: no se puede calcular el score compuesto.',
+      message: 'Todos los pesos están en 0, así que no se puede calcular el puntaje general.',
       anchor: { kind: 'config', field: 'weights' },
     });
   }
