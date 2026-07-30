@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { RECOMMENDED_PER_TRAIT, applyBankFix, validateBank } from '../src/lib/bankValidation';
+import {
+  RECOMMENDED_PER_TRAIT,
+  RECOMMENDED_SJT_SCENARIOS,
+  applyBankFix,
+  validateBank,
+} from '../src/lib/bankValidation';
 import {
   PSYCHOMETRIC_TRAITS,
   type PsychometricQuestion,
@@ -27,7 +32,7 @@ function config(overrides: Partial<PsychometricTestConfig> = {}): PsychometricTe
 }
 
 /** A healthy bank: every trait covered with balanced keying, plus the extras. */
-function healthyBank(itemsPerTrait = 20): PsychometricQuestion[] {
+function healthyBank(itemsPerTrait = 20, sjtCount = 8): PsychometricQuestion[] {
   const questions: PsychometricQuestion[] = [];
   for (const trait of PSYCHOMETRIC_TRAITS) {
     for (let i = 0; i < itemsPerTrait; i++) {
@@ -74,7 +79,7 @@ function healthyBank(itemsPerTrait = 20): PsychometricQuestion[] {
       order: questions.length,
     });
   }
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < sjtCount; i++) {
     questions.push({
       id: `sjt_${i}`,
       type: 'sjt',
@@ -190,6 +195,51 @@ describe('validateBank', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain('no tiene preguntas activas');
     expect(errors[0].anchor).toEqual({ kind: 'section', section: 'integridad' });
+  });
+
+  it('blocks scoring when the SJT cap is below the minimum', () => {
+    const issues = validateBank(
+      healthyBank(20),
+      config({ questionCounts: { ...config().questionCounts, sjt: 2 } })
+    );
+    const errors = issues.filter((issue) => issue.level === 'error');
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('responde 2 escenarios');
+    expect(errors[0].anchor).toEqual({ kind: 'config', field: 'sjt' });
+    expect(errors[0].fix?.id).toBe('aplicar_minimo_sjt');
+  });
+
+  it('warns, without blocking, when the SJT cap is below the recommended size', () => {
+    const base = config({ questionCounts: { ...config().questionCounts, sjt: 4 } });
+    const issues = validateBank(healthyBank(20), base);
+
+    expect(issues.filter((issue) => issue.level === 'error')).toEqual([]);
+    const warning = issues.find((issue) => issue.fix?.id === 'aplicar_recomendado_sjt')!;
+    expect(warning.message).toContain('responde 4 escenarios');
+    expect(warning.anchor).toEqual({ kind: 'config', field: 'sjt' });
+
+    const fixed = applyBankFix(warning.fix!.id, base);
+    expect(fixed.questionCounts.sjt).toBe(RECOMMENDED_SJT_SCENARIOS);
+    expect(validateBank(healthyBank(20), fixed)).toEqual([]);
+  });
+
+  it('blames the bank, not the cap, when the scenario pool itself is short', () => {
+    // Only 3 scenarios exist, and nothing caps the session below that — the
+    // bank is what needs more content, not the setting.
+    const bank = healthyBank(20, 3);
+    const issues = validateBank(bank, config({ questionCounts: { ...config().questionCounts, sjt: 0 } }));
+    const errors = issues.filter((issue) => issue.level === 'error');
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('Hay 3 escenarios activos');
+    expect(errors[0].anchor).toEqual({ kind: 'section', section: 'sjt' });
+  });
+
+  it('errors when there are no scenarios at all', () => {
+    const bank = healthyBank(20, 0);
+    const errors = validateBank(bank, config()).filter((issue) => issue.level === 'error');
+    expect(errors.some((issue) => issue.message.includes('No hay escenarios'))).toBe(true);
   });
 
   it('offers to swap inverted cutoffs', () => {

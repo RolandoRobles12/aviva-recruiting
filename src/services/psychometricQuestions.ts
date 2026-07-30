@@ -170,6 +170,8 @@ export async function savePsychometricConfig(config: PsychometricTestConfig): Pr
 export {
   validateBank,
   applyBankFix,
+  RECOMMENDED_PER_TRAIT,
+  RECOMMENDED_SJT_SCENARIOS,
   type BankValidationIssue,
   type BankIssueAnchor,
   type BankIssueFixId,
