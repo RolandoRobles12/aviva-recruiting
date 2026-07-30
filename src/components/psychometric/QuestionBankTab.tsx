@@ -35,6 +35,8 @@ import {
   savePsychometricConfig,
   validateBank,
   applyBankFix,
+  RECOMMENDED_PER_TRAIT,
+  RECOMMENDED_SJT_SCENARIOS,
   type BankConfigField,
   type BankValidationIssue,
 } from '../../services/psychometricQuestions';
@@ -1061,10 +1063,10 @@ function ConfigPanel({
   highlightedField?: BankConfigField | null;
 }) {
   /** Wraps a field so it can be scrolled to and flashed from an error message. */
-  const field = (name: BankConfigField, children: React.ReactNode) => (
+  const field = (name: BankConfigField, children: React.ReactNode, className = '') => (
     <div
       id={`cfg-${name}`}
-      className={`rounded-lg transition-all ${
+      className={`rounded-lg transition-all ${className} ${
         highlightedField === name ? 'ring-2 ring-red-400 ring-offset-2 bg-red-50/40' : ''
       }`}
     >
@@ -1072,14 +1074,26 @@ function ConfigPanel({
     </div>
   );
 
-  const totalItems =
-    (config.questionCounts.likertPerTrait > 0
+  // Broken into parts (not just a grand total) so the summary box below can
+  // show where the length actually comes from.
+  const traitTotal =
+    config.questionCounts.likertPerTrait > 0
       ? counts.traits.reduce((sum, available) => sum + Math.min(config.questionCounts.likertPerTrait, available), 0)
-      : counts.traits.reduce((sum, available) => sum + available, 0)) +
-    Math.min(config.questionCounts.sjt || counts.sjt, counts.sjt) +
+      : counts.traits.reduce((sum, available) => sum + available, 0);
+  const sjtApplied = Math.min(config.questionCounts.sjt || counts.sjt, counts.sjt);
+  const qualityApplied =
     Math.min(config.questionCounts.deseabilidadSocial || counts.deseabilidad, counts.deseabilidad) +
     Math.min(config.questionCounts.infrecuencia || counts.infrecuencia, counts.infrecuencia) +
     Math.min(config.questionCounts.atencion || counts.atencion, counts.atencion);
+  const totalItems = traitTotal + sjtApplied + qualityApplied;
+
+  // Zipped by index with PSYCHOMETRIC_TRAITS, which is how `counts.traits` was
+  // built by the caller — turns "20 / 20 / 20 / 20 / 14" into a labeled list.
+  const traitAvailability = PSYCHOMETRIC_TRAITS.map((trait, index) => ({
+    key: trait,
+    label: PSYCHOMETRIC_SCALE_LABELS[trait],
+    count: counts.traits[index] ?? 0,
+  }));
 
   const setCounts = (patch: Partial<PsychometricTestConfig['questionCounts']>) =>
     setConfig({ ...config, questionCounts: { ...config.questionCounts, ...patch } });
@@ -1087,61 +1101,86 @@ function ConfigPanel({
   return (
     <div className="space-y-5">
       {/* What the candidate actually gets — the most consequential setting. */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div>
           <h4 className="text-xs font-semibold text-gray-900">Preguntas aplicadas por sesión</h4>
           <p className="text-xs text-gray-500 mt-0.5">
-            En 0 se aplican todas las activas. Con un número, cada sesión toma esa cantidad al azar,
-            balanceando ítems normales e invertidos por rasgo.
+            En 0 se aplican todas las activas. Con un número, cada sesión toma esa cantidad al azar.
           </p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {field(
-            'likertPerTrait',
-            <CountField
-              label="Ítems Likert por rasgo"
-              hint={`Disponibles: ${counts.traits.join(' / ')}`}
-              value={config.questionCounts.likertPerTrait}
-              onChange={(likertPerTrait) => setCounts({ likertPerTrait })}
-            />
-          )}
-          {field(
-            'sjt',
-            <CountField
-              label="Escenarios SJT"
-              hint={`Disponibles: ${counts.sjt}`}
-              value={config.questionCounts.sjt}
-              onChange={(sjt) => setCounts({ sjt })}
-            />
-          )}
-          {field(
-            'deseabilidadSocial',
-            <CountField
-              label="Deseabilidad social"
-              hint={`Disponibles: ${counts.deseabilidad}`}
-              value={config.questionCounts.deseabilidadSocial}
-              onChange={(deseabilidadSocial) => setCounts({ deseabilidadSocial })}
-            />
-          )}
-          {field(
-            'infrecuencia',
-            <CountField
-              label="Infrecuencia"
-              hint={`Disponibles: ${counts.infrecuencia}`}
-              value={config.questionCounts.infrecuencia}
-              onChange={(infrecuencia) => setCounts({ infrecuencia })}
-            />
-          )}
-          {field(
-            'atencion',
-            <CountField
-              label="Controles de atención"
-              hint={`Disponibles: ${counts.atencion}`}
-              value={config.questionCounts.atencion}
-              onChange={(atencion) => setCounts({ atencion })}
-            />
-          )}
-          <label className="text-xs text-gray-600 space-y-1">
+
+        {/* Content: builds the candidate's profile and feeds the score. */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-700">Preguntas que arman el perfil del candidato</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {field(
+              'likertPerTrait',
+              <TraitCountField
+                value={config.questionCounts.likertPerTrait}
+                onChange={(likertPerTrait) => setCounts({ likertPerTrait })}
+                traits={traitAvailability}
+                total={traitTotal}
+              />,
+              'sm:col-span-2'
+            )}
+            {field(
+              'sjt',
+              <CountField
+                label="Escenarios SJT"
+                hint={`Disponibles: ${counts.sjt}`}
+                value={config.questionCounts.sjt}
+                onChange={(sjt) => setCounts({ sjt })}
+                recommended={RECOMMENDED_SJT_SCENARIOS}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Quality control: never scored, only used to judge whether the rest
+            of the answers can be trusted. Grouped apart from the content
+            fields so it stops reading as "five equivalent knobs". */}
+        <div className="space-y-2 pt-3 border-t border-gray-100">
+          <div>
+            <p className="text-xs font-medium text-gray-700">Controles de calidad de respuesta</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              No forman parte del perfil ni del puntaje: solo sirven para detectar respuestas
+              descuidadas o poco honestas.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {field(
+              'deseabilidadSocial',
+              <CountField
+                label="Deseabilidad social"
+                hint={`Disponibles: ${counts.deseabilidad}`}
+                value={config.questionCounts.deseabilidadSocial}
+                onChange={(deseabilidadSocial) => setCounts({ deseabilidadSocial })}
+              />
+            )}
+            {field(
+              'infrecuencia',
+              <CountField
+                label="Infrecuencia"
+                hint={`Disponibles: ${counts.infrecuencia}`}
+                value={config.questionCounts.infrecuencia}
+                onChange={(infrecuencia) => setCounts({ infrecuencia })}
+              />
+            )}
+            {field(
+              'atencion',
+              <CountField
+                label="Controles de atención"
+                hint={`Disponibles: ${counts.atencion}`}
+                value={config.questionCounts.atencion}
+                onChange={(atencion) => setCounts({ atencion })}
+                recommended={2}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-gray-100">
+          <label className="text-xs text-gray-600 space-y-1 block max-w-[10rem]">
             Tiempo límite (minutos)
             <input
               type="number"
@@ -1152,10 +1191,17 @@ function ConfigPanel({
             />
           </label>
         </div>
-        <p className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2">
-          Cada candidato responderá <strong>{totalItems} preguntas</strong> en un máximo de{' '}
-          <strong>{config.timeLimitMinutes} minutos</strong>.
-        </p>
+
+        <div className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 space-y-1">
+          <p>
+            Cada candidato responderá <strong>{totalItems} preguntas</strong> en un máximo de{' '}
+            <strong>{config.timeLimitMinutes} minutos</strong>.
+          </p>
+          <p className="text-primary-600">
+            {traitTotal} de personalidad · {sjtApplied} de escenarios · {qualityApplied} de control de
+            calidad.
+          </p>
+        </div>
       </div>
 
       {/* Weights */}
@@ -1298,17 +1344,78 @@ function ConfigPanel({
   );
 }
 
+/**
+ * The one field that is a per-trait multiplier rather than a flat count — "8"
+ * here means 8 questions for *each* of the 5 traits, not 8 total. That was
+ * easy to misread, and the "Disponibles: 20 / 20 / 20 / 20 / 14" hint it used
+ * to show gave five bare numbers with nothing tying them to a trait name.
+ * This spells out the total and labels each number.
+ */
+function TraitCountField({
+  value,
+  onChange,
+  traits,
+  total,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  traits: { key: string; label: string; count: number }[];
+  total: number;
+}) {
+  const belowRecommended = value > 0 && value < RECOMMENDED_PER_TRAIT;
+  return (
+    <div className="text-xs text-gray-600 space-y-1.5">
+      <label className="block space-y-1">
+        Ítems Likert por rasgo (0 = todos)
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={`input-field text-xs py-1.5 w-full max-w-[10rem] ${
+            belowRecommended ? 'border-amber-300' : ''
+          }`}
+        />
+      </label>
+      <p className="text-gray-400">
+        Se aplica a cada uno de los 5 rasgos → <strong className="text-gray-700">{total} preguntas de personalidad</strong> en
+        total.
+        {belowRecommended && (
+          <span className="text-amber-600"> Se recomiendan {RECOMMENDED_PER_TRAIT} o más por rasgo.</span>
+        )}
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 pt-0.5">
+        {traits.map((trait) => (
+          <div
+            key={trait.key}
+            className={`flex items-center justify-between gap-2 ${
+              trait.count < RECOMMENDED_PER_TRAIT ? 'text-amber-600' : 'text-gray-400'
+            }`}
+          >
+            <span className="truncate">{trait.label}</span>
+            <span className="shrink-0 font-medium">{trait.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CountField({
   label,
   hint,
   value,
   onChange,
+  recommended,
 }: {
   label: string;
   hint: string;
   value: number;
   onChange: (value: number) => void;
+  /** Below this the count is valid but the score gets noticeably noisier. */
+  recommended?: number;
 }) {
+  const belowRecommended = recommended !== undefined && value > 0 && value < recommended;
   return (
     <label className="text-xs text-gray-600 space-y-1">
       {label} (0 = todos)
@@ -1317,9 +1424,12 @@ function CountField({
         min={0}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="input-field text-xs py-1.5 w-full"
+        className={`input-field text-xs py-1.5 w-full ${belowRecommended ? 'border-amber-300' : ''}`}
       />
       <span className="block text-gray-400">{hint}</span>
+      {belowRecommended && (
+        <span className="block text-amber-600">Se recomiendan {recommended} o más.</span>
+      )}
     </label>
   );
 }

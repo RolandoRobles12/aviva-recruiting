@@ -40,6 +40,8 @@ export type BankIssueAnchor =
 export type BankIssueFixId =
   | 'aplicar_minimo_por_rasgo'
   | 'aplicar_recomendado_por_rasgo'
+  | 'aplicar_minimo_sjt'
+  | 'aplicar_recomendado_sjt'
   | 'ordenar_cortes_absolutos'
   | 'ordenar_percentiles';
 
@@ -48,6 +50,9 @@ export type BankIssueFixId =
  * is where a short Likert scale usually reaches an acceptable reliability.
  */
 export const RECOMMENDED_PER_TRAIT = 8;
+
+/** Scenarios below which the SJT score bounces around too much between candidates. */
+export const RECOMMENDED_SJT_SCENARIOS = 5;
 
 export interface BankValidationIssue {
   level: 'error' | 'warning';
@@ -73,6 +78,16 @@ export function applyBankFix(
       return {
         ...config,
         questionCounts: { ...config.questionCounts, likertPerTrait: RECOMMENDED_PER_TRAIT },
+      };
+    case 'aplicar_minimo_sjt':
+      return {
+        ...config,
+        questionCounts: { ...config.questionCounts, sjt: config.minItemsPerScale },
+      };
+    case 'aplicar_recomendado_sjt':
+      return {
+        ...config,
+        questionCounts: { ...config.questionCounts, sjt: RECOMMENDED_SJT_SCENARIOS },
       };
     case 'ordenar_cortes_absolutos':
       return {
@@ -212,15 +227,50 @@ export function validateBank(
     }
   }
 
-  // ── Scenarios and attention checks ──
-  if (!enabled.some((question) => question.type === 'sjt')) {
+  // ── SJT scenarios ──
+  // Mirrors the trait logic above: a cap-side issue (the session applies too
+  // few) is distinct from a pool-side issue (the bank itself is short), and
+  // each is reported — and fixed — where it actually lives.
+  const sjtPool = enabled.filter((question) => question.type === 'sjt').length;
+
+  const sjtCapBlocksScoring = counts.sjt > 0 && counts.sjt < config.minItemsPerScale;
+  if (sjtCapBlocksScoring) {
+    issues.push({
+      level: 'error',
+      message: `Cada candidato responde ${counts.sjt} escenarios, y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje al juicio situacional.`,
+      anchor: { kind: 'config', field: 'sjt' },
+      fix: { id: 'aplicar_minimo_sjt', label: `Aplicar ${config.minItemsPerScale} escenarios` },
+    });
+  } else if (counts.sjt > 0 && counts.sjt < RECOMMENDED_SJT_SCENARIOS && sjtPool > counts.sjt) {
     issues.push({
       level: 'warning',
-      message: 'No hay escenarios de juicio situacional activos.',
+      message: `Cada candidato responde ${counts.sjt} escenarios. Con menos de ${RECOMMENDED_SJT_SCENARIOS}, el puntaje de juicio situacional varía mucho de un candidato a otro.`,
+      anchor: { kind: 'config', field: 'sjt' },
+      fix: { id: 'aplicar_recomendado_sjt', label: `Aplicar ${RECOMMENDED_SJT_SCENARIOS} escenarios` },
+    });
+  }
+
+  if (sjtPool === 0) {
+    issues.push({
+      level: 'error',
+      message: 'No hay escenarios de juicio situacional activos: no se podrá calificar el juicio situacional.',
+      anchor: { kind: 'section', section: 'sjt' },
+    });
+  } else if (sjtPool < config.minItemsPerScale) {
+    issues.push({
+      level: 'error',
+      message: `Hay ${sjtPool} escenarios activos y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje al juicio situacional.`,
+      anchor: { kind: 'section', section: 'sjt' },
+    });
+  } else if (!sjtCapBlocksScoring && sjtPool < RECOMMENDED_SJT_SCENARIOS) {
+    issues.push({
+      level: 'warning',
+      message: `Hay ${sjtPool} escenarios activos. Se recomiendan ${RECOMMENDED_SJT_SCENARIOS} o más para variar la prueba entre candidatos.`,
       anchor: { kind: 'section', section: 'sjt' },
     });
   }
 
+  // ── Attention checks ──
   const checks = enabled.filter((question) => question.type === 'attention').length;
   if (counts.atencion > 0 && checks === 0) {
     issues.push({
