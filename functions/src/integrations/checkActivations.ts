@@ -64,8 +64,8 @@ function getCheckInsDb(serviceAccount: adminSdk.ServiceAccount): FirebaseFiresto
 }
 
 /**
- * Runs 3× per day and checks if any 'induction' candidate has registered
- * their first 'entrada' check-in in the registro-aviva app.
+ * Runs 3× per day and checks if any 'induction' or 'email_ready' candidate
+ * has registered their first 'entrada' check-in in the registro-aviva app.
  * On first check-in found → move Viterbit stage to "Activación Iniciada"
  * and save activatedAt on the candidate document.
  */
@@ -83,9 +83,13 @@ export const checkActivations = onSchedule(
     const serviceAccount = JSON.parse(CHECKINS_SERVICE_ACCOUNT.value()) as adminSdk.ServiceAccount;
     const checkInsDb = getCheckInsDb(serviceAccount);
 
+    // Include 'email_ready': checkViterbitEmail advances candidates to that
+    // status when it stamps corporateEmail, and this function requires
+    // corporateEmail to match check-ins. Querying only 'induction' made both
+    // conditions mutually exclusive, so no candidate was ever activated.
     const snapshot = await db
       .collection('candidates')
-      .where('status', '==', 'induction')
+      .where('status', 'in', ['induction', 'email_ready'])
       .get();
 
     const pending = snapshot.docs.filter((d) => !d.data().activatedAt);

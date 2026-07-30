@@ -52,11 +52,13 @@ async function processCandidate(
   const candidate = doc.data();
   const viterbitCandidateId   = candidate.viterbitCandidateId   as string | undefined;
   const viterbitCandidatureId = candidate.viterbitCandidatureId as string | undefined;
+  const existingEmail = (candidate.corporateEmail as string | undefined) ?? '';
 
-  let result = { corporateEmail: '', contrasena: '' };
+  let result = { corporateEmail: existingEmail, contrasena: '' };
 
-  // Try candidate-level custom fields first, then candidature-level
-  if (viterbitCandidateId) {
+  // Try candidate-level custom fields first, then candidature-level.
+  // Skipped when the email is already stored (re-run to retry HubSpot only).
+  if (!result.corporateEmail && viterbitCandidateId) {
     result = await fetchFromViterbit(
       `${VITERBIT_API_BASE}/candidates/${viterbitCandidateId}?includes[]=custom_field_values`,
       apiKey,
@@ -77,7 +79,9 @@ async function processCandidate(
   const { corporateEmail, contrasena } = result;
   console.info(`[checkViterbitEmail] correo_corporativo found for ${doc.id}: ${corporateEmail}`);
 
-  // Create HubSpot owner
+  // Create HubSpot owner. On failure the candidate stays in the polling set
+  // (missing hubspotOwnerId) so the next run retries — createHubSpotUser is
+  // idempotent: it returns the existing owner instead of duplicating.
   let hubspotOwnerId: string | null = null;
   try {
     const hubspot = await createHubSpotUser({
@@ -87,27 +91,31 @@ async function processCandidate(
     });
     hubspotOwnerId = hubspot.ownerId;
   } catch (err) {
-    console.error(`[checkViterbitEmail] HubSpot creation failed for ${doc.id}:`, err);
+    console.error(`[checkViterbitEmail] HubSpot creation failed for ${doc.id} (will retry next run):`, err);
   }
 
   const update: Record<string, unknown> = {
     corporateEmail,
-    status: 'email_ready',
-    emailProvisionedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
+  // Advance induction → email_ready, but never downgrade a later status
+  // (onboarding_iniciado candidates re-enter this poll only to heal hubspotOwnerId).
+  if (candidate.status === 'induction') update.status = 'email_ready';
+  if (!candidate.emailProvisionedAt) update.emailProvisionedAt = FieldValue.serverTimestamp();
   if (hubspotOwnerId) update.hubspotOwnerId = hubspotOwnerId;
   if (contrasena)     update.viterbitContrasena = contrasena;
 
   await doc.ref.update(update);
-  return true;
+  return !!hubspotOwnerId;
 }
 
 /**
- * Runs every 2 hours. Finds candidates in 'induction' status without a
- * corporate email and polls Viterbit for correo_corporativo + contrasena_correo_corporativo
+ * Runs every 2 hours. Finds candidates missing their corporate email and/or
+ * HubSpot owner and polls Viterbit for correo_corporativo + contrasena_correo_corporativo
  * (stamped by the external provisioning process within ~48 h of reaching Onboarding).
- * On success: creates HubSpot owner and moves candidate to 'email_ready'.
+ * On success: creates HubSpot owner and advances 'induction' → 'email_ready'.
+ * Candidates already past induction stay in the poll only until hubspotOwnerId
+ * is filled (required by the 30-day performance check).
  */
 export const checkViterbitEmail = onSchedule(
   {
@@ -121,17 +129,19 @@ export const checkViterbitEmail = onSchedule(
 
     const snapshot = await db
       .collection('candidates')
-      .where('status', '==', 'induction')
+      .where('status', 'in', ['induction', 'email_ready', 'onboarding_iniciado'])
       .get();
 
     if (snapshot.empty) {
-      console.info('[checkViterbitEmail] No candidates in induction');
+      console.info('[checkViterbitEmail] No candidates in induction/email_ready/onboarding_iniciado');
       return;
     }
 
-    const pending = snapshot.docs.filter((doc) => !doc.data().corporateEmail);
+    const pending = snapshot.docs.filter(
+      (doc) => !doc.data().corporateEmail || !doc.data().hubspotOwnerId,
+    );
     if (pending.length === 0) {
-      console.info('[checkViterbitEmail] All induction candidates already have a corporate email');
+      console.info('[checkViterbitEmail] All candidates already have corporate email + HubSpot owner');
       return;
     }
 

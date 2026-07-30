@@ -2,7 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineString } from 'firebase-functions/params';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { countDealsByOwner } from '../integrations/hubspotService';
+import { countDealsByOwner, findOwnerIdByEmail } from '../integrations/hubspotService';
 import { notifyPerformanceCheck } from '../integrations/slackService';
 import { parseCandidateStartDate } from '../utils/startDate';
 
@@ -86,9 +86,22 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
   }
 
   const c = candidateSnap.data()!;
-  const hubspotOwnerId = c.hubspotOwnerId as string | undefined;
+  let hubspotOwnerId = c.hubspotOwnerId as string | undefined;
   if (!hubspotOwnerId) {
-    console.warn(`[performanceCheck] ${candidateId} has no hubspotOwnerId — skipping`);
+    // Self-heal: candidates provisioned while HubSpot creation failed (or via
+    // the legacy Jira flow) have a corporateEmail but no cached owner id.
+    const corporateEmail = c.corporateEmail as string | undefined;
+    if (corporateEmail) {
+      const found = await findOwnerIdByEmail(corporateEmail);
+      if (found) {
+        hubspotOwnerId = found;
+        await candidateSnap.ref.update({ hubspotOwnerId: found, updatedAt: FieldValue.serverTimestamp() });
+        console.info(`[performanceCheck] ${candidateId}: recovered hubspotOwnerId ${found} via ${corporateEmail}`);
+      }
+    }
+  }
+  if (!hubspotOwnerId) {
+    console.warn(`[performanceCheck] ${candidateId} has no hubspotOwnerId — skipping (retried daily)`);
     return;
   }
 
@@ -127,7 +140,9 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
     }),
   ]);
 
-  // At day 30: move to "Promotor Exitoso" in Viterbit when target is met
+  // At day 30: move to "Promotor Exitoso" in Viterbit when target is met.
+  // On failure, flag the candidate so retryPendingPromotorMoves picks them up
+  // on the next daily run — the check doc itself is already marked processed.
   if (daysMark === 30 && dealCount >= monthlyTarget) {
     const apiKey = VITERBIT_API_KEY.value();
     const candidatureId = c.viterbitCandidatureId as string | undefined;
@@ -137,14 +152,17 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
         await moveToPromotor(candidatureId, promotorExitosoId, apiKey);
         await candidateSnap.ref.update({
           status: 'promotor_exitoso',
+          promotorMovePending: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         });
         console.info(`[performanceCheck] Moved ${candidateName} to Promotor Exitoso (${dealCount}/${monthlyTarget})`);
       } catch (err) {
-        console.error(`[performanceCheck] moveToPromotor error for ${candidateId}:`, err);
+        console.error(`[performanceCheck] moveToPromotor error for ${candidateId} — flagged for retry:`, err);
+        await candidateSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
       }
     } else {
-      console.warn(`[performanceCheck] Cannot move to Promotor Exitoso — missing ids`, { candidateId, candidatureId, promotorExitosoId });
+      console.warn(`[performanceCheck] Cannot move to Promotor Exitoso — missing ids, flagged for retry`, { candidateId, candidatureId, promotorExitosoId });
+      await candidateSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
     }
   }
 
@@ -166,6 +184,51 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
   }
 
   console.log(`[performanceCheck] ${daysMark}d check for ${candidateName}: ${dealCount}/${monthlyTarget} deals`);
+}
+
+/**
+ * Retry Viterbit moves that failed when the 30-day check ran (the check doc is
+ * marked processed exactly once, so a transient Viterbit error must be retried
+ * from the candidate-level promotorMovePending flag instead).
+ */
+async function retryPendingPromotorMoves(): Promise<void> {
+  const snap = await db
+    .collection('candidates')
+    .where('promotorMovePending', '==', true)
+    .get();
+  if (snap.empty) return;
+
+  console.info(`[performanceCheck] Retrying ${snap.size} pending Promotor Exitoso move(s)`);
+  const apiKey = VITERBIT_API_KEY.value();
+
+  for (const docSnap of snap.docs) {
+    const c = docSnap.data();
+
+    // Already there (e.g. moved manually in Viterbit and synced back) — just clear the flag.
+    if (c.status === 'promotor_exitoso') {
+      await docSnap.ref.update({ promotorMovePending: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() });
+      continue;
+    }
+
+    const candidatureId = c.viterbitCandidatureId as string | undefined;
+    const promotorExitosoId = await resolvePromotorExitosoStageId(c, apiKey);
+    if (!apiKey || !candidatureId || !promotorExitosoId) {
+      console.warn(`[performanceCheck] retry: still missing ids for ${docSnap.id}`, { candidatureId, promotorExitosoId });
+      continue;
+    }
+
+    try {
+      await moveToPromotor(candidatureId, promotorExitosoId, apiKey);
+      await docSnap.ref.update({
+        status: 'promotor_exitoso',
+        promotorMovePending: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      console.info(`[performanceCheck] retry: moved ${docSnap.id} to Promotor Exitoso`);
+    } catch (err) {
+      console.error(`[performanceCheck] retry: moveToPromotor error for ${docSnap.id}:`, err);
+    }
+  }
 }
 
 /**
@@ -192,18 +255,23 @@ export const dailyPerformanceCheck = onSchedule(
 
     if (snap.empty) {
       console.info('[performanceCheck] No pending checks to process');
-      return;
+    } else {
+      console.info(`[performanceCheck] Processing ${snap.size} pending check(s)`);
+
+      const results = await Promise.allSettled(
+        snap.docs.map((doc) => processPendingCheck(doc))
+      );
+
+      const errors = results.filter((r) => r.status === 'rejected').length;
+      if (errors > 0) {
+        console.error(`[performanceCheck] ${errors} check(s) failed`);
+      }
     }
 
-    console.info(`[performanceCheck] Processing ${snap.size} pending check(s)`);
-
-    const results = await Promise.allSettled(
-      snap.docs.map((doc) => processPendingCheck(doc))
-    );
-
-    const errors = results.filter((r) => r.status === 'rejected').length;
-    if (errors > 0) {
-      console.error(`[performanceCheck] ${errors} check(s) failed`);
+    try {
+      await retryPendingPromotorMoves();
+    } catch (err) {
+      console.error('[performanceCheck] retryPendingPromotorMoves failed:', err);
     }
   },
 );

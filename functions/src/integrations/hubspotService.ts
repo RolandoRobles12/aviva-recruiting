@@ -21,6 +21,16 @@ async function getOwnerIdByEmail(email: string, apiKey: string): Promise<string 
 }
 
 /**
+ * Look up an existing HubSpot owner by email without creating anything.
+ * Returns null when the owner doesn't exist or the API key is not configured.
+ */
+export async function findOwnerIdByEmail(email: string): Promise<string | null> {
+  const apiKey = HUBSPOT_API_KEY.value();
+  if (!apiKey) return null;
+  return getOwnerIdByEmail(email, apiKey);
+}
+
+/**
  * Create a HubSpot portal user for a new employee.
  * First checks if the user already exists as an owner. If so, returns their
  * existing owner ID without creating a duplicate. On creation, fetches and
