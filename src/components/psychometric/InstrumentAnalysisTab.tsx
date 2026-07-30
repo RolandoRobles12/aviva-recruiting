@@ -37,8 +37,20 @@ interface Report {
   truncated: boolean;
 }
 
+/** Scopes a warning can carry that are not scales. */
+const SCOPE_LABELS: Record<string, string> = {
+  configuracion: 'Configuración',
+  atencion: 'Preguntas de control',
+  bandas: 'Bandas de calificación',
+  ponderacion: 'Ponderación',
+};
+
 function labelFor(scale: string): string {
-  return PSYCHOMETRIC_SCALE_LABELS[scale as keyof typeof PSYCHOMETRIC_SCALE_LABELS] ?? scale;
+  return (
+    PSYCHOMETRIC_SCALE_LABELS[scale as keyof typeof PSYCHOMETRIC_SCALE_LABELS] ??
+    SCOPE_LABELS[scale] ??
+    scale
+  );
 }
 
 // ─── Turning statistics into something a recruiter can act on ─────────────────

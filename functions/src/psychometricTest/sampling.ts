@@ -168,6 +168,9 @@ export function assembleTest(
 
 // ─── Bank health checks ───────────────────────────────────────────────────────
 
+/** Questions per trait below which a scale's score gets noticeably noisy. */
+const RECOMMENDED_PER_TRAIT = 8;
+
 export type BankWarningLevel = 'error' | 'warning';
 
 export interface BankWarning {
@@ -189,41 +192,51 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
   const likert = enabled.filter((q): q is PsychometricLikertQuestion => q.type === 'likert');
   const counts = config.questionCounts;
 
+  // The sampling cap is a single setting, so it is reported once instead of
+  // once per trait — repeating it pointed admins at scales that were fine.
+  const capBlocksEveryTrait =
+    counts.likertPerTrait > 0 && counts.likertPerTrait < config.minItemsPerScale;
+  if (capBlocksEveryTrait) {
+    warnings.push({
+      level: 'error',
+      scope: 'configuracion',
+      message: `Cada candidato responde ${counts.likertPerTrait} preguntas por rasgo, y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje: así, ningún rasgo se podría calificar.`,
+    });
+  } else if (counts.likertPerTrait > 0 && counts.likertPerTrait < RECOMMENDED_PER_TRAIT) {
+    warnings.push({
+      level: 'warning',
+      scope: 'configuracion',
+      message: `Cada candidato responde ${counts.likertPerTrait} preguntas por rasgo. Con tan pocas, el puntaje de cada rasgo sale con bastante margen de error: se recomiendan ${RECOMMENDED_PER_TRAIT} o más.`,
+    });
+  }
+
   for (const trait of PSYCHOMETRIC_TRAITS) {
     const items = likert.filter((q) => q.scale === trait);
     const reversed = items.filter((q) => q.reverseScored).length;
     const positive = items.length - reversed;
-    const applied = counts.likertPerTrait > 0 ? Math.min(counts.likertPerTrait, items.length) : items.length;
 
     if (items.length === 0) {
-      warnings.push({ level: 'error', scope: trait, message: 'No hay ítems activos para este rasgo.' });
+      warnings.push({ level: 'error', scope: trait, message: 'No tiene preguntas activas: el rasgo no se podrá calificar.' });
       continue;
     }
-    if (applied < config.minItemsPerScale) {
+    if (items.length < config.minItemsPerScale) {
       warnings.push({
         level: 'error',
         scope: trait,
-        message: `Se aplicarían ${applied} ítems y el mínimo para reportar puntaje es ${config.minItemsPerScale}.`,
+        message: `Tiene ${items.length} preguntas activas y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje.`,
       });
-    } else if (applied < 6) {
+    } else if (items.length < RECOMMENDED_PER_TRAIT) {
       warnings.push({
         level: 'warning',
         scope: trait,
-        message: `Con ${applied} ítems la consistencia interna suele quedar por debajo de .70. Se recomiendan 8 o más.`,
+        message: `Tiene ${items.length} preguntas activas. Con menos de ${RECOMMENDED_PER_TRAIT} el puntaje del rasgo sale con más margen de error.`,
       });
     }
     if (reversed === 0 || positive === 0) {
       warnings.push({
         level: 'warning',
         scope: trait,
-        message: 'Todos los ítems tienen la misma dirección. Mezcla ítems normales e invertidos para controlar el sesgo de aquiescencia.',
-      });
-    }
-    if (counts.likertPerTrait > items.length) {
-      warnings.push({
-        level: 'warning',
-        scope: trait,
-        message: `Se piden ${counts.likertPerTrait} ítems por sesión y solo hay ${items.length} activos.`,
+        message: 'Todas las preguntas están redactadas en el mismo sentido. Conviene marcar algunas como invertidas, porque hay gente que tiende a decir que sí a todo.',
       });
     }
   }
@@ -235,7 +248,7 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
     warnings.push({
       level: 'warning',
       scope: 'sjt',
-      message: 'Con menos de 5 escenarios el puntaje de juicio situacional es muy inestable.',
+      message: 'Con menos de 5 escenarios el puntaje de juicio situacional varía demasiado de un candidato a otro.',
     });
   }
 
@@ -250,7 +263,7 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
     warnings.push({
       level: 'warning',
       scope: 'atencion',
-      message: 'Con menos de 2 controles de atención no se puede distinguir un descuido de una respuesta al azar.',
+      message: 'Con menos de 2 preguntas de control no se puede distinguir un descuido de alguien que responde sin leer.',
     });
   }
 
@@ -267,7 +280,7 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
       warnings.push({
         level: 'warning',
         scope: scale,
-        message: 'Se recomiendan al menos 3 ítems para que la escala sea interpretable.',
+        message: 'Se recomiendan al menos 3 preguntas para que esta escala de control sirva de algo.',
       });
     }
   }
@@ -277,7 +290,7 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
     warnings.push({
       level: 'error',
       scope: 'ponderacion',
-      message: 'Todos los pesos están en 0: el score compuesto no se puede calcular.',
+      message: 'Todos los pesos están en 0, así que no se puede calcular el puntaje general.',
     });
   }
 

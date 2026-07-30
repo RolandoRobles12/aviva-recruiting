@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBankFix, validateBank } from '../src/lib/bankValidation';
+import { RECOMMENDED_PER_TRAIT, applyBankFix, validateBank } from '../src/lib/bankValidation';
 import {
   PSYCHOMETRIC_TRAITS,
   type PsychometricQuestion,
@@ -105,7 +105,7 @@ describe('validateBank', () => {
     const errors = issues.filter((issue) => issue.level === 'error');
 
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain('Se aplican 2 ítems por rasgo');
+    expect(errors[0].message).toContain('responde 2 preguntas por rasgo');
     expect(errors[0].anchor).toEqual({ kind: 'config', field: 'likertPerTrait' });
     expect(errors[0].fix?.id).toBe('aplicar_minimo_por_rasgo');
     // And it must not point the blame at the traits.
@@ -123,12 +123,64 @@ describe('validateBank', () => {
     expect(validateBank(healthyBank(), fixed).filter((i) => i.level === 'error')).toEqual([]);
   });
 
+  it('reports a cap below the recommended size once, pointing at the setting', () => {
+    // Reported case: a full bank (20 per trait) with the cap at 4 produced five
+    // identical suggestions, each linking to a trait whose questions were fine.
+    const issues = validateBank(
+      healthyBank(20),
+      config({ questionCounts: { ...config().questionCounts, likertPerTrait: 4 } })
+    );
+    const warnings = issues.filter((issue) => issue.level === 'warning');
+
+    expect(issues.filter((issue) => issue.level === 'error')).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].anchor).toEqual({ kind: 'config', field: 'likertPerTrait' });
+    expect(warnings[0].fix?.id).toBe('aplicar_recomendado_por_rasgo');
+    // The traits are not at fault, so they must not be named.
+    for (const trait of PSYCHOMETRIC_TRAITS) {
+      expect(warnings[0].message).not.toContain(trait);
+    }
+  });
+
+  it('clears that suggestion once the recommended size is applied', () => {
+    const base = config({ questionCounts: { ...config().questionCounts, likertPerTrait: 4 } });
+    const warning = validateBank(healthyBank(20), base).find((issue) => issue.fix)!;
+    const fixed = applyBankFix(warning.fix!.id, base);
+
+    expect(fixed.questionCounts.likertPerTrait).toBe(RECOMMENDED_PER_TRAIT);
+    expect(validateBank(healthyBank(20), fixed)).toEqual([]);
+  });
+
+  it('blames the trait, not the cap, when the bank is what is short', () => {
+    // 5 questions available and no cap: adding questions is the actual remedy.
+    const issues = validateBank(
+      healthyBank(5),
+      config({ questionCounts: { ...config().questionCounts, likertPerTrait: 0 } })
+    );
+    const warnings = issues.filter((issue) => issue.level === 'warning');
+
+    expect(warnings).toHaveLength(PSYCHOMETRIC_TRAITS.length);
+    expect(warnings[0].message).toContain('5 preguntas activas');
+    expect(warnings[0].anchor).toMatchObject({ kind: 'section' });
+  });
+
+  it('keeps the wording free of statistical jargon', () => {
+    const issues = validateBank(
+      healthyBank(5),
+      config({ questionCounts: { ...config().questionCounts, likertPerTrait: 4 } })
+    );
+    const text = issues.map((issue) => issue.message).join(' ').toLowerCase();
+    for (const term of ['consistencia interna', 'aquiescencia', '.70', 'ítems']) {
+      expect(text, `no deberia decir "${term}"`).not.toContain(term);
+    }
+  });
+
   it('still blames the trait when the bank itself is short', () => {
     const issues = validateBank(healthyBank(2), config({ questionCounts: { ...config().questionCounts, likertPerTrait: 0 } }));
     const errors = issues.filter((issue) => issue.level === 'error');
 
     expect(errors).toHaveLength(PSYCHOMETRIC_TRAITS.length);
-    expect(errors[0].message).toContain('2 ítems activos');
+    expect(errors[0].message).toContain('2 preguntas activas');
     expect(errors[0].anchor).toMatchObject({ kind: 'section' });
   });
 
@@ -136,7 +188,7 @@ describe('validateBank', () => {
     const bank = healthyBank().filter((q) => !(q.type === 'likert' && q.scale === 'integridad'));
     const errors = validateBank(bank, config()).filter((issue) => issue.level === 'error');
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain('no tiene ítems activos');
+    expect(errors[0].message).toContain('no tiene preguntas activas');
     expect(errors[0].anchor).toEqual({ kind: 'section', section: 'integridad' });
   });
 
