@@ -107,6 +107,12 @@ const QUALITY: Record<
   },
 };
 
+/** Must match the exact string itemAnalysis.ts pushes for a thin sample. */
+const INSUFFICIENT_SAMPLE_MESSAGE = 'Muestra insuficiente para valorar el ítem.';
+
+/** How many items to show before offering "mostrar más". */
+const ITEMS_PAGE_SIZE = 20;
+
 /** Conventional reading of an internal-consistency coefficient. */
 function qualityOf(alpha: number | null): Quality {
   if (alpha === null) return 'sin_datos';
@@ -127,6 +133,9 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
   const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [showTechnical, setShowTechnical] = useState(false);
+  const [showPending, setShowPending] = useState(false);
+  const [visibleFlagged, setVisibleFlagged] = useState(ITEMS_PAGE_SIZE);
+  const [visiblePending, setVisiblePending] = useState(ITEMS_PAGE_SIZE);
 
   const load = () => {
     setLoading(true);
@@ -186,7 +195,18 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
     (PSYCHOMETRIC_SCORED_SCALES as string[]).includes(scale.scale)
   );
 
-  const problemItems = analysis.items.filter((item) => item.issues.length > 0);
+  // "Muestra insuficiente" is not a problem with the item — it is every item in
+  // a young bank, and lumping it in with real issues is what made this section
+  // list the entire bank as "needing review" after only a handful of sessions.
+  // Genuine issues (low discrimination, ceiling effect, a confusing attention
+  // check...) are never mixed with it — see itemAnalysis.ts — so a plain string
+  // match is enough to split the two.
+  const flaggedItems = analysis.items.filter((item) =>
+    item.issues.some((issue) => issue !== INSUFFICIENT_SAMPLE_MESSAGE)
+  );
+  const pendingItems = analysis.items.filter(
+    (item) => item.issues.length > 0 && item.issues.every((issue) => issue === INSUFFICIENT_SAMPLE_MESSAGE)
+  );
   const blockingProblems = warnings.filter((warning) => warning.level === 'error');
   const unreliableScales = reportedScales.filter((scale) => qualityOf(scale.alpha) === 'insuficiente');
   const measuringScales = reportedScales.filter((scale) =>
@@ -281,10 +301,10 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
                     impiden calificar bien.
                   </li>
                 )}
-                {problemItems.length > 0 && (
+                {flaggedItems.length > 0 && (
                   <li>
-                    {problemItems.length}{' '}
-                    {problemItems.length === 1 ? 'pregunta conviene revisarla' : 'preguntas conviene revisarlas'}.
+                    {flaggedItems.length}{' '}
+                    {flaggedItems.length === 1 ? 'pregunta conviene revisarla' : 'preguntas conviene revisarlas'}.
                   </li>
                 )}
               </ul>
@@ -396,51 +416,86 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
       <div className="card p-4 space-y-3">
         <div>
           <h4 className="text-xs font-semibold text-gray-900">
-            Preguntas que conviene revisar ({problemItems.length})
+            Preguntas con un problema detectado ({flaggedItems.length})
           </h4>
           <p className="text-xs text-gray-500 mt-0.5">
-            Preguntas que ocupan tiempo de la prueba sin aportar información: porque casi todos las
-            responden igual, o porque quien las contesta alto no coincide con el resto de su escala.
+            Ya tienen suficientes respuestas para juzgarlas, y algo falla: ocupan tiempo de la prueba
+            sin aportar información, porque casi todos las responden igual o porque quien las contesta
+            alto no coincide con el resto de su escala.
           </p>
         </div>
-        {problemItems.length === 0 ? (
+
+        {flaggedItems.length === 0 ? (
           <p className="text-xs text-gray-400">
             {analysis.sessionsAnalyzed === 0
               ? 'Se evaluarán en cuanto haya pruebas respondidas.'
-              : 'Ninguna pregunta presenta problemas con la información disponible.'}
+              : 'Ninguna pregunta con evidencia suficiente presenta problemas.'}
           </p>
         ) : (
-          <div className="space-y-2.5">
-            {problemItems.map((item) => (
-              <div key={item.id} className="border-b border-gray-50 pb-2.5 last:border-0 last:pb-0">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs text-gray-900">{item.text}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {item.scale ? labelFor(item.scale) : 'Control de atención'}
-                      {item.reverseScored ? ' · invertida' : ''} · respondida por {item.n} candidatos
-                    </p>
-                  </div>
-                  {onEditItem && (
-                    <button
-                      onClick={() => onEditItem(item.id)}
-                      className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 shrink-0"
-                      title="Abrir esta pregunta en el banco"
-                    >
-                      <PencilLine size={11} /> Editar
-                    </button>
-                  )}
-                </div>
-                <ul className="mt-1 space-y-0.5">
-                  {item.issues.map((issue, index) => (
-                    <li key={index} className="text-xs text-amber-700 flex items-start gap-1.5">
-                      <AlertTriangle size={11} className="shrink-0 mt-0.5" />
-                      {issue}
-                    </li>
+          <>
+            <div className="space-y-2.5">
+              {flaggedItems.slice(0, visibleFlagged).map((item) => (
+                <FlaggedItemRow key={item.id} item={item} onEditItem={onEditItem} />
+              ))}
+            </div>
+            {flaggedItems.length > visibleFlagged && (
+              <button
+                onClick={() => setVisibleFlagged((n) => n + ITEMS_PAGE_SIZE)}
+                className="w-full text-xs text-primary-600 hover:text-primary-700 pt-2 border-t border-gray-50"
+              >
+                Mostrar {Math.min(ITEMS_PAGE_SIZE, flaggedItems.length - visibleFlagged)} más (
+                {Math.min(visibleFlagged, flaggedItems.length)} de {flaggedItems.length})
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Everything else is just short on data, not a problem — collapsed by
+            default so it stops crowding out the items that actually need
+            attention. Early on this can be the whole bank (see screenshot from
+            the report that prompted this), which is exactly why it must not
+            share a list with genuine issues. */}
+        {pendingItems.length > 0 && (
+          <div className="pt-2.5 border-t border-gray-100">
+            <button
+              onClick={() => setShowPending((v) => !v)}
+              className="w-full flex items-center gap-1.5 text-left"
+            >
+              <ChevronRight
+                size={13}
+                className={`text-gray-400 shrink-0 transition-transform ${showPending ? 'rotate-90' : ''}`}
+              />
+              <span className="text-xs text-gray-500">
+                {pendingItems.length}{' '}
+                {pendingItems.length === 1
+                  ? 'pregunta más sin evidencia suficiente todavía'
+                  : 'preguntas más sin evidencia suficiente todavía'}{' '}
+                — no son un problema, solo faltan respuestas para poder juzgarlas
+              </span>
+            </button>
+            {showPending && (
+              <>
+                <div className="space-y-1.5 pt-2.5">
+                  {pendingItems.slice(0, visiblePending).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-gray-600 truncate min-w-0">{item.text}</span>
+                      <span className="text-gray-400 shrink-0">
+                        {item.n} {item.n === 1 ? 'respuesta' : 'respuestas'}
+                      </span>
+                    </div>
                   ))}
-                </ul>
-              </div>
-            ))}
+                </div>
+                {pendingItems.length > visiblePending && (
+                  <button
+                    onClick={() => setVisiblePending((n) => n + ITEMS_PAGE_SIZE)}
+                    className="w-full text-xs text-primary-600 hover:text-primary-700 pt-2 mt-1.5 border-t border-gray-50"
+                  >
+                    Mostrar {Math.min(ITEMS_PAGE_SIZE, pendingItems.length - visiblePending)} más (
+                    {Math.min(visiblePending, pendingItems.length)} de {pendingItems.length})
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -551,9 +606,13 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
               )}
             </div>
 
-            {problemItems.length > 0 && (
+            {flaggedItems.length > 0 && (
               <div className="space-y-2 pt-3 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700">Estadísticos de los ítems marcados</p>
+                <p className="text-xs text-gray-400">
+                  Solo las preguntas con un problema detectado — las que aún no tienen evidencia
+                  suficiente no aparecen aquí.
+                </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -575,7 +634,7 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
                       </tr>
                     </thead>
                     <tbody>
-                      {problemItems.map((item) => (
+                      {flaggedItems.map((item) => (
                         <tr key={item.id} className="border-b border-gray-50">
                           <td className="py-1.5 pr-3 text-gray-700 max-w-xs truncate" title={item.text}>
                             {item.text}
@@ -605,6 +664,46 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
         como no confiables se dejan fuera de todos los cálculos: incluirlas haría parecer malas a
         preguntas que funcionan bien.
       </p>
+    </div>
+  );
+}
+
+/** One item flagged with a genuine, actionable problem — text, stats, and an edit link. */
+function FlaggedItemRow({
+  item,
+  onEditItem,
+}: {
+  item: PsychometricItemAnalysis;
+  onEditItem?: (questionId: string) => void;
+}) {
+  return (
+    <div className="border-b border-gray-50 pb-2.5 last:border-0 last:pb-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-gray-900">{item.text}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {item.scale ? labelFor(item.scale) : 'Control de atención'}
+            {item.reverseScored ? ' · invertida' : ''} · respondida por {item.n} candidatos
+          </p>
+        </div>
+        {onEditItem && (
+          <button
+            onClick={() => onEditItem(item.id)}
+            className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 shrink-0"
+            title="Abrir esta pregunta en el banco"
+          >
+            <PencilLine size={11} /> Editar
+          </button>
+        )}
+      </div>
+      <ul className="mt-1 space-y-0.5">
+        {item.issues.map((issue, index) => (
+          <li key={index} className="text-xs text-amber-700 flex items-start gap-1.5">
+            <AlertTriangle size={11} className="shrink-0 mt-0.5" />
+            {issue}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
