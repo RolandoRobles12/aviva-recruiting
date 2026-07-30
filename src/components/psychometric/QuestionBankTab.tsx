@@ -52,6 +52,14 @@ const LIKERT_VALUE_LABELS = [
 
 const SJT_SCORE_OPTIONS = [0, 1, 2, 3];
 
+/**
+ * Rough pacing used only to sanity-check the time limit against the test that
+ * was just configured: a Likert/quality item is a one-line agree-disagree read,
+ * an SJT scenario is a short case that has to be read and ranked.
+ */
+const SECONDS_PER_LIKERT_ITEM = 15;
+const SECONDS_PER_SJT_SCENARIO = 45;
+
 /** Section keys: one per Likert scale, plus the two non-Likert groups. */
 type SectionKey = PsychometricLikertScale | 'atencion' | 'sjt';
 
@@ -1095,6 +1103,23 @@ function ConfigPanel({
     count: counts.traits[index] ?? 0,
   }));
 
+  // The time limit used to be a bare number with nothing relating it to the
+  // test that was just configured. These estimate how long the session really
+  // takes so "30 minutos" can be judged instead of guessed.
+  const estimatedSeconds =
+    (traitTotal + qualityApplied) * SECONDS_PER_LIKERT_ITEM + sjtApplied * SECONDS_PER_SJT_SCENARIO;
+  const estimatedMinutes = Math.ceil(estimatedSeconds / 60);
+  const secondsPerItem =
+    totalItems > 0 && config.timeLimitMinutes > 0
+      ? Math.round((config.timeLimitMinutes * 60) / totalItems)
+      : 0;
+  const timeIsTight = config.timeLimitMinutes > 0 && totalItems > 0 && config.timeLimitMinutes < estimatedMinutes;
+
+  const weightSum = PSYCHOMETRIC_SCORED_SCALES.reduce(
+    (sum, scale) => sum + (Number(config.weights[scale]) || 0),
+    0,
+  );
+
   const setCounts = (patch: Partial<PsychometricTestConfig['questionCounts']>) =>
     setConfig({ ...config, questionCounts: { ...config.questionCounts, ...patch } });
 
@@ -1105,7 +1130,8 @@ function ConfigPanel({
         <div>
           <h4 className="text-xs font-semibold text-gray-900">Preguntas aplicadas por sesión</h4>
           <p className="text-xs text-gray-500 mt-0.5">
-            En 0 se aplican todas las activas. Con un número, cada sesión toma esa cantidad al azar.
+            Cada campo toma esa cantidad al azar del banco activo; en <strong>0</strong> se aplican
+            todas las disponibles. Debajo de cada uno se indica cuántas quedan aplicadas.
           </p>
         </div>
 
@@ -1127,7 +1153,7 @@ function ConfigPanel({
               'sjt',
               <CountField
                 label="Escenarios SJT"
-                hint={`Disponibles: ${counts.sjt}`}
+                available={counts.sjt}
                 value={config.questionCounts.sjt}
                 onChange={(sjt) => setCounts({ sjt })}
                 recommended={RECOMMENDED_SJT_SCENARIOS}
@@ -1152,7 +1178,7 @@ function ConfigPanel({
               'deseabilidadSocial',
               <CountField
                 label="Deseabilidad social"
-                hint={`Disponibles: ${counts.deseabilidad}`}
+                available={counts.deseabilidad}
                 value={config.questionCounts.deseabilidadSocial}
                 onChange={(deseabilidadSocial) => setCounts({ deseabilidadSocial })}
               />
@@ -1161,7 +1187,7 @@ function ConfigPanel({
               'infrecuencia',
               <CountField
                 label="Infrecuencia"
-                hint={`Disponibles: ${counts.infrecuencia}`}
+                available={counts.infrecuencia}
                 value={config.questionCounts.infrecuencia}
                 onChange={(infrecuencia) => setCounts({ infrecuencia })}
               />
@@ -1170,7 +1196,7 @@ function ConfigPanel({
               'atencion',
               <CountField
                 label="Controles de atención"
-                hint={`Disponibles: ${counts.atencion}`}
+                available={counts.atencion}
                 value={config.questionCounts.atencion}
                 onChange={(atencion) => setCounts({ atencion })}
                 recommended={2}
@@ -1179,17 +1205,30 @@ function ConfigPanel({
           </div>
         </div>
 
-        <div className="pt-3 border-t border-gray-100">
-          <label className="text-xs text-gray-600 space-y-1 block max-w-[10rem]">
+        {/* Time limit sits next to its own consequence: on its own it was a
+            number with nothing to judge it against. */}
+        <div className="pt-3 border-t border-gray-100 flex flex-wrap items-start gap-4">
+          <label className="text-xs text-gray-600 space-y-1 block w-[10rem] shrink-0">
             Tiempo límite (minutos)
             <input
               type="number"
               min={1}
               value={config.timeLimitMinutes}
               onChange={(e) => setConfig({ ...config, timeLimitMinutes: Number(e.target.value) })}
-              className="input-field text-xs py-1.5 w-full"
+              className={`input-field text-xs py-1.5 w-full ${timeIsTight ? 'border-amber-300' : ''}`}
             />
           </label>
+          {totalItems > 0 && (
+            <div className="text-xs space-y-0.5 pt-4">
+              <p className={timeIsTight ? 'text-amber-600' : 'text-gray-500'}>
+                Da <strong>{secondsPerItem} s por pregunta</strong> para {totalItems} preguntas.
+              </p>
+              <p className="text-gray-400">
+                Se estiman ~{estimatedMinutes} min a ritmo normal
+                {timeIsTight ? ': el límite puede quedar corto.' : '.'}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 space-y-1">
@@ -1216,23 +1255,37 @@ function ConfigPanel({
         {field(
           'weights',
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {PSYCHOMETRIC_SCORED_SCALES.map((scale) => (
-            <label key={scale} className="text-xs text-gray-600 space-y-1">
-              {PSYCHOMETRIC_SCALE_LABELS[scale]}
-              <input
-                type="number"
-                step={0.05}
-                min={0}
-                max={1}
-                value={config.weights[scale]}
-                onChange={(e) =>
-                  setConfig({ ...config, weights: { ...config.weights, [scale]: Number(e.target.value) } })
-                }
-                className="input-field text-xs py-1.5 w-full"
-              />
-            </label>
-          ))}
+          {PSYCHOMETRIC_SCORED_SCALES.map((scale) => {
+            const weight = Number(config.weights[scale]) || 0;
+            // The copy above promises normalisation but the panel never showed
+            // the result, so "0.25" gave no idea of its real share.
+            const share = weightSum > 0 ? Math.round((weight / weightSum) * 100) : 0;
+            return (
+              <label key={scale} className="text-xs text-gray-600 space-y-1">
+                {PSYCHOMETRIC_SCALE_LABELS[scale]}
+                <input
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  max={1}
+                  value={config.weights[scale]}
+                  onChange={(e) =>
+                    setConfig({ ...config, weights: { ...config.weights, [scale]: Number(e.target.value) } })
+                  }
+                  className="input-field text-xs py-1.5 w-full"
+                />
+                <span className={`block ${weight === 0 ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {weightSum === 0 ? '—' : weight === 0 ? 'No cuenta en el score' : `${share}% del score`}
+                </span>
+              </label>
+            );
+          })}
           </div>
+        )}
+        {weightSum === 0 && (
+          <p className="text-xs text-amber-600">
+            Todos los pesos están en 0: el score compuesto no se puede calcular.
+          </p>
         )}
       </div>
 
@@ -1331,14 +1384,7 @@ function ConfigPanel({
           )}
           </div>
         )}
-        <p className="text-xs text-gray-400">
-          Con estos cortes absolutos:{' '}
-          <span className="text-red-600 font-medium">Bajo 0–{config.bandCutoffs.lowMax - 1}</span>,{' '}
-          <span className="text-amber-600 font-medium">
-            Medio {config.bandCutoffs.lowMax}–{config.bandCutoffs.highMin - 1}
-          </span>
-          , <span className="text-green-600 font-medium">Alto {config.bandCutoffs.highMin}–100</span>.
-        </p>
+        <BandPreview lowMax={config.bandCutoffs.lowMax} highMin={config.bandCutoffs.highMin} />
       </div>
     </div>
   );
@@ -1363,73 +1409,151 @@ function TraitCountField({
   total: number;
 }) {
   const belowRecommended = value > 0 && value < RECOMMENDED_PER_TRAIT;
+  // A trait with fewer items than requested silently contributes less than the
+  // others — worth flagging on the trait itself, not just in the total.
+  const cappedTraits = value > 0 ? traits.filter((trait) => trait.count < value) : [];
   return (
     <div className="text-xs text-gray-600 space-y-1.5">
       <label className="block space-y-1">
-        Ítems Likert por rasgo (0 = todos)
+        Ítems Likert por rasgo
         <input
           type="number"
           min={0}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
           className={`input-field text-xs py-1.5 w-full max-w-[10rem] ${
-            belowRecommended ? 'border-amber-300' : ''
+            belowRecommended || cappedTraits.length > 0 ? 'border-amber-300' : ''
           }`}
         />
       </label>
       <p className="text-gray-400">
-        Se aplica a cada uno de los 5 rasgos → <strong className="text-gray-700">{total} preguntas de personalidad</strong> en
-        total.
+        Se aplica a cada uno de los {traits.length} rasgos →{' '}
+        <strong className="text-gray-700">{total} preguntas de personalidad</strong> en total.
         {belowRecommended && (
           <span className="text-amber-600"> Se recomiendan {RECOMMENDED_PER_TRAIT} o más por rasgo.</span>
         )}
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 pt-0.5">
-        {traits.map((trait) => (
-          <div
-            key={trait.key}
-            className={`flex items-center justify-between gap-2 ${
-              trait.count < RECOMMENDED_PER_TRAIT ? 'text-amber-600' : 'text-gray-400'
-            }`}
-          >
-            <span className="truncate">{trait.label}</span>
-            <span className="shrink-0 font-medium">{trait.count}</span>
-          </div>
-        ))}
+      {/* Applied vs available per trait: the bare availability number sat next
+          to a different number in the input and read as a contradiction. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 pt-0.5">
+        {traits.map((trait) => {
+          const applied = value <= 0 ? trait.count : Math.min(value, trait.count);
+          const short = applied < value || trait.count < RECOMMENDED_PER_TRAIT;
+          return (
+            <div
+              key={trait.key}
+              className={`flex items-baseline justify-between gap-2 ${
+                short ? 'text-amber-600' : 'text-gray-400'
+              }`}
+            >
+              <span className="min-w-0 break-words">{trait.label}</span>
+              <span className="shrink-0 font-medium tabular-nums">
+                {applied}
+                <span className="font-normal text-gray-400"> / {trait.count}</span>
+              </span>
+            </div>
+          );
+        })}
       </div>
+      {cappedTraits.length > 0 && (
+        <p className="text-amber-600">
+          {cappedTraits.length === 1
+            ? `${cappedTraits[0].label} solo tiene ${cappedTraits[0].count} preguntas activas: aporta menos que los demás rasgos.`
+            : `${cappedTraits.length} rasgos tienen menos de ${value} preguntas activas: aportan menos que los demás.`}
+        </p>
+      )}
     </div>
   );
 }
 
+/**
+ * Turns the stored value into what the session will actually apply. The panel
+ * used to show a bare "Disponibles: 23" and leave the arithmetic — including
+ * the "0 = todos" rule and the silent cap when the number exceeds the pool —
+ * for the reader to do.
+ */
+function resolveApplied(
+  value: number,
+  available: number,
+): { note: string; capped: boolean } {
+  if (available === 0) return { note: 'No hay preguntas activas de este tipo.', capped: true };
+  if (value <= 0) return { note: `Se aplican las ${available} disponibles.`, capped: false };
+  if (value > available) {
+    return { note: `Solo hay ${available} disponibles: se aplican ${available}.`, capped: true };
+  }
+  return { note: `Se aplican ${value} de ${available} disponibles.`, capped: false };
+}
+
 function CountField({
   label,
-  hint,
+  available,
   value,
   onChange,
   recommended,
 }: {
   label: string;
-  hint: string;
+  available: number;
   value: number;
   onChange: (value: number) => void;
   /** Below this the count is valid but the score gets noticeably noisier. */
   recommended?: number;
 }) {
+  const { note, capped } = resolveApplied(value, available);
   const belowRecommended = recommended !== undefined && value > 0 && value < recommended;
   return (
     <label className="text-xs text-gray-600 space-y-1">
-      {label} (0 = todos)
+      {label}
       <input
         type="number"
         min={0}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className={`input-field text-xs py-1.5 w-full ${belowRecommended ? 'border-amber-300' : ''}`}
+        className={`input-field text-xs py-1.5 w-full ${
+          belowRecommended || capped ? 'border-amber-300' : ''
+        }`}
       />
-      <span className="block text-gray-400">{hint}</span>
+      <span className={`block ${capped ? 'text-amber-600' : 'text-gray-400'}`}>{note}</span>
       {belowRecommended && (
         <span className="block text-amber-600">Se recomiendan {recommended} o más.</span>
       )}
     </label>
+  );
+}
+
+/**
+ * The band cutoffs as a proportional bar: the same three numbers, but the
+ * relative width of each band is readable at a glance instead of being
+ * reconstructed from a sentence.
+ */
+function BandPreview({ lowMax, highMin }: { lowMax: number; highMin: number }) {
+  const valid = lowMax > 0 && highMin > lowMax && highMin <= 100;
+  if (!valid) {
+    return (
+      <p className="text-xs text-amber-600">
+        Los cortes se traslapan: el corte "alto" ({highMin}) debe ser mayor que el "bajo" ({lowMax}).
+      </p>
+    );
+  }
+  const segments = [
+    { label: 'Bajo', range: `0–${lowMax - 1}`, width: lowMax, className: 'bg-red-500' },
+    { label: 'Medio', range: `${lowMax}–${highMin - 1}`, width: highMin - lowMax, className: 'bg-amber-500' },
+    { label: 'Alto', range: `${highMin}–100`, width: 100 - highMin, className: 'bg-green-500' },
+  ];
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
+        {segments.map((segment) => (
+          <div key={segment.label} className={segment.className} style={{ width: `${segment.width}%` }} />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+        {segments.map((segment) => (
+          <span key={segment.label} className="flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full ${segment.className}`} />
+            {segment.label} {segment.range}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
