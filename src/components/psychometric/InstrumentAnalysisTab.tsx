@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BarChart3, RefreshCw, RotateCcw } from 'lucide-react';
+import { AlertTriangle, BarChart3, PencilLine, RefreshCw, RotateCcw } from 'lucide-react';
 import {
   analyzePsychometricBank,
   resetPsychometricNorms,
@@ -46,7 +46,12 @@ const NORM_STATUS_COPY: Record<PsychometricNormSummary['status'], { label: strin
   estable: { label: 'Estable', className: 'text-green-600' },
 };
 
-export function InstrumentAnalysisTab() {
+export interface InstrumentAnalysisTabProps {
+  /** Jump to an item's editor in the bank tab. */
+  onEditItem?: (questionId: string) => void;
+}
+
+export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps = {}) {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -258,7 +263,18 @@ export function InstrumentAnalysisTab() {
           <div className="space-y-2">
             {problemItems.map((item) => (
               <div key={item.id} className="border-b border-gray-50 pb-2 last:border-0">
-                <p className="text-xs text-gray-900">{item.text}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs text-gray-900">{item.text}</p>
+                  {onEditItem && (
+                    <button
+                      onClick={() => onEditItem(item.id)}
+                      className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 shrink-0"
+                      title="Abrir este ítem en el banco de preguntas"
+                    >
+                      <PencilLine size={11} /> Editar
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {item.scale ? labelFor(item.scale) : 'Control de atención'}
                   {item.reverseScored ? ' · invertido' : ''} · n = {item.n}
