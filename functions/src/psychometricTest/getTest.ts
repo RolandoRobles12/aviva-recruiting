@@ -1,15 +1,61 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { db } from '../utils/admin';
-import { shuffle, PSYCHOMETRIC_TRAITS, type PsychometricQuestion } from './scoring';
-import { getQuestionBank, getOrSeedConfig } from './bankStore';
+import { getOrSeedConfig, getQuestionBank } from './bankStore';
+import { assembleTest } from './sampling';
+import { findSessionByToken } from './sessionStore';
+import {
+  appliedQuestionsOf,
+  deadlineOf,
+  expiresAtOf,
+  optionOrdersOf,
+  progressAnswersOf,
+  startedAtOf,
+  timeLimitOf,
+} from './sessionData';
+import { sanitizeAnswers } from './scoring';
+import type { PsychometricQuestion } from './types';
 
-/** Sample `count` items at random (0 = keep all). Clamps to what's available. */
-function sample<T>(list: T[], count: number): T[] {
-  if (!count || count <= 0 || count >= list.length) return list;
-  return shuffle(list).slice(0, count);
+export type TestSection = 'personalidad' | 'escenarios';
+
+/**
+ * The candidate-facing shape of a question. Scale membership, keying and option
+ * scores never leave the server: with them, the "right" answers are trivial to
+ * work out from the payload.
+ */
+interface PublicQuestion {
+  id: string;
+  type: 'likert' | 'attention' | 'sjt';
+  text: string;
+  section: TestSection;
+  options?: string[];
 }
 
-/** Public endpoint: fetch (and start, if not yet started) a psychometric test session by token. */
+function toPublicQuestion(
+  question: PsychometricQuestion,
+  optionOrders: Record<string, number[]>
+): PublicQuestion {
+  if (question.type === 'sjt') {
+    const order = optionOrders[question.id] ?? question.options.map((_, index) => index);
+    return {
+      id: question.id,
+      type: 'sjt',
+      text: question.text,
+      section: 'escenarios',
+      options: order.map((index) => question.options[index]?.text ?? '').filter(Boolean),
+    };
+  }
+  return { id: question.id, type: question.type, text: question.text, section: 'personalidad' };
+}
+
+/**
+ * Public endpoint: fetch (and start, if not yet started) a psychometric test
+ * session by token.
+ *
+ * On the first open the session freezes a full snapshot of the questions it will
+ * apply — not just their ids — so editing the bank while somebody is mid-test
+ * cannot change what they are scored on. On a later open it resumes: same
+ * questions, same option order, the answers already saved, and the remaining
+ * time measured from the server-assigned start.
+ */
 export const getPsychometricTest = onRequest(
   { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 60 },
   async (req, res) => {
@@ -25,14 +71,13 @@ export const getPsychometricTest = onRequest(
     }
 
     try {
-      const snap = await db.collection('psychometric_sessions').where('token', '==', token).limit(1).get();
-      if (snap.empty) {
+      const found = await findSessionByToken(token);
+      if (!found) {
         res.status(404).json({ ok: false, error: 'No se encontró la prueba. Verifica tu enlace.' });
         return;
       }
 
-      const sessionRef = snap.docs[0].ref;
-      const session = snap.docs[0].data();
+      const { ref: sessionRef, data: session } = found;
       const now = new Date();
 
       if (session.status === 'completed') {
@@ -44,7 +89,7 @@ export const getPsychometricTest = onRequest(
         return;
       }
 
-      const linkExpiresAt = session.expiresAt?.toDate?.() as Date | undefined;
+      const linkExpiresAt = expiresAtOf(session);
       if (session.status === 'pending' && linkExpiresAt && now > linkExpiresAt) {
         await sessionRef.update({ status: 'expired' });
         res.status(410).json({ ok: false, error: 'Este enlace ha expirado. Solicita uno nuevo.' });
@@ -52,73 +97,87 @@ export const getPsychometricTest = onRequest(
       }
 
       const config = await getOrSeedConfig();
-      const timeLimitMinutes = (session.timeLimitMinutes as number) || config.timeLimitMinutes;
+      const timeLimitMinutes = timeLimitOf(session, config);
 
-      let questionOrder = session.questionOrder as string[] | undefined;
-      let optionOrders = session.optionOrders as Record<string, number[]> | undefined;
-      let startedAt = session.startedAt?.toDate?.() as Date | undefined;
+      // peek=1 reads the session without starting it, so the instructions screen
+      // can state the real time limit and length instead of a hardcoded guess.
+      // Starting the timer must stay tied to the candidate pressing "Comenzar".
+      if (req.query['peek'] === '1') {
+        const bank = await getQuestionBank();
+        const planned = assembleTest(bank, config).questions.length;
+        res.status(200).json({
+          ok: true,
+          preview: {
+            candidateName: session.candidateName as string,
+            timeLimitMinutes,
+            totalQuestions: planned,
+            alreadyStarted: session.status === 'in_progress',
+          },
+        });
+        return;
+      }
 
-      if (session.status === 'in_progress' && startedAt) {
-        const elapsedMs = now.getTime() - startedAt.getTime();
-        if (elapsedMs > timeLimitMinutes * 60 * 1000) {
+      if (session.status === 'in_progress') {
+        const deadline = deadlineOf(session, config);
+        if (deadline && now > deadline) {
           await sessionRef.update({ status: 'expired' });
           res.status(410).json({ ok: false, error: 'El tiempo para responder la prueba ha terminado.' });
           return;
         }
       }
 
-      const bank = await getQuestionBank();
-      const enabled = bank.filter((q) => q.enabled);
+      const alreadyStarted =
+        session.status === 'in_progress' &&
+        Array.isArray(session.questionOrder) &&
+        (session.questionOrder as string[]).length > 0;
 
-      if (enabled.length === 0) {
-        res.status(503).json({ ok: false, error: 'No hay preguntas configuradas todavía. Contacta al equipo de reclutamiento.' });
-        return;
-      }
+      let questions: PsychometricQuestion[];
+      let optionOrders: Record<string, number[]>;
+      let startedAt: Date | undefined;
 
-      const byId = new Map(enabled.map((q) => [q.id, q]));
-
-      if (session.status === 'pending' || !questionOrder?.length) {
-        // First open — sample the pool per config.questionCounts (0 = use all
-        // enabled), then freeze the randomized order for the rest of the session.
-        const likertPerTrait = config.questionCounts?.likertPerTrait ?? 0;
-        const sjtCount = config.questionCounts?.sjt ?? 0;
-        const selectedLikert = PSYCHOMETRIC_TRAITS.flatMap((trait) =>
-          sample(enabled.filter((q) => q.type === 'likert' && q.trait === trait), likertPerTrait)
-        );
-        const selectedSjt = sample(enabled.filter((q) => q.type === 'sjt'), sjtCount);
-        const selected = [...selectedLikert, ...selectedSjt];
-
-        questionOrder = shuffle(selected.map((q) => q.id));
-        optionOrders = {};
-        for (const q of selected) {
-          if (q.type === 'sjt') {
-            optionOrders[q.id] = shuffle(q.options.map((_, i) => i));
-          }
+      if (alreadyStarted) {
+        const bank = await getQuestionBank();
+        questions = appliedQuestionsOf(session, bank);
+        optionOrders = optionOrdersOf(session);
+        startedAt = startedAtOf(session);
+      } else {
+        const bank = await getQuestionBank();
+        const assembled = assembleTest(bank, config);
+        if (assembled.questions.length === 0) {
+          res.status(503).json({
+            ok: false,
+            error: 'No hay preguntas configuradas todavía. Contacta al equipo de reclutamiento.',
+          });
+          return;
         }
+
+        questions = assembled.questions;
+        optionOrders = assembled.optionOrders;
         startedAt = now;
+
         await sessionRef.update({
           status: 'in_progress',
           startedAt: now,
-          questionOrder,
+          questionOrder: questions.map((question) => question.id),
+          // Snapshot of the exact items applied, so scoring is independent of
+          // any later change to the bank.
+          appliedQuestions: questions,
           optionOrders,
+          configSnapshot: config,
         });
       }
 
-      const questions = questionOrder
-        .map((id) => byId.get(id))
-        .filter((q): q is PsychometricQuestion => !!q)
-        .map((q) => {
-          if (q.type === 'likert') {
-            return { id: q.id, type: 'likert' as const, text: q.text };
-          }
-          const order = optionOrders?.[q.id] ?? q.options.map((_, i) => i);
-          return {
-            id: q.id,
-            type: 'sjt' as const,
-            text: q.text,
-            options: order.map((origIdx) => q.options[origIdx].text),
-          };
+      if (questions.length === 0) {
+        res.status(503).json({
+          ok: false,
+          error: 'La prueba no tiene preguntas disponibles. Contacta al equipo de reclutamiento.',
         });
+        return;
+      }
+
+      // Only hand back answers that still match a question in the session, so a
+      // resumed test cannot be restored into an inconsistent state.
+      const saved = sanitizeAnswers(questions, progressAnswersOf(session), optionOrders).answers;
 
       res.status(200).json({
         ok: true,
@@ -126,7 +185,11 @@ export const getPsychometricTest = onRequest(
           candidateName: session.candidateName as string,
           timeLimitMinutes,
           startedAtIso: startedAt?.toISOString(),
-          questions,
+          // Lets the client correct for a device clock that is off, instead of
+          // trusting Date.now() to agree with the server about the deadline.
+          serverNowIso: now.toISOString(),
+          questions: questions.map((question) => toPublicQuestion(question, optionOrders)),
+          savedAnswers: saved.map(({ questionId, value }) => ({ questionId, value })),
         },
       });
     } catch (err) {

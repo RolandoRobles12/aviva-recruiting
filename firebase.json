@@ -10,6 +10,7 @@
       { "source": "/api/analyzePdfTemplate", "function": "analyzePdfTemplate" },
       { "source": "/api/getPsychometricTest", "function": "getPsychometricTest" },
       { "source": "/api/submitPsychometricTest", "function": "submitPsychometricTest" },
+      { "source": "/api/savePsychometricProgress", "function": "savePsychometricProgress" },
       {
         "source": "**",
         "destination": "/index.html"

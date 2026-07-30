@@ -25,3 +25,9 @@ export { dailyPerformanceCheck } from './performance/performanceCheck';
 export { backfillPerformanceChecks } from './performance/backfillPerformanceChecks';
 export { getPsychometricTest } from './psychometricTest/getTest';
 export { submitPsychometricTest } from './psychometricTest/submitTest';
+export { savePsychometricProgress } from './psychometricTest/saveProgress';
+export {
+  seedPsychometricBank,
+  analyzePsychometricBank,
+  resetPsychometricNorms,
+} from './psychometricTest/adminTools';
