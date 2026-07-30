@@ -80,3 +80,74 @@ export const appendSheetsRowManual = httpsCallable<
   { candidateId: string },
   { success: boolean }
 >(functions, 'appendSheetsRowManual');
+
+// ─── Psychometric administration ──────────────────────────────────────────────
+
+export const seedPsychometricBank = httpsCallable<
+  { mode?: 'append' | 'replace'; applyConfig?: boolean },
+  { added: number; skipped: number; total: number; configApplied: boolean }
+>(functions, 'seedPsychometricBank');
+
+export interface PsychometricScaleAnalysis {
+  scale: string;
+  itemsInBank: number;
+  itemsAnalyzed: number;
+  n: number;
+  mean: number | null;
+  sd: number | null;
+  alpha: number | null;
+  minPairwiseN: number | null;
+  notes: string[];
+}
+
+export interface PsychometricItemAnalysis {
+  id: string;
+  text: string;
+  type: 'likert' | 'attention' | 'sjt';
+  scale?: string;
+  reverseScored?: boolean;
+  n: number;
+  mean: number | null;
+  sd: number | null;
+  itemTotalCorrelation: number | null;
+  optionDistribution?: { text: string; score: number; share: number }[];
+  passRate?: number;
+  issues: string[];
+}
+
+export interface PsychometricBankWarning {
+  level: 'error' | 'warning';
+  scope: string;
+  message: string;
+}
+
+export interface PsychometricNormSummary {
+  key: string;
+  n: number;
+  mean: number | null;
+  sd: number | null;
+  status: 'sin_datos' | 'provisional' | 'estable';
+}
+
+export const analyzePsychometricBank = httpsCallable<
+  Record<string, never>,
+  {
+    analysis: {
+      sessionsAnalyzed: number;
+      sessionsExcluded: number;
+      scales: PsychometricScaleAnalysis[];
+      items: PsychometricItemAnalysis[];
+      generatedAtIso: string;
+    };
+    warnings: PsychometricBankWarning[];
+    norms: PsychometricNormSummary[];
+    thresholds: { provisional: number; stable: number };
+    sessionsRead: number;
+    truncated: boolean;
+  }
+>(functions, 'analyzePsychometricBank');
+
+export const resetPsychometricNorms = httpsCallable<Record<string, never>, { ok: boolean }>(
+  functions,
+  'resetPsychometricNorms'
+);

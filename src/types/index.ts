@@ -232,42 +232,87 @@ export interface Candidate {
 }
 
 // ─── Psychometric Test (standalone module — not yet linked to Candidate) ──────
+// Mirrors functions/src/psychometricTest/types.ts, which is the canonical shape
+// (all scoring happens server-side). Keep both files in step.
 
-/** Personality traits scored by the Likert item bank (IPIP-style, adapted to Spanish). */
+/** Traits scored by the Likert item bank (IPIP-style items adapted to Spanish). */
 export type PsychometricTrait =
   | 'responsabilidad'
   | 'estabilidad_emocional'
   | 'extraversion'
-  | 'amabilidad';
+  | 'amabilidad'
+  | 'integridad';
 
 export const PSYCHOMETRIC_TRAITS: PsychometricTrait[] = [
   'responsabilidad',
   'estabilidad_emocional',
   'extraversion',
   'amabilidad',
+  'integridad',
 ];
+
+/** Likert scales that measure response style and never enter the profile. */
+export type PsychometricValidityScale = 'deseabilidad_social' | 'infrecuencia';
+
+export const PSYCHOMETRIC_VALIDITY_SCALES: PsychometricValidityScale[] = [
+  'deseabilidad_social',
+  'infrecuencia',
+];
+
+export type PsychometricLikertScale = PsychometricTrait | PsychometricValidityScale;
+
+export const PSYCHOMETRIC_LIKERT_SCALES: PsychometricLikertScale[] = [
+  ...PSYCHOMETRIC_TRAITS,
+  ...PSYCHOMETRIC_VALIDITY_SCALES,
+];
+
+/** Scales that appear as a score in the recruiter's report. */
+export type PsychometricScoredScale = PsychometricTrait | 'sjt';
+
+export const PSYCHOMETRIC_SCORED_SCALES: PsychometricScoredScale[] = [...PSYCHOMETRIC_TRAITS, 'sjt'];
 
 export const PSYCHOMETRIC_TRAIT_LABELS: Record<PsychometricTrait, string> = {
   responsabilidad: 'Responsabilidad',
   estabilidad_emocional: 'Estabilidad emocional',
   extraversion: 'Extraversión / Asertividad',
   amabilidad: 'Amabilidad / Orientación de servicio',
+  integridad: 'Integridad / Apego a normas',
+};
+
+export const PSYCHOMETRIC_SCALE_LABELS: Record<PsychometricLikertScale | 'sjt', string> = {
+  ...PSYCHOMETRIC_TRAIT_LABELS,
+  sjt: 'Juicio situacional',
+  deseabilidad_social: 'Deseabilidad social (validez)',
+  infrecuencia: 'Infrecuencia (validez)',
 };
 
 export interface PsychometricLikertQuestion {
   id: string;
   type: 'likert';
   text: string;
-  trait: PsychometricTrait;
-  /** true if a high score on this item means a LOW trait score (scored 6 - value) */
+  scale: PsychometricLikertScale;
+  /** Legacy field: pre-`scale` documents stored the trait here. */
+  trait?: PsychometricTrait;
+  /** true if agreeing with the item means a LOW scale score (scored 6 - value) */
   reverseScored: boolean;
+  enabled: boolean;
+  order: number;
+}
+
+/** Instructed-response check: the text says which option to pick. */
+export interface PsychometricAttentionQuestion {
+  id: string;
+  type: 'attention';
+  text: string;
+  /** The Likert value (1-5) the instruction asks for. */
+  expectedValue: number;
   enabled: boolean;
   order: number;
 }
 
 export interface PsychometricSjtOption {
   text: string;
-  /** 0 (menos deseable) a 2 (más deseable) */
+  /** Effectiveness of the response, 0 = least effective. Max is per-question. */
   score: number;
 }
 
@@ -276,20 +321,17 @@ export interface PsychometricSjtQuestion {
   type: 'sjt';
   text: string; // escenario
   options: PsychometricSjtOption[];
+  competency?: string;
   enabled: boolean;
   order: number;
 }
 
-export type PsychometricQuestion = PsychometricLikertQuestion | PsychometricSjtQuestion;
+export type PsychometricQuestion =
+  | PsychometricLikertQuestion
+  | PsychometricAttentionQuestion
+  | PsychometricSjtQuestion;
 
-export interface PsychometricTraitWeights {
-  responsabilidad: number;
-  estabilidad_emocional: number;
-  extraversion: number;
-  amabilidad: number;
-  /** peso del score de juicio situacional en el compuesto */
-  sjt: number;
-}
+export type PsychometricScaleWeights = Record<PsychometricScoredScale, number>;
 
 export interface PsychometricBandCutoffs {
   /** score < lowMax → banda "bajo" */
@@ -298,37 +340,102 @@ export interface PsychometricBandCutoffs {
   highMin: number;
 }
 
+/** Cutoffs used once local norms exist and scores become percentile-referenced. */
+export interface PsychometricPercentileCutoffs {
+  lowMaxPercentile: number;
+  highMinPercentile: number;
+}
+
 export interface PsychometricQuestionCounts {
   /** ítems Likert a aplicar POR RASGO en cada sesión. 0 = usar todos los habilitados. */
   likertPerTrait: number;
   /** escenarios SJT a aplicar por sesión. 0 = usar todos los habilitados. */
   sjt: number;
+  deseabilidadSocial: number;
+  infrecuencia: number;
+  atencion: number;
 }
 
 export interface PsychometricTestConfig {
-  weights: PsychometricTraitWeights;
+  weights: PsychometricScaleWeights;
   bandCutoffs: PsychometricBandCutoffs;
+  percentileCutoffs: PsychometricPercentileCutoffs;
   timeLimitMinutes: number;
   questionCounts: PsychometricQuestionCounts;
+  /** Una escala con menos ítems respondidos se reporta "sin datos", no como 0. */
+  minItemsPerScale: number;
+  /** Usar normas locales para las bandas en cuanto la muestra alcance. */
+  useLocalNorms: boolean;
 }
 
 export type PsychometricBand = 'bajo' | 'medio' | 'alto';
 
-export interface PsychometricTraitResult {
+/** De dónde salió la banda: cortes absolutos o la muestra local acumulada. */
+export type PsychometricNormSource = 'absoluta' | 'normas_provisionales' | 'normas_locales';
+
+export interface PsychometricScaleResult {
+  scale: PsychometricScoredScale;
+  hasData: boolean;
+  itemsApplied: number;
+  itemsAnswered: number;
   rawAverage: number;
   normalizedScore: number; // 0-100
+  percentile?: number;
+  zScore?: number;
   band: PsychometricBand;
+  bandSource: PsychometricNormSource;
 }
 
-/** Signals that the response pattern may not be reliable (rushed, careless, straight-lined). */
-export type PsychometricValidityFlag = 'respuestas_muy_rapidas' | 'baja_variacion';
+export type PsychometricValidityFlag =
+  | 'respuestas_incompletas'
+  | 'control_atencion_fallido'
+  | 'patron_repetitivo'
+  | 'baja_variacion'
+  | 'respuestas_muy_rapidas'
+  | 'respuestas_inconsistentes'
+  | 'inconsistencia_par_impar'
+  | 'escala_infrecuencia_alta'
+  | 'posible_deseabilidad_social';
+
+export type PsychometricValidityVerdict = 'confiable' | 'revisar' | 'no_confiable';
+
+export interface PsychometricValidityIndices {
+  completionRate: number;
+  attentionChecksTotal: number;
+  attentionChecksFailed: number;
+  longString: number;
+  longStringRatio: number;
+  /** Null cuando hay muy pocos ítems para calcularla; 0 significa "siempre la misma opción". */
+  irv: number | null;
+  evenOddConsistency: number | null;
+  keyingInconsistency: number | null;
+  medianResponseMs: number | null;
+  fastResponseRatio: number;
+  infrequencyScore: number | null;
+  socialDesirabilityScore: number | null;
+}
+
+export interface PsychometricValidity {
+  verdict: PsychometricValidityVerdict;
+  severity: number;
+  flags: PsychometricValidityFlag[];
+  indices: PsychometricValidityIndices;
+}
 
 export interface PsychometricResult {
-  traits: Record<PsychometricTrait, PsychometricTraitResult>;
-  sjt: PsychometricTraitResult;
+  /** 1 = resultados previos a normas/integridad; 2 = esta forma. */
+  version: number;
+  scales: Record<PsychometricScoredScale, PsychometricScaleResult>;
   compositeScore: number; // 0-100
+  compositePercentile?: number;
+  compositeZScore?: number;
   compositeBand: PsychometricBand;
+  compositeBandSource: PsychometricNormSource;
+  compositeHasData: boolean;
+  validity: PsychometricValidity;
   validityFlags: PsychometricValidityFlag[];
+  normSampleSize: number;
+  scoredAtIso?: string;
 }
 
 export type PsychometricSessionStatus = 'pending' | 'in_progress' | 'completed' | 'expired';
@@ -352,12 +459,17 @@ export interface PsychometricSession {
   expiresAt: Timestamp; // vencimiento del enlace para iniciar
   timeLimitMinutes: number;
   startedAt?: Timestamp;
-  /** orden aleatorio (fijo una vez iniciada la sesión) de ids de preguntas habilitadas */
+  /** orden aleatorio (fijo una vez iniciada la sesión) de ids de preguntas aplicadas */
   questionOrder?: string[];
+  /** copia de las preguntas aplicadas, para que editar el banco no altere el score */
+  appliedQuestions?: PsychometricQuestion[];
   /** orden aleatorio de opciones por pregunta SJT (índices originales), fijo una vez iniciada */
   optionOrders?: Record<string, number[]>;
+  /** respuestas guardadas mientras la prueba sigue en curso */
+  progressAnswers?: PsychometricAnswer[];
   answers?: PsychometricAnswer[];
   completedAt?: Timestamp;
+  /** Puede venir en la forma v1 — normaliza con adaptPsychometricResult(). */
   result?: PsychometricResult;
 }
 

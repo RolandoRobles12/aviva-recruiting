@@ -45,9 +45,14 @@ Sistema de reclutamiento y gestión de todo el proceso de ingreso para el equipo
 
 ### 4. Pruebas psicométricas
 
-- Banco de preguntas y escenarios configurable por el admin (ponderaciones, bandas de calificación, tamaño de la prueba)
-- El candidato resuelve la prueba desde un enlace dedicado
-- Calificación automática con semáforo de resultado y detección de respuestas poco confiables
+- Cinco rasgos (responsabilidad, estabilidad emocional, extraversión, amabilidad e integridad) más escenarios de juicio situacional contextualizados a crédito, venta y cobranza
+- Banco de preguntas configurable por el admin, con banco base curado cargable en un clic (ponderaciones, bandas, tamaño de la prueba y muestreo por rasgo)
+- El candidato resuelve la prueba desde un enlace dedicado, con guardado automático del avance y reanudación si pierde la conexión
+- Calificación automática del lado del servidor, con **bandas normativas**: cortes absolutos mientras la muestra de candidatos es pequeña y percentiles locales en cuanto alcanza
+- **Detección de respuestas poco confiables** con controles de atención, escalas de deseabilidad social e infrecuencia, tiempos de respuesta y consistencia interna, resumida en un veredicto (confiable / revisar / no confiable)
+- Pestaña **Análisis del instrumento**: alfa de Cronbach por escala, discriminación por ítem y distribución de opciones, para depurar el banco con datos
+
+> Los criterios psicométricos, los umbrales y sus límites están documentados en [`docs/psicometricos.md`](docs/psicometricos.md).
 
 ### 5. Integración con Viterbit (ATS)
 
@@ -173,13 +178,26 @@ aviva-recruiting/
 │       ├── ocr/                    # Validación de documentos por OCR
 │       ├── offer/                  # Generación, envío y firma de carta oferta
 │       ├── contract/               # Generación, análisis y firma de contrato
-│       ├── psychometricTest/       # Banco de preguntas, calificación y sesiones
+│       ├── psychometricTest/       # Banco, muestreo, calificación, normas y validez
 │       ├── viterbit/               # Webhook y sincronización con el ATS
 │       ├── performance/            # Seguimiento de desempeño a 15/30 días
 │       ├── integrations/           # Drive, Sheets, HubSpot, Jira, Slack, provisión de cuentas
 │       └── utils/                  # Admin SDK, permisos, helpers compartidos
+├── tests/                          # Suite de vitest (lógica psicométrica)
+├── docs/                           # Notas de diseño (criterios psicométricos)
 ├── firestore.rules                 # Reglas de seguridad Firestore
 ├── storage.rules                   # Reglas de seguridad Storage
 ├── firestore.indexes.json          # Índices Firestore
 └── firebase.json                   # Configuración Firebase
 ```
+
+## Pruebas
+
+```bash
+npm test          # corre la suite una vez
+npm run test:watch
+```
+
+Cubren la lógica psicométrica que no puede fallar en silencio: calificación,
+detección de respuestas no confiables, normas locales, muestreo de la prueba,
+compatibilidad con documentos de versiones anteriores y análisis de ítems.

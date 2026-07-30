@@ -1,13 +1,39 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { scoreAnswers, type PsychometricAnswer } from './scoring';
-import { getQuestionBank, getOrSeedConfig } from './bankStore';
+import { getOrSeedConfig, getQuestionBank } from './bankStore';
+import { normObservationsFrom, scoreSession } from './scoring';
+import { emptyNorms, withObservation } from './norms';
+import { findSessionByToken } from './sessionStore';
+import {
+  SUBMIT_GRACE_MS,
+  appliedQuestionsOf,
+  deadlineOf,
+  mergeAnswers,
+  optionOrdersOf,
+  parseAnswerPayload,
+  progressAnswersOf,
+} from './sessionData';
+import type { PsychometricNorms } from './types';
 
-// Grace period so a slow network doesn't fail a candidate who submitted in time.
-const SUBMIT_GRACE_MS = 60_000;
+const NORMS_REF = () => db.collection('settings').doc('psychometric_norms');
 
-/** Public endpoint: submit answers for a psychometric test session and score it server-side. */
+class SubmitError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Public endpoint: submit answers for a psychometric test session and score them
+ * server-side.
+ *
+ * Everything that matters happens in one transaction: the status flip to
+ * `completed`, the scoring, and folding the scores into the local norm sample.
+ * That makes a double submit (a retry, a double tap, an autosave racing the
+ * final POST) impossible to score twice, and keeps the norm counters from
+ * drifting when two candidates finish at the same instant.
+ */
 export const submitPsychometricTest = onRequest(
   { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 60 },
   async (req, res) => {
@@ -16,21 +42,21 @@ export const submitPsychometricTest = onRequest(
       return;
     }
 
-    const { token, answers } = req.body as { token?: string; answers?: PsychometricAnswer[] };
-    if (!token || !Array.isArray(answers)) {
+    const payload = parseAnswerPayload(req.body);
+    if (!payload) {
       res.status(400).json({ ok: false, error: 'Se requiere el token y las respuestas.' });
       return;
     }
 
     try {
-      const snap = await db.collection('psychometric_sessions').where('token', '==', token).limit(1).get();
-      if (snap.empty) {
+      const found = await findSessionByToken(payload.token);
+      if (!found) {
         res.status(404).json({ ok: false, error: 'No se encontró la prueba.' });
         return;
       }
 
-      const sessionRef = snap.docs[0].ref;
-      const session = snap.docs[0].data();
+      const { ref: sessionRef, data: session } = found;
+      const config = await getOrSeedConfig();
 
       if (session.status === 'completed') {
         res.status(409).json({ ok: false, error: 'Esta prueba ya fue enviada.' });
@@ -41,30 +67,70 @@ export const submitPsychometricTest = onRequest(
         return;
       }
 
-      const [bank, config] = await Promise.all([getQuestionBank(), getOrSeedConfig()]);
-
-      const startedAt = session.startedAt?.toDate?.() as Date | undefined;
-      const timeLimitMinutes = (session.timeLimitMinutes as number) || config.timeLimitMinutes;
-      const now = new Date();
-      if (startedAt && now.getTime() - startedAt.getTime() > timeLimitMinutes * 60 * 1000 + SUBMIT_GRACE_MS) {
+      const deadline = deadlineOf(session, config);
+      if (deadline && Date.now() > deadline.getTime() + SUBMIT_GRACE_MS) {
         await sessionRef.update({ status: 'expired' });
         res.status(410).json({ ok: false, error: 'El tiempo para responder la prueba ha terminado.' });
         return;
       }
 
-      const optionOrders = (session.optionOrders as Record<string, number[]>) ?? {};
+      const bank = await getQuestionBank();
+      const normsRef = NORMS_REF();
 
-      const result = scoreAnswers(bank, answers, optionOrders, config);
+      const rejected = await db.runTransaction(async (tx) => {
+        const [sessionSnap, normsSnap] = await Promise.all([tx.get(sessionRef), tx.get(normsRef)]);
+        const current = sessionSnap.data();
+        if (!current) throw new SubmitError(404, 'No se encontró la prueba.');
+        if (current.status === 'completed') throw new SubmitError(409, 'Esta prueba ya fue enviada.');
+        if (current.status !== 'in_progress') {
+          throw new SubmitError(409, 'Esta prueba aún no ha sido iniciada.');
+        }
 
-      await sessionRef.update({
-        status: 'completed',
-        answers,
-        result,
-        completedAt: FieldValue.serverTimestamp(),
+        const questions = appliedQuestionsOf(current, bank);
+        const optionOrders = optionOrdersOf(current);
+        const answers = mergeAnswers(progressAnswersOf(current), payload.answers);
+
+        const norms: PsychometricNorms = normsSnap.exists
+          ? { scales: (normsSnap.data() as PsychometricNorms).scales ?? {} }
+          : emptyNorms();
+
+        const scored = scoreSession({ questions, answers, optionOrders, config, norms });
+
+        tx.update(sessionRef, {
+          status: 'completed',
+          answers: scored.answers,
+          result: scored.result,
+          completedAt: FieldValue.serverTimestamp(),
+          progressAnswers: FieldValue.delete(),
+        });
+
+        // Careless sessions stay out of the norm sample: including them widens
+        // the distribution and pushes honest candidates toward the middle.
+        if (scored.result.validity.verdict !== 'no_confiable') {
+          let updated = norms;
+          for (const observation of normObservationsFrom(scored.result)) {
+            updated = withObservation(updated, observation.key, observation.value);
+          }
+          tx.set(
+            normsRef,
+            { scales: updated.scales, updatedAtIso: new Date().toISOString() },
+            { merge: true }
+          );
+        }
+
+        return scored.rejected;
       });
+
+      if (rejected > 0) {
+        console.warn(`[submitPsychometricTest] Descartadas ${rejected} respuestas inválidas del payload.`);
+      }
 
       res.status(200).json({ ok: true });
     } catch (err) {
+      if (err instanceof SubmitError) {
+        res.status(err.status).json({ ok: false, error: err.message });
+        return;
+      }
       console.error('[submitPsychometricTest] Unhandled error:', err);
       res.status(500).json({ ok: false, error: 'Error al enviar tus respuestas. Intenta de nuevo.' });
     }
