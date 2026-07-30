@@ -473,13 +473,25 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-gray-500 text-left border-b border-gray-100">
-                      <th className="py-1.5 pr-3 font-medium">Escala</th>
-                      <th className="py-1.5 pr-3 font-medium">Ítems</th>
-                      <th className="py-1.5 pr-3 font-medium">n</th>
-                      <th className="py-1.5 pr-3 font-medium">Media</th>
-                      <th className="py-1.5 pr-3 font-medium">DE</th>
-                      <th className="py-1.5 pr-3 font-medium">α</th>
-                      <th className="py-1.5 pr-3 font-medium">n mín. por par</th>
+                      <Th help="El rasgo o escala que se está evaluando.">Escala</Th>
+                      <Th help="Cuántas de las preguntas de esta escala ya tienen suficientes respuestas para evaluarse (izquierda), de cuántas tiene la escala en total (derecha). Cada pregunta necesita al menos 10 respuestas para contar.">
+                        Ítems
+                      </Th>
+                      <Th help="Número de pruebas (candidatos) que se tomaron en cuenta para calcular esta fila.">
+                        n
+                      </Th>
+                      <Th help="El puntaje promedio que obtuvieron los candidatos en esta escala, en la escala original de la pregunta (1 a 5).">
+                        Media
+                      </Th>
+                      <Th help="Qué tanto varían los puntajes entre candidatos. Un número bajo significa que casi todos contestan parecido; uno alto, que hay más diferencia entre personas.">
+                        DE
+                      </Th>
+                      <Th help="Alfa de Cronbach: qué tan bien concuerdan entre sí las preguntas de esta escala. Va de 0 a 1; entre más alto, más confiable es el puntaje. Por eso arriba lo resumimos como 'Mide bien' / 'Mide con ruido' / 'No mide de forma confiable'.">
+                        α
+                      </Th>
+                      <Th help="El número más chico de candidatos que dos preguntas de esta escala tienen en común para poder compararse entre sí. Si es bajo, el valor de alfa está sostenido por poca evidencia y conviene tomarlo con cautela.">
+                        n mín. por par
+                      </Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -514,6 +526,13 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
 
             <div className="space-y-2 pt-3 border-t border-gray-100">
               <p className="text-xs font-medium text-gray-700">Muestra normativa por escala</p>
+              <p className="text-xs text-gray-500">
+                Los números detrás de la barra de progreso "¿ya puedo comparar candidatos?" de más
+                arriba. <strong>n</strong> es cuántas pruebas confiables han entrado a la comparación de
+                esa escala; <strong>media</strong> y <strong>DE</strong> describen en qué puntaje se
+                agrupan esos candidatos y qué tanto varían entre sí — son la referencia contra la que se
+                calcula el percentil de cada nuevo candidato.
+              </p>
               {norms.length === 0 ? (
                 <p className="text-xs text-gray-400">Sin observaciones acumuladas.</p>
               ) : (
@@ -539,12 +558,20 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-gray-500 text-left border-b border-gray-100">
-                        <th className="py-1.5 pr-3 font-medium">Ítem</th>
-                        <th className="py-1.5 pr-3 font-medium">n</th>
-                        <th className="py-1.5 pr-3 font-medium">Media</th>
-                        <th className="py-1.5 pr-3 font-medium">DE</th>
-                        <th className="py-1.5 pr-3 font-medium">r ítem-total</th>
-                        <th className="py-1.5 pr-3 font-medium">Aciertos</th>
+                        <Th help="El texto de la pregunta marcada como problemática.">Ítem</Th>
+                        <Th help="Cuántos candidatos han respondido esta pregunta.">n</Th>
+                        <Th help="El puntaje promedio que le dan los candidatos a esta pregunta (1 a 5). Si casi todos contestan lo mismo, la media se acerca a 1 o a 5 y la pregunta aporta poca información.">
+                          Media
+                        </Th>
+                        <Th help="Qué tanto varían las respuestas a esta pregunta entre candidatos. Un número muy bajo significa que casi nadie se diferencia al contestarla.">
+                          DE
+                        </Th>
+                        <Th help="Qué tanto coincide esta pregunta con el resto de su escala: si alguien puntúa alto aquí, ¿también puntúa alto en las demás preguntas de la misma escala? Va de -1 a 1. Cerca de 0 o negativo significa que la pregunta no está midiendo lo mismo que las demás, y conviene reformularla o desactivarla.">
+                          r ítem-total
+                        </Th>
+                        <Th help="Solo aplica a controles de atención: qué porcentaje de candidatos respondió lo que la instrucción pedía. Si es bajo, puede que la instrucción esté confusa.">
+                          Aciertos
+                        </Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -579,6 +606,26 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
         preguntas que funcionan bien.
       </p>
     </div>
+  );
+}
+
+/**
+ * A table header with a hover explanation. The technical tables use short
+ * statistical abbreviations (n, DE, α, r ítem-total) that mean nothing without
+ * a stats background — the dotted underline signals there is more to read, and
+ * the native `title` keeps it a plain tooltip with no extra dependency.
+ */
+function Th({ children, help }: { children: React.ReactNode; help: string }) {
+  return (
+    <th className="py-1.5 pr-3 font-medium">
+      <span
+        title={help}
+        className="inline-flex items-center gap-1 border-b border-dotted border-gray-400 cursor-help"
+      >
+        {children}
+        <HelpCircle size={11} className="text-gray-400" />
+      </span>
+    </th>
   );
 }
 
