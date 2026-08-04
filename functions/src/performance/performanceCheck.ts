@@ -39,22 +39,8 @@ async function moveToPromotor(candidatureId: string, stageId: string, apiKey: st
   }
 }
 
-/**
- * Resolve the "Promotor Exitoso" stage id for a candidate's job.
- * Prefers the cached id from viterbitStageIds; falls back to a live API lookup
- * (exact stage-name match first, substring match second) when the cached id is
- * missing or was never populated correctly — e.g. due to a previous caching bug.
- */
-async function resolvePromotorExitosoStageId(
-  candidate: FirebaseFirestore.DocumentData,
-  apiKey: string,
-): Promise<string> {
-  const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
-  if (stageIds?.promotorExitoso) return stageIds.promotorExitoso;
-
-  const jobId = candidate.viterbitJobId as string | undefined;
-  if (!jobId || !apiKey) return '';
-
+/** Live lookup of the "Promotor Exitoso" stage id in a job's pipeline. */
+async function fetchPromotorExitosoStageIdFromJob(jobId: string, apiKey: string): Promise<string> {
   try {
     const resp = await fetch(
       `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages`,
@@ -70,6 +56,30 @@ async function resolvePromotorExitosoStageId(
   } catch {
     return '';
   }
+}
+
+/**
+ * Resolve the "Promotor Exitoso" stage id for a candidate's job.
+ * Prefers the cached id from viterbitStageIds; falls back to a live API lookup
+ * (exact stage-name match first, substring match second) when the cached id is
+ * missing. Pass preferLive after a failed move: a cached id can be stale or
+ * wrong (job pipeline edited in Viterbit, old caching bug) and would otherwise
+ * make every retry fail with the same bad id forever.
+ */
+async function resolvePromotorExitosoStageId(
+  candidate: FirebaseFirestore.DocumentData,
+  apiKey: string,
+  { preferLive = false }: { preferLive?: boolean } = {},
+): Promise<string> {
+  const stageIds = candidate.viterbitStageIds as Record<string, string> | undefined;
+  const cached = stageIds?.promotorExitoso ?? '';
+  if (cached && !preferLive) return cached;
+
+  const jobId = candidate.viterbitJobId as string | undefined;
+  if (!jobId || !apiKey) return cached;
+
+  const live = await fetchPromotorExitosoStageIdFromJob(jobId, apiKey);
+  return live || cached;
 }
 
 async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnapshot): Promise<void> {
@@ -211,7 +221,9 @@ async function retryPendingPromotorMoves(): Promise<void> {
     }
 
     const candidatureId = c.viterbitCandidatureId as string | undefined;
-    const promotorExitosoId = await resolvePromotorExitosoStageId(c, apiKey);
+    // preferLive: the first attempt already failed with the cached id, so
+    // re-resolve against the live pipeline instead of retrying the same id.
+    const promotorExitosoId = await resolvePromotorExitosoStageId(c, apiKey, { preferLive: true });
     if (!apiKey || !candidatureId || !promotorExitosoId) {
       console.warn(`[performanceCheck] retry: still missing ids for ${docSnap.id}`, { candidatureId, promotorExitosoId });
       continue;
@@ -222,12 +234,44 @@ async function retryPendingPromotorMoves(): Promise<void> {
       await docSnap.ref.update({
         status: 'promotor_exitoso',
         promotorMovePending: FieldValue.delete(),
+        // Repair the cache so future flows use the id that actually worked.
+        'viterbitStageIds.promotorExitoso': promotorExitosoId,
         updatedAt: FieldValue.serverTimestamp(),
       });
       console.info(`[performanceCheck] retry: moved ${docSnap.id} to Promotor Exitoso`);
     } catch (err) {
       console.error(`[performanceCheck] retry: moveToPromotor error for ${docSnap.id}:`, err);
     }
+  }
+}
+
+/**
+ * The 30-day check runs exactly once per candidate (the check doc is marked
+ * processed before the Viterbit move). Candidates evaluated before the
+ * promotorMovePending retry flag existed — or whose flag write was lost — can
+ * have met the target and still be stuck in an earlier status with nothing
+ * retrying the move. Sweep every evaluated candidate and flag the ones that
+ * met their target but never reached promotor_exitoso, so
+ * retryPendingPromotorMoves picks them up in the same run.
+ */
+async function flagMissedPromotorMoves(): Promise<void> {
+  const snap = await db
+    .collection('candidates')
+    .where('performance30DayCheckedAt', '!=', null)
+    .get();
+
+  for (const docSnap of snap.docs) {
+    const c = docSnap.data();
+    const status = c.status as string;
+    if (status === 'promotor_exitoso' || status === 'disqualified') continue;
+    if (c.promotorMovePending === true) continue;
+
+    const profile = (c.profile as string) || (c.position as string) || '';
+    const dealCount = (c.performance30DayDeals as number) ?? 0;
+    if (dealCount < getMonthlyTarget(profile)) continue;
+
+    console.info(`[performanceCheck] sweep: ${docSnap.id} met target (${dealCount}) but status is "${status}" — flagging for Promotor Exitoso move`);
+    await docSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
   }
 }
 
@@ -266,6 +310,12 @@ export const dailyPerformanceCheck = onSchedule(
       if (errors > 0) {
         console.error(`[performanceCheck] ${errors} check(s) failed`);
       }
+    }
+
+    try {
+      await flagMissedPromotorMoves();
+    } catch (err) {
+      console.error('[performanceCheck] flagMissedPromotorMoves failed:', err);
     }
 
     try {
