@@ -892,7 +892,7 @@ async function handleInduccion(
   }
 
   // Skip if already past this stage
-  const pastStages = ['email_pending', 'email_ready', 'induction', 'onboarding_iniciado', 'promotor_exitoso', 'disqualified'];
+  const pastStages = ['email_pending', 'email_ready', 'induction', 'onboarding_iniciado', 'promotor_exitoso', 'bajo_desempeno', 'disqualified'];
   if (pastStages.includes(candidate.status as string)) {
     await logRef.update({ status: 'ignored', reason: `already at ${candidate.status}`, candidateId: candidateRef.id });
     return { action: 'ignored', candidateId: candidateRef.id };
@@ -926,13 +926,14 @@ async function handleStatusSync(
   const { ref: candidateRef, data: candidate } = found;
   const currentStatus = candidate.status as string;
 
-  // Never resurrect disqualified candidates, never downgrade promotor_exitoso,
-  // and never clobber a contract that's been sent but not yet signed.
+  // Never resurrect disqualified candidates, never downgrade promotor_exitoso
+  // or bajo_desempeno back to an earlier stage, and never clobber a contract
+  // that's been sent but not yet signed.
   const skip =
     currentStatus === newStatus ||
     currentStatus === 'disqualified' ||
     (currentStatus === 'contract_sent' && !candidate.contractSignedAt) ||
-    (newStatus === 'onboarding_iniciado' && currentStatus === 'promotor_exitoso');
+    (newStatus === 'onboarding_iniciado' && (currentStatus === 'promotor_exitoso' || currentStatus === 'bajo_desempeno'));
   if (skip) {
     await logRef.update({ status: 'ignored', reason: `already at ${currentStatus}`, candidateId: candidateRef.id });
     return { action: 'ignored', candidateId: candidateRef.id };

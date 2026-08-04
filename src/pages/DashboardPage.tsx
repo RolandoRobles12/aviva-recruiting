@@ -9,6 +9,7 @@ import {
   GraduationCap,
   BookOpen,
   Trophy,
+  TrendingDown,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { CandidateTable } from '../components/dashboard/CandidateTable';
@@ -34,6 +35,7 @@ export function DashboardPage() {
     onboarding:          candidates.filter((c) => c.status === 'induction').length,
     onboardingIniciado:  candidates.filter((c) => c.status === 'onboarding_iniciado').length,
     promotorExitoso:     candidates.filter((c) => c.status === 'promotor_exitoso').length,
+    bajoDesempeno:       candidates.filter((c) => c.status === 'bajo_desempeno').length,
   };
 
   return (
@@ -61,6 +63,7 @@ export function DashboardPage() {
             <StatChip icon={<GraduationCap size={13} />} label="Onboarding"         value={pipelineStats.onboarding}         color="rose" />
             <StatChip icon={<BookOpen size={13} />}      label="Onboarding Iniciado" value={pipelineStats.onboardingIniciado} color="blue" />
             <StatChip icon={<Trophy size={13} />}        label="Promotor Exitoso"    value={pipelineStats.promotorExitoso}    color="green" />
+            <StatChip icon={<TrendingDown size={13} />}  label="Bajo Desempeño"      value={pipelineStats.bajoDesempeno}      color="red" />
           </div>
         </div>
 
@@ -114,6 +117,7 @@ const CHIP_COLORS: Record<string, string> = {
   indigo: 'bg-indigo-50 text-indigo-700',
   teal:   'bg-teal-50 text-teal-700',
   rose:   'bg-rose-50 text-rose-700',
+  red:    'bg-red-50 text-red-700',
 };
 
 function StatChip({ icon, label, value, color }: {

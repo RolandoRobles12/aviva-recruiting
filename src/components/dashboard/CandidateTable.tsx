@@ -10,7 +10,7 @@ import { computeCompletion } from '../../utils/candidateCompletion';
 
 // Pipeline stages matching Viterbit: Documentos → Contrato → Correos → Onboarding → Onboarding Iniciado → Promotor Exitoso
 // Each filter groups related sub-statuses together
-type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'onboarding_iniciado' | 'promotor_exitoso' | 'offer' | 'descalificados';
+type FilterValue = 'all' | 'documentos' | 'contrato' | 'correos' | 'induction' | 'onboarding_iniciado' | 'promotor_exitoso' | 'bajo_desempeno' | 'offer' | 'descalificados';
 
 const STATUS_FILTERS: { value: FilterValue; label: string; statuses: CandidateStatus[] }[] = [
   { value: 'all',                label: 'Todos',               statuses: [] },
@@ -21,6 +21,7 @@ const STATUS_FILTERS: { value: FilterValue; label: string; statuses: CandidateSt
   { value: 'induction',         label: 'Onboarding',          statuses: ['induction'] },
   { value: 'onboarding_iniciado', label: 'Onboarding Iniciado', statuses: ['onboarding_iniciado'] },
   { value: 'promotor_exitoso',  label: 'Promotor Exitoso',    statuses: ['promotor_exitoso'] },
+  { value: 'bajo_desempeno',    label: 'Bajo Desempeño',      statuses: ['bajo_desempeno'] },
   { value: 'descalificados',    label: 'Descalificados',      statuses: ['disqualified'] },
 ];
 

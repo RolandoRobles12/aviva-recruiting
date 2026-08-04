@@ -129,6 +129,7 @@ export type CandidateStatus =
   | 'induction'            // in Viterbit Onboarding stage, waiting for email provisioning
   | 'onboarding_iniciado'  // first LMS login completed
   | 'promotor_exitoso'     // met 30-day HubSpot deal target
+  | 'bajo_desempeno'       // missed 30-day HubSpot deal target
   | 'disqualified';        // manually disqualified at any stage
 
 export interface Candidate {
