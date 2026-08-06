@@ -11,6 +11,7 @@ const SIGNED_STATUSES = [
   'induction',
   'onboarding_iniciado',
   'promotor_exitoso',
+  'bajo_desempeno',
 ];
 
 /**

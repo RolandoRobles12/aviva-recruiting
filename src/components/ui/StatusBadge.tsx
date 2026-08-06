@@ -16,6 +16,7 @@ const CANDIDATE_STATUS_CONFIG: Record<CandidateStatus, { label: string; classNam
   induction:            { label: 'Onboarding',           className: 'badge-valid' },
   onboarding_iniciado:  { label: 'Onboarding Iniciado',  className: 'badge-review' },
   promotor_exitoso:     { label: 'Promotor Exitoso',     className: 'badge-valid' },
+  bajo_desempeno:       { label: 'Bajo Desempeño',       className: 'badge-invalid' },
   disqualified:         { label: 'Descalificado',        className: 'badge-invalid' },
 };
 

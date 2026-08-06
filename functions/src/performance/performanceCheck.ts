@@ -174,6 +174,15 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
       console.warn(`[performanceCheck] Cannot move to Promotor Exitoso — missing ids, flagged for retry`, { candidateId, candidatureId, promotorExitosoId });
       await candidateSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
     }
+  } else if (daysMark === 30 && dealCount < monthlyTarget) {
+    // Missed the 30-day target — mark Bajo Desempeño. This has no Viterbit
+    // counterpart (internal-only status), and never overrides a status a
+    // recruiter or a later stage already set.
+    const currentStatus = c.status as string;
+    if (currentStatus !== 'disqualified' && currentStatus !== 'promotor_exitoso' && currentStatus !== 'bajo_desempeno') {
+      await candidateSnap.ref.update({ status: 'bajo_desempeno', updatedAt: FieldValue.serverTimestamp() });
+      console.info(`[performanceCheck] ${candidateName} missed target (${dealCount}/${monthlyTarget}) — marked Bajo Desempeño`);
+    }
   }
 
   // Slack notification
