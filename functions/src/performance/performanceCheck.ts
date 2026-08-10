@@ -5,26 +5,24 @@ import { db } from '../utils/admin';
 import { countDealsByOwner, findOwnerIdByEmail } from '../integrations/hubspotService';
 import { notifyPerformanceCheck } from '../integrations/slackService';
 import { parseCandidateStartDate } from '../utils/startDate';
+import { VERDICT_APPLIES_STATUSES, performanceWindow, resolveMonthlyTarget } from './targets';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
-// ─── Monthly deal targets by Viterbit profile ────────────────────────────────
-const DEAL_TARGETS_BY_PROFILE: Record<string, number> = {
-  'Promotor/a Aviva tu Compra':           34,
-  'Promotor/a Aviva tu Compra CM':        17,
-  'Promotor/a Aviva tu Compra (Comodín)':        34,
-  'Promotor/a Aviva tu Compra (Temporal)':       34,
-  'Promotor/a Aviva tu Compra (Internalización)': 34,
-  'Promotor/a Aviva tu Negocio':          17,
-  'Promotor/a Aviva tu Casa':             17,
-  'Trainee Sucursal (Kiosk Trainee)':     72,
-  'Gerente de Sucursal (Kiosk Manager)':  72,
-};
-
-function getMonthlyTarget(profile: string): number {
-  return DEAL_TARGETS_BY_PROFILE[profile] ?? 17;
+/**
+ * Monthly target for a candidate, falling back to the job title when the
+ * canonical Viterbit profile is missing (see resolveMonthlyTarget).
+ */
+function getMonthlyTarget(candidate: FirebaseFirestore.DocumentData, candidateId: string): number {
+  const profile = candidate.profile as string | undefined;
+  const position = candidate.position as string | undefined;
+  const { target, matchedProfile } = resolveMonthlyTarget(profile, position);
+  if (!matchedProfile) {
+    console.warn(`[performanceCheck] ${candidateId}: unrecognised profile (profile="${profile ?? ''}", position="${position ?? ''}") — using default target ${target}`);
+  }
+  return target;
 }
 
 async function moveToPromotor(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
@@ -122,11 +120,14 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
     return;
   }
 
-  const startDateMs = startDate.getTime();
+  // Closed window: a check processed late (queued while HubSpot was down, or
+  // created by the backfill long after day 30) must still measure the same
+  // period the target refers to, not everything since the candidate joined.
+  const { fromMs, toMs } = performanceWindow(startDate, daysMark);
 
   let dealCount = 0;
   try {
-    dealCount = await countDealsByOwner(hubspotOwnerId, startDateMs);
+    dealCount = await countDealsByOwner(hubspotOwnerId, fromMs, toMs);
   } catch (err) {
     console.error(`[performanceCheck] HubSpot error for ${candidateId}:`, err);
     return;
@@ -134,7 +135,7 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
 
   const company = (c.viterbitCompany as string) || '';
   const profile = (c.profile as string) || (c.position as string) || '';
-  const monthlyTarget = getMonthlyTarget(profile);
+  const monthlyTarget = getMonthlyTarget(c, candidateId);
   const candidateName = `${c.firstName as string} ${c.lastName as string}`.trim();
 
   const alreadyCheckedField = daysMark === 15 ? 'performance15DayCheckedAt' : 'performance30DayCheckedAt';
@@ -153,7 +154,12 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
   // At day 30: move to "Promotor Exitoso" in Viterbit when target is met.
   // On failure, flag the candidate so retryPendingPromotorMoves picks them up
   // on the next daily run — the check doc itself is already marked processed.
-  if (daysMark === 30 && dealCount >= monthlyTarget) {
+  const currentStatus = c.status as string;
+  if (daysMark === 30 && currentStatus === 'disqualified') {
+    // A disqualified candidate is out of the process regardless of their deal
+    // count — neither branch below may resurrect them.
+    console.info(`[performanceCheck] ${candidateName} is disqualified — recording deals (${dealCount}/${monthlyTarget}) without changing status`);
+  } else if (daysMark === 30 && dealCount >= monthlyTarget) {
     const apiKey = VITERBIT_API_KEY.value();
     const candidatureId = c.viterbitCandidatureId as string | undefined;
     const promotorExitosoId = await resolvePromotorExitosoStageId(c, apiKey);
@@ -178,8 +184,7 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
     // Missed the 30-day target — mark Bajo Desempeño. This has no Viterbit
     // counterpart (internal-only status), and never overrides a status a
     // recruiter or a later stage already set.
-    const currentStatus = c.status as string;
-    if (currentStatus !== 'disqualified' && currentStatus !== 'promotor_exitoso' && currentStatus !== 'bajo_desempeno') {
+    if (currentStatus !== 'promotor_exitoso' && currentStatus !== 'bajo_desempeno') {
       await candidateSnap.ref.update({ status: 'bajo_desempeno', updatedAt: FieldValue.serverTimestamp() });
       console.info(`[performanceCheck] ${candidateName} missed target (${dealCount}/${monthlyTarget}) — marked Bajo Desempeño`);
     }
@@ -256,14 +261,18 @@ async function retryPendingPromotorMoves(): Promise<void> {
 
 /**
  * The 30-day check runs exactly once per candidate (the check doc is marked
- * processed before the Viterbit move). Candidates evaluated before the
- * promotorMovePending retry flag existed — or whose flag write was lost — can
- * have met the target and still be stuck in an earlier status with nothing
- * retrying the move. Sweep every evaluated candidate and flag the ones that
- * met their target but never reached promotor_exitoso, so
- * retryPendingPromotorMoves picks them up in the same run.
+ * processed before the Viterbit move), so a status write lost at that moment is
+ * never retried on its own. Sweep every evaluated candidate and settle the two
+ * outcomes from the stored deal count:
+ *
+ *  - met the target but never reached promotor_exitoso → flag
+ *    promotorMovePending so retryPendingPromotorMoves moves them in the same run;
+ *  - missed the target and still sits in a pre-30-day status → mark
+ *    bajo_desempeno (internal only, no Viterbit move).
+ *
+ * promotor_exitoso and disqualified are never touched by either outcome.
  */
-async function flagMissedPromotorMoves(): Promise<void> {
+async function sweepEvaluatedCandidates(): Promise<void> {
   const snap = await db
     .collection('candidates')
     .where('performance30DayCheckedAt', '!=', null)
@@ -273,14 +282,23 @@ async function flagMissedPromotorMoves(): Promise<void> {
     const c = docSnap.data();
     const status = c.status as string;
     if (status === 'promotor_exitoso' || status === 'disqualified') continue;
-    if (c.promotorMovePending === true) continue;
 
-    const profile = (c.profile as string) || (c.position as string) || '';
     const dealCount = (c.performance30DayDeals as number) ?? 0;
-    if (dealCount < getMonthlyTarget(profile)) continue;
+    const monthlyTarget = getMonthlyTarget(c, docSnap.id);
 
-    console.info(`[performanceCheck] sweep: ${docSnap.id} met target (${dealCount}) but status is "${status}" — flagging for Promotor Exitoso move`);
-    await docSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
+    if (dealCount >= monthlyTarget) {
+      if (c.promotorMovePending === true) continue;
+      console.info(`[performanceCheck] sweep: ${docSnap.id} met target (${dealCount}/${monthlyTarget}) but status is "${status}" — flagging for Promotor Exitoso move`);
+      await docSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
+      continue;
+    }
+
+    // Only statuses where the 30-day verdict actually applies. A candidate
+    // sitting in an in-flight status (a reissued offer or an unsigned contract)
+    // must not be yanked out of that flow by a retroactive sweep.
+    if (!VERDICT_APPLIES_STATUSES.includes(status)) continue;
+    console.info(`[performanceCheck] sweep: ${docSnap.id} missed target (${dealCount}/${monthlyTarget}) and status is "${status}" — marking Bajo Desempeño`);
+    await docSnap.ref.update({ status: 'bajo_desempeno', updatedAt: FieldValue.serverTimestamp() });
   }
 }
 
@@ -322,9 +340,9 @@ export const dailyPerformanceCheck = onSchedule(
     }
 
     try {
-      await flagMissedPromotorMoves();
+      await sweepEvaluatedCandidates();
     } catch (err) {
-      console.error('[performanceCheck] flagMissedPromotorMoves failed:', err);
+      console.error('[performanceCheck] sweepEvaluatedCandidates failed:', err);
     }
 
     try {

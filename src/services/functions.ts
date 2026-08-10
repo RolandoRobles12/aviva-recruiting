@@ -59,6 +59,20 @@ export const backfillPerformanceChecks = httpsCallable<
   { created: number; skipped: number; unparseable: string[]; message: string }
 >(functions, 'backfillPerformanceChecks');
 
+export const recalculatePerformanceStatuses = httpsCallable<
+  Record<string, never>,
+  {
+    evaluados: number;
+    promotorExitoso: number;
+    bajoDesempeno: number;
+    sinCambio: number;
+    omitidos: number;
+    sinDatos: string[];
+    errores: string[];
+    message: string;
+  }
+>(functions, 'recalculatePerformanceStatuses');
+
 export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
   { success: boolean; salary: string | null; startDate: string | null; position: string | null }

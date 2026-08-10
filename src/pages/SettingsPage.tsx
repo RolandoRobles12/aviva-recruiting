@@ -7,7 +7,11 @@ import { LinkDurationTab } from '../components/settings/LinkDurationTab';
 import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { BrandingTab } from '../components/settings/BrandingTab';
 import { useSettings } from '../hooks/useSettings';
-import { backfillCandidateDocuments, backfillPerformanceChecks } from '../services/functions';
+import {
+  backfillCandidateDocuments,
+  backfillPerformanceChecks,
+  recalculatePerformanceStatuses,
+} from '../services/functions';
 
 type Tab = 'gmail' | 'reminders' | 'links' | 'questions' | 'branding' | 'admin';
 
@@ -25,6 +29,21 @@ function AdminTab() {
   const [result, setResult] = useState<string | null>(null);
   const [runningPerf, setRunningPerf] = useState(false);
   const [perfResult, setPerfResult] = useState<string | null>(null);
+  const [runningRecalc, setRunningRecalc] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<string | null>(null);
+
+  const handleRecalc = async () => {
+    setRunningRecalc(true);
+    setRecalcResult(null);
+    try {
+      const res = await recalculatePerformanceStatuses({});
+      setRecalcResult(res.data.message);
+    } catch (err) {
+      setRecalcResult(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setRunningRecalc(false);
+    }
+  };
 
   const handlePerformanceBackfill = async () => {
     setRunningPerf(true);
@@ -90,6 +109,26 @@ function AdminTab() {
         </button>
         {perfResult && (
           <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{perfResult}</p>
+        )}
+      </div>
+      <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+        <div>
+          <p className="text-sm font-medium text-gray-700">Recalcular desempeño a 30 días</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Vuelve a contar los deals de cada candidato ya evaluado en su ventana real
+            (fecha de ingreso + 30 días) y actualiza su etapa: Promotor Exitoso o Bajo Desempeño.
+            No modifica a quienes ya están en Promotor Exitoso ni a los descalificados.
+          </p>
+        </div>
+        <button
+          onClick={handleRecalc}
+          disabled={runningRecalc}
+          className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
+        >
+          {runningRecalc ? 'Recalculando...' : 'Recalcular'}
+        </button>
+        {recalcResult && (
+          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{recalcResult}</p>
         )}
       </div>
     </div>
