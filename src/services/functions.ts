@@ -49,15 +49,22 @@ export const sendContractEmail = httpsCallable<
   { success: boolean }
 >(functions, 'sendContractEmail');
 
+// The maintenance callables walk every candidate — well past the SDK's 70s
+// default, which would surface as a client-side "deadline-exceeded" while the
+// function kept running server-side and the operator re-clicked the button.
+// Set above each function's own timeoutSeconds so the server's error is what
+// surfaces, instead of the client giving up on a run that is still going.
+const MAINTENANCE_TIMEOUT = { timeout: 530_000 };
+
 export const backfillCandidateDocuments = httpsCallable<
   Record<string, never>,
   { updated: number; message: string }
->(functions, 'backfillCandidateDocuments');
+>(functions, 'backfillCandidateDocuments', MAINTENANCE_TIMEOUT);
 
 export const backfillPerformanceChecks = httpsCallable<
   Record<string, never>,
   { created: number; skipped: number; unparseable: string[]; message: string }
->(functions, 'backfillPerformanceChecks');
+>(functions, 'backfillPerformanceChecks', MAINTENANCE_TIMEOUT);
 
 export const recalculatePerformanceStatuses = httpsCallable<
   Record<string, never>,
@@ -71,7 +78,7 @@ export const recalculatePerformanceStatuses = httpsCallable<
     errores: string[];
     message: string;
   }
->(functions, 'recalculatePerformanceStatuses');
+>(functions, 'recalculatePerformanceStatuses', MAINTENANCE_TIMEOUT);
 
 export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },

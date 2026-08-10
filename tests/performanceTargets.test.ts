@@ -3,7 +3,9 @@ import {
   DAY_MS,
   DEAL_TARGETS_BY_PROFILE,
   DEFAULT_MONTHLY_TARGET,
+  PROMOTION_ELIGIBLE_STATUSES,
   VERDICT_APPLIES_STATUSES,
+  isValidDaysMark,
   performanceWindow,
   resolveMonthlyTarget,
 } from '../functions/src/performance/targets';
@@ -98,6 +100,48 @@ describe('performanceWindow', () => {
   it('accepts the legacy Spanish display date as the anchor', () => {
     const legacy = parseStartDateString('15 de julio de 2026')!;
     expect(performanceWindow(legacy, 30)).toEqual(performanceWindow(start, 30));
+  });
+});
+
+describe('performanceWindow validation', () => {
+  it('refuses an unparseable start date instead of producing a NaN bound', () => {
+    expect(() => performanceWindow(new Date('no soy fecha'), 30)).toThrow(/invalid start date/);
+  });
+
+  it('refuses a missing or nonsensical daysMark', () => {
+    const start = parseStartDateString('2026-07-15')!;
+    expect(() => performanceWindow(start, undefined as unknown as number)).toThrow(/invalid daysMark/);
+    expect(() => performanceWindow(start, NaN)).toThrow(/invalid daysMark/);
+    expect(() => performanceWindow(start, 0)).toThrow(/invalid daysMark/);
+    expect(() => performanceWindow(start, -30)).toThrow(/invalid daysMark/);
+  });
+});
+
+describe('isValidDaysMark', () => {
+  it('accepts only the scheduled day marks', () => {
+    expect(isValidDaysMark(15)).toBe(true);
+    expect(isValidDaysMark(30)).toBe(true);
+    for (const bad of [undefined, null, 0, 7, '30', NaN, true]) {
+      expect(isValidDaysMark(bad)).toBe(false);
+    }
+  });
+});
+
+describe('PROMOTION_ELIGIBLE_STATUSES', () => {
+  it('lets a wrong Bajo Desempeño verdict be corrected', () => {
+    expect(PROMOTION_ELIGIBLE_STATUSES).toContain('bajo_desempeno');
+  });
+
+  it('never promotes from a settled or in-flight status', () => {
+    for (const excluded of ['promotor_exitoso', 'disqualified', 'contract_sent', 'offer_sent', 'offer_signed']) {
+      expect(PROMOTION_ELIGIBLE_STATUSES).not.toContain(excluded);
+    }
+  });
+
+  it('is the verdict set plus bajo_desempeno, nothing else', () => {
+    expect([...PROMOTION_ELIGIBLE_STATUSES].sort()).toEqual(
+      [...VERDICT_APPLIES_STATUSES, 'bajo_desempeno'].sort(),
+    );
   });
 });
 

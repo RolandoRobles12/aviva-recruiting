@@ -1,9 +1,14 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { countDealsByOwner } from '../integrations/hubspotService';
+import { countDealsByOwner, findOwnerIdByEmail } from '../integrations/hubspotService';
 import { parseCandidateStartDate } from '../utils/startDate';
-import { VERDICT_APPLIES_STATUSES, performanceWindow, resolveMonthlyTarget } from './targets';
+import {
+  PROMOTION_ELIGIBLE_STATUSES,
+  VERDICT_APPLIES_STATUSES,
+  performanceWindow,
+  resolveMonthlyTarget,
+} from './targets';
 
 interface RecalcSummary {
   evaluados: number;
@@ -67,11 +72,23 @@ export const recalculatePerformanceStatuses = onCall(
         continue;
       }
 
-      const hubspotOwnerId = c.hubspotOwnerId as string | undefined;
       const startDate = parseCandidateStartDate(c);
-      if (!hubspotOwnerId || !startDate) {
+      if (!startDate) {
         sinDatos.push(docSnap.id);
         continue;
+      }
+
+      // Same self-heal the daily check does: candidates provisioned while
+      // HubSpot creation failed carry a corporateEmail but no cached owner id,
+      // and would otherwise be skipped by every run of this tool.
+      let hubspotOwnerId = c.hubspotOwnerId as string | undefined;
+      if (!hubspotOwnerId) {
+        const corporateEmail = c.corporateEmail as string | undefined;
+        hubspotOwnerId = (corporateEmail ? await findOwnerIdByEmail(corporateEmail) : null) ?? undefined;
+        if (!hubspotOwnerId) {
+          sinDatos.push(docSnap.id);
+          continue;
+        }
       }
 
       const { target: monthlyTarget } = resolveMonthlyTarget(
@@ -92,28 +109,37 @@ export const recalculatePerformanceStatuses = onCall(
         const w30 = performanceWindow(startDate, 30);
         const dealCount = await countDealsByOwner(hubspotOwnerId, w30.fromMs, w30.toMs);
         updates.performance30DayDeals = dealCount;
-        evaluados++;
+
+        let outcome: 'promotor' | 'bajo' | 'sin_cambio' = 'sin_cambio';
 
         if (dealCount >= monthlyTarget) {
-          if (c.promotorMovePending === true) {
-            sinCambio++;
-          } else {
+          // In-flight statuses (a reissued offer, an unsigned contract) are left
+          // alone: flagging them would have the daily retry move them to
+          // Promotor Exitoso and clobber a flow still in progress.
+          if (PROMOTION_ELIGIBLE_STATUSES.includes(status) && c.promotorMovePending !== true) {
             updates.promotorMovePending = true;
-            promotorExitoso++;
+            outcome = 'promotor';
           }
         } else if (status === 'bajo_desempeno') {
-          sinCambio++;
+          // Already settled, but a stale move flag from an earlier inflated
+          // count would still promote them on the next daily run.
+          if (c.promotorMovePending === true) updates.promotorMovePending = FieldValue.delete();
         } else if (VERDICT_APPLIES_STATUSES.includes(status)) {
           updates.status = 'bajo_desempeno';
           // A candidate who no longer meets the target must not keep a stale
           // move flag queued from an earlier, inflated count.
           if (c.promotorMovePending === true) updates.promotorMovePending = FieldValue.delete();
-          bajoDesempeno++;
-        } else {
-          sinCambio++;
+          outcome = 'bajo';
         }
 
+        // Counted only once the write lands, so the summary never reports a
+        // change that failed midway.
         await docSnap.ref.update(updates);
+
+        evaluados++;
+        if (outcome === 'promotor') promotorExitoso++;
+        else if (outcome === 'bajo') bajoDesempeno++;
+        else sinCambio++;
       } catch (err) {
         console.error(`[recalculatePerformance] ${docSnap.id} failed:`, err);
         errores.push(docSnap.id);

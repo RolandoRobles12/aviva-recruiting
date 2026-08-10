@@ -94,6 +94,15 @@ export const VERDICT_APPLIES_STATUSES = [
   'onboarding_iniciado',
 ];
 
+/**
+ * Statuses from which a candidate may still be promoted to Promotor Exitoso by
+ * a retroactive pass. Same set as above plus bajo_desempeno: a recount that now
+ * meets the target means the earlier verdict was wrong, and correcting it is
+ * the whole point of recalculating. promotor_exitoso (already there),
+ * disqualified (out of the process) and the in-flight statuses stay excluded.
+ */
+export const PROMOTION_ELIGIBLE_STATUSES = [...VERDICT_APPLIES_STATUSES, 'bajo_desempeno'];
+
 export interface PerformanceWindow {
   fromMs: number;
   toMs: number;
@@ -109,8 +118,23 @@ export interface PerformanceWindow {
  * makes the count reproducible — the same window yields the same number
  * whenever it is evaluated. Mirrors the arithmetic signContract uses to
  * schedule the checks.
+ *
+ * Throws on a non-finite start date or daysMark: a NaN bound would be
+ * serialised as null in the HubSpot filter and silently return the wrong
+ * count, which is worse than failing the check and retrying it.
  */
 export function performanceWindow(startDate: Date, daysMark: number): PerformanceWindow {
   const fromMs = startDate.getTime();
+  if (!Number.isFinite(fromMs)) {
+    throw new Error(`performanceWindow: invalid start date "${String(startDate)}"`);
+  }
+  if (!Number.isFinite(daysMark) || daysMark <= 0) {
+    throw new Error(`performanceWindow: invalid daysMark "${String(daysMark)}"`);
+  }
   return { fromMs, toMs: fromMs + daysMark * DAY_MS };
+}
+
+/** True for the day marks the pipeline schedules checks at. */
+export function isValidDaysMark(value: unknown): value is 15 | 30 {
+  return value === 15 || value === 30;
 }

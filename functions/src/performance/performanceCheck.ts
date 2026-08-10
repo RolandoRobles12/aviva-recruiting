@@ -5,7 +5,13 @@ import { db } from '../utils/admin';
 import { countDealsByOwner, findOwnerIdByEmail } from '../integrations/hubspotService';
 import { notifyPerformanceCheck } from '../integrations/slackService';
 import { parseCandidateStartDate } from '../utils/startDate';
-import { VERDICT_APPLIES_STATUSES, performanceWindow, resolveMonthlyTarget } from './targets';
+import {
+  PROMOTION_ELIGIBLE_STATUSES,
+  VERDICT_APPLIES_STATUSES,
+  isValidDaysMark,
+  performanceWindow,
+  resolveMonthlyTarget,
+} from './targets';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -83,8 +89,16 @@ async function resolvePromotorExitosoStageId(
 async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnapshot): Promise<void> {
   const check = checkDoc.data();
   const candidateId = check.candidateId as string;
-  const daysMark = check.daysMark as 15 | 30;
   const appUrl = APP_URL.value();
+
+  // A malformed check doc would otherwise be treated as a 30-day check and
+  // produce a NaN window bound, so refuse it explicitly instead.
+  if (!isValidDaysMark(check.daysMark)) {
+    console.error(`[performanceCheck] check ${checkDoc.id} has invalid daysMark "${String(check.daysMark)}" — marking processed`);
+    await checkDoc.ref.update({ processed: true, processedAt: FieldValue.serverTimestamp(), invalidDaysMark: true });
+    return;
+  }
+  const daysMark = check.daysMark;
 
   const candidateSnap = await db.collection('candidates').doc(candidateId).get();
   if (!candidateSnap.exists) {
@@ -228,8 +242,10 @@ async function retryPendingPromotorMoves(): Promise<void> {
   for (const docSnap of snap.docs) {
     const c = docSnap.data();
 
-    // Already there (e.g. moved manually in Viterbit and synced back) — just clear the flag.
-    if (c.status === 'promotor_exitoso') {
+    // Already there (e.g. moved manually in Viterbit and synced back), or
+    // disqualified since the flag was set — clear the flag without moving.
+    // A stale flag must never promote someone who has left the process.
+    if (c.status === 'promotor_exitoso' || c.status === 'disqualified') {
       await docSnap.ref.update({ promotorMovePending: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() });
       continue;
     }
@@ -286,16 +302,17 @@ async function sweepEvaluatedCandidates(): Promise<void> {
     const dealCount = (c.performance30DayDeals as number) ?? 0;
     const monthlyTarget = getMonthlyTarget(c, docSnap.id);
 
+    // A candidate sitting in an in-flight status (a reissued offer, an unsigned
+    // contract) must not be yanked out of that flow by a retroactive sweep — in
+    // either direction, promotion included.
     if (dealCount >= monthlyTarget) {
+      if (!PROMOTION_ELIGIBLE_STATUSES.includes(status)) continue;
       if (c.promotorMovePending === true) continue;
       console.info(`[performanceCheck] sweep: ${docSnap.id} met target (${dealCount}/${monthlyTarget}) but status is "${status}" — flagging for Promotor Exitoso move`);
       await docSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
       continue;
     }
 
-    // Only statuses where the 30-day verdict actually applies. A candidate
-    // sitting in an in-flight status (a reissued offer or an unsigned contract)
-    // must not be yanked out of that flow by a retroactive sweep.
     if (!VERDICT_APPLIES_STATUSES.includes(status)) continue;
     console.info(`[performanceCheck] sweep: ${docSnap.id} missed target (${dealCount}/${monthlyTarget}) and status is "${status}" — marking Bajo Desempeño`);
     await docSnap.ref.update({ status: 'bajo_desempeno', updatedAt: FieldValue.serverTimestamp() });
