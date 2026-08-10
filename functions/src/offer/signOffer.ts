@@ -397,6 +397,7 @@ export const signOffer = onRequest(
       const DOCS_COMPLETE_STATUSES = [
         'under_review', 'approved', 'contract_sent', 'contract_signed',
         'email_pending', 'email_ready', 'induction', 'onboarding_iniciado', 'promotor_exitoso',
+        'bajo_desempeno',
       ];
       const resumeDocsComplete = !!reissuePriorStatus && DOCS_COMPLETE_STATUSES.includes(reissuePriorStatus);
 

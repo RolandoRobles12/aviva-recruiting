@@ -22,7 +22,9 @@ const SIGNED_STATUSES = [
  * processAfter dates in the past are picked up by the next 09:00 scheduler run.
  */
 export const backfillPerformanceChecks = onCall(
-  { region: 'us-central1' },
+  // Walks every signed candidate with sequential reads/writes; the 60s default
+  // would abort a large run halfway (it is idempotent, but silently partial).
+  { region: 'us-central1', timeoutSeconds: 540 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');

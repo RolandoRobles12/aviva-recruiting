@@ -49,15 +49,50 @@ export const sendContractEmail = httpsCallable<
   { success: boolean }
 >(functions, 'sendContractEmail');
 
+// The maintenance callables walk every candidate — well past the SDK's 70s
+// default, which would surface as a client-side "deadline-exceeded" while the
+// function kept running server-side and the operator re-clicked the button.
+// Set above each function's own timeoutSeconds so the server's error is what
+// surfaces, instead of the client giving up on a run that is still going.
+const MAINTENANCE_TIMEOUT = { timeout: 530_000 };
+
 export const backfillCandidateDocuments = httpsCallable<
   Record<string, never>,
   { updated: number; message: string }
->(functions, 'backfillCandidateDocuments');
+>(functions, 'backfillCandidateDocuments', MAINTENANCE_TIMEOUT);
 
 export const backfillPerformanceChecks = httpsCallable<
   Record<string, never>,
   { created: number; skipped: number; unparseable: string[]; message: string }
->(functions, 'backfillPerformanceChecks');
+>(functions, 'backfillPerformanceChecks', MAINTENANCE_TIMEOUT);
+
+export interface PerformanceRecalcChange {
+  candidateId: string;
+  nombre: string;
+  perfil: string;
+  statusAnterior: string;
+  statusNuevo: 'promotor_exitoso' | 'bajo_desempeno';
+  dealsAntes: number | null;
+  dealsDespues: number;
+  meta: number;
+}
+
+export const recalculatePerformanceStatuses = httpsCallable<
+  { dryRun?: boolean },
+  {
+    dryRun: boolean;
+    evaluados: number;
+    promotorExitoso: number;
+    bajoDesempeno: number;
+    sinCambio: number;
+    conteoAjustado: number;
+    omitidos: number;
+    sinDatos: string[];
+    errores: string[];
+    cambios: PerformanceRecalcChange[];
+    message: string;
+  }
+>(functions, 'recalculatePerformanceStatuses', MAINTENANCE_TIMEOUT);
 
 export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
