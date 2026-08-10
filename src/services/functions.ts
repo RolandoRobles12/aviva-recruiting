@@ -66,16 +66,30 @@ export const backfillPerformanceChecks = httpsCallable<
   { created: number; skipped: number; unparseable: string[]; message: string }
 >(functions, 'backfillPerformanceChecks', MAINTENANCE_TIMEOUT);
 
+export interface PerformanceRecalcChange {
+  candidateId: string;
+  nombre: string;
+  perfil: string;
+  statusAnterior: string;
+  statusNuevo: 'promotor_exitoso' | 'bajo_desempeno';
+  dealsAntes: number | null;
+  dealsDespues: number;
+  meta: number;
+}
+
 export const recalculatePerformanceStatuses = httpsCallable<
-  Record<string, never>,
+  { dryRun?: boolean },
   {
+    dryRun: boolean;
     evaluados: number;
     promotorExitoso: number;
     bajoDesempeno: number;
     sinCambio: number;
+    conteoAjustado: number;
     omitidos: number;
     sinDatos: string[];
     errores: string[];
+    cambios: PerformanceRecalcChange[];
     message: string;
   }
 >(functions, 'recalculatePerformanceStatuses', MAINTENANCE_TIMEOUT);

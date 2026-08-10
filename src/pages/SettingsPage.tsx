@@ -12,6 +12,19 @@ import {
   backfillPerformanceChecks,
   recalculatePerformanceStatuses,
 } from '../services/functions';
+import type { PerformanceRecalcChange } from '../services/functions';
+
+const STAGE_LABELS: Record<string, string> = {
+  contract_signed: 'Contrato firmado',
+  email_pending: 'Correo pendiente',
+  email_ready: 'Correo listo',
+  induction: 'Onboarding',
+  onboarding_iniciado: 'Onboarding Iniciado',
+  promotor_exitoso: 'Promotor Exitoso',
+  bajo_desempeno: 'Bajo Desempeño',
+};
+
+const stageLabel = (status: string) => STAGE_LABELS[status] ?? status;
 
 type Tab = 'gmail' | 'reminders' | 'links' | 'questions' | 'branding' | 'admin';
 
@@ -29,19 +42,27 @@ function AdminTab() {
   const [result, setResult] = useState<string | null>(null);
   const [runningPerf, setRunningPerf] = useState(false);
   const [perfResult, setPerfResult] = useState<string | null>(null);
-  const [runningRecalc, setRunningRecalc] = useState(false);
+  const [runningRecalc, setRunningRecalc] = useState<'dry' | 'real' | null>(null);
   const [recalcResult, setRecalcResult] = useState<string | null>(null);
+  const [recalcChanges, setRecalcChanges] = useState<PerformanceRecalcChange[]>([]);
+  const [simulated, setSimulated] = useState(false);
 
-  const handleRecalc = async () => {
-    setRunningRecalc(true);
+  const handleRecalc = async (dryRun: boolean) => {
+    setRunningRecalc(dryRun ? 'dry' : 'real');
     setRecalcResult(null);
+    setRecalcChanges([]);
     try {
-      const res = await recalculatePerformanceStatuses({});
+      const res = await recalculatePerformanceStatuses({ dryRun });
       setRecalcResult(res.data.message);
+      setRecalcChanges(res.data.cambios);
+      // Applying is only unlocked by a simulation, so nobody moves candidates
+      // in bulk without having seen the list first.
+      setSimulated(dryRun);
     } catch (err) {
       setRecalcResult(err instanceof Error ? err.message : 'Error desconocido');
+      setSimulated(false);
     } finally {
-      setRunningRecalc(false);
+      setRunningRecalc(null);
     }
   };
 
@@ -118,17 +139,72 @@ function AdminTab() {
             Vuelve a contar los deals de cada candidato ya evaluado en su ventana real
             (fecha de ingreso + 30 días) y actualiza su etapa: Promotor Exitoso o Bajo Desempeño.
             No modifica a quienes ya están en Promotor Exitoso ni a los descalificados.
+            Simula primero: la ventana correcta solo puede bajar un conteo, así que el
+            recálculo tiende a mover gente hacia Bajo Desempeño.
           </p>
         </div>
-        <button
-          onClick={handleRecalc}
-          disabled={runningRecalc}
-          className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
-        >
-          {runningRecalc ? 'Recalculando...' : 'Recalcular'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleRecalc(true)}
+            disabled={runningRecalc !== null}
+            className="flex items-center gap-2 bg-white text-gray-700 border border-gray-300 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-60"
+          >
+            {runningRecalc === 'dry' ? 'Simulando...' : 'Simular'}
+          </button>
+          <button
+            onClick={() => handleRecalc(false)}
+            disabled={runningRecalc !== null || !simulated}
+            title={simulated ? undefined : 'Corre la simulación primero'}
+            className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
+          >
+            {runningRecalc === 'real' ? 'Aplicando...' : 'Aplicar cambios'}
+          </button>
+        </div>
         {recalcResult && (
           <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{recalcResult}</p>
+        )}
+        {recalcChanges.length > 0 && (
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="max-h-72 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr className="text-left text-gray-500">
+                    <th className="px-3 py-2 font-medium">Candidato</th>
+                    <th className="px-3 py-2 font-medium">Etapa</th>
+                    <th className="px-3 py-2 font-medium text-right">Deals</th>
+                    <th className="px-3 py-2 font-medium text-right">Meta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {recalcChanges.map((ch) => (
+                    <tr key={ch.candidateId} className="text-gray-700">
+                      <td className="px-3 py-2">
+                        <p className="font-medium">{ch.nombre || ch.candidateId}</p>
+                        <p className="text-gray-400">{ch.perfil}</p>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="text-gray-400">{stageLabel(ch.statusAnterior)}</span>
+                        <span className="mx-1 text-gray-300">→</span>
+                        <span
+                          className={
+                            ch.statusNuevo === 'promotor_exitoso' ? 'text-green-600' : 'text-red-600'
+                          }
+                        >
+                          {stageLabel(ch.statusNuevo)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                        <span className="text-gray-400">{ch.dealsAntes ?? '—'}</span>
+                        <span className="mx-1 text-gray-300">→</span>
+                        <span className="font-medium">{ch.dealsDespues}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-500">{ch.meta}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
     </div>

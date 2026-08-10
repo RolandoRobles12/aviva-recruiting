@@ -6,8 +6,7 @@ import { countDealsByOwner, findOwnerIdByEmail } from '../integrations/hubspotSe
 import { notifyPerformanceCheck } from '../integrations/slackService';
 import { parseCandidateStartDate } from '../utils/startDate';
 import {
-  PROMOTION_ELIGIBLE_STATUSES,
-  VERDICT_APPLIES_STATUSES,
+  decidePerformanceOutcome,
   isValidDaysMark,
   performanceWindow,
   resolveMonthlyTarget,
@@ -302,20 +301,23 @@ async function sweepEvaluatedCandidates(): Promise<void> {
     const dealCount = (c.performance30DayDeals as number) ?? 0;
     const monthlyTarget = getMonthlyTarget(c, docSnap.id);
 
-    // A candidate sitting in an in-flight status (a reissued offer, an unsigned
-    // contract) must not be yanked out of that flow by a retroactive sweep — in
-    // either direction, promotion included.
-    if (dealCount >= monthlyTarget) {
-      if (!PROMOTION_ELIGIBLE_STATUSES.includes(status)) continue;
-      if (c.promotorMovePending === true) continue;
+    // Same verdict the recalculation tool applies — in-flight statuses (a
+    // reissued offer, an unsigned contract) are excluded in both directions, so
+    // a retroactive pass never yanks a candidate out of a live flow.
+    const outcome = decidePerformanceOutcome({
+      status,
+      dealCount,
+      monthlyTarget,
+      promotorMovePending: c.promotorMovePending === true,
+    });
+
+    if (outcome === 'promotor') {
       console.info(`[performanceCheck] sweep: ${docSnap.id} met target (${dealCount}/${monthlyTarget}) but status is "${status}" — flagging for Promotor Exitoso move`);
       await docSnap.ref.update({ promotorMovePending: true, updatedAt: FieldValue.serverTimestamp() });
-      continue;
+    } else if (outcome === 'bajo') {
+      console.info(`[performanceCheck] sweep: ${docSnap.id} missed target (${dealCount}/${monthlyTarget}) and status is "${status}" — marking Bajo Desempeño`);
+      await docSnap.ref.update({ status: 'bajo_desempeno', updatedAt: FieldValue.serverTimestamp() });
     }
-
-    if (!VERDICT_APPLIES_STATUSES.includes(status)) continue;
-    console.info(`[performanceCheck] sweep: ${docSnap.id} missed target (${dealCount}/${monthlyTarget}) and status is "${status}" — marking Bajo Desempeño`);
-    await docSnap.ref.update({ status: 'bajo_desempeno', updatedAt: FieldValue.serverTimestamp() });
   }
 }
 

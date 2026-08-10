@@ -103,6 +103,41 @@ export const VERDICT_APPLIES_STATUSES = [
  */
 export const PROMOTION_ELIGIBLE_STATUSES = [...VERDICT_APPLIES_STATUSES, 'bajo_desempeno'];
 
+export type PerformanceOutcome = 'promotor' | 'bajo' | 'sin_cambio';
+
+export interface VerdictInput {
+  status: string;
+  dealCount: number;
+  monthlyTarget: number;
+  /** A Viterbit move already queued for this candidate. */
+  promotorMovePending?: boolean;
+}
+
+/**
+ * The 30-day verdict for a candidate, from their stored or recounted deals.
+ *
+ * Single source of truth for the daily sweep and the recalculation tool, so a
+ * simulated run cannot disagree with the run that writes: both ask this.
+ */
+export function decidePerformanceOutcome({
+  status,
+  dealCount,
+  monthlyTarget,
+  promotorMovePending,
+}: VerdictInput): PerformanceOutcome {
+  // Settled outcomes are never revisited.
+  if (status === 'promotor_exitoso' || status === 'disqualified') return 'sin_cambio';
+
+  if (dealCount >= monthlyTarget) {
+    if (!PROMOTION_ELIGIBLE_STATUSES.includes(status)) return 'sin_cambio';
+    if (promotorMovePending === true) return 'sin_cambio';
+    return 'promotor';
+  }
+
+  if (!VERDICT_APPLIES_STATUSES.includes(status)) return 'sin_cambio';
+  return 'bajo';
+}
+
 export interface PerformanceWindow {
   fromMs: number;
   toMs: number;

@@ -5,6 +5,7 @@ import {
   DEFAULT_MONTHLY_TARGET,
   PROMOTION_ELIGIBLE_STATUSES,
   VERDICT_APPLIES_STATUSES,
+  decidePerformanceOutcome,
   isValidDaysMark,
   performanceWindow,
   resolveMonthlyTarget,
@@ -100,6 +101,51 @@ describe('performanceWindow', () => {
   it('accepts the legacy Spanish display date as the anchor', () => {
     const legacy = parseStartDateString('15 de julio de 2026')!;
     expect(performanceWindow(legacy, 30)).toEqual(performanceWindow(start, 30));
+  });
+});
+
+describe('decidePerformanceOutcome', () => {
+  const verdict = (over: Partial<Parameters<typeof decidePerformanceOutcome>[0]> = {}) =>
+    decidePerformanceOutcome({ status: 'onboarding_iniciado', dealCount: 10, monthlyTarget: 34, ...over });
+
+  it('never revisits a settled outcome, in either direction', () => {
+    for (const status of ['promotor_exitoso', 'disqualified']) {
+      expect(verdict({ status, dealCount: 99 })).toBe('sin_cambio');
+      expect(verdict({ status, dealCount: 0 })).toBe('sin_cambio');
+    }
+  });
+
+  it('marks a post-signature candidate below target as Bajo Desempeño', () => {
+    for (const status of VERDICT_APPLIES_STATUSES) {
+      expect(verdict({ status, dealCount: 33, monthlyTarget: 34 })).toBe('bajo');
+    }
+  });
+
+  it('promotes on the target exactly, not only above it', () => {
+    expect(verdict({ dealCount: 34, monthlyTarget: 34 })).toBe('promotor');
+    expect(verdict({ dealCount: 33, monthlyTarget: 34 })).toBe('bajo');
+  });
+
+  it('leaves an in-flight candidate alone in both directions', () => {
+    for (const status of ['contract_sent', 'offer_sent', 'offer_signed', 'invited', 'under_review']) {
+      expect(verdict({ status, dealCount: 99 })).toBe('sin_cambio');
+      expect(verdict({ status, dealCount: 0 })).toBe('sin_cambio');
+    }
+  });
+
+  it('does not re-flag a candidate whose move is already queued', () => {
+    expect(verdict({ dealCount: 99, promotorMovePending: true })).toBe('sin_cambio');
+    expect(verdict({ dealCount: 99, promotorMovePending: false })).toBe('promotor');
+  });
+
+  it('can correct a Bajo Desempeño verdict but never re-applies it', () => {
+    expect(verdict({ status: 'bajo_desempeno', dealCount: 99 })).toBe('promotor');
+    expect(verdict({ status: 'bajo_desempeno', dealCount: 0 })).toBe('sin_cambio');
+  });
+
+  it('is pure — a simulation and a real run cannot disagree', () => {
+    const input = { status: 'induction', dealCount: 34, monthlyTarget: 34 };
+    expect(decidePerformanceOutcome(input)).toBe(decidePerformanceOutcome(input));
   });
 });
 
