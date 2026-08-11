@@ -11,6 +11,7 @@ export { reissueOffer } from './offer/reissueOffer';
 export { onCandidateCreated } from './offer/onCandidateCreated';
 export { onCandidateUpdated } from './offer/onCandidateUpdated';
 export { signContract, getContract } from './contract/signContract';
+export { reissueContract } from './contract/reissueContract';
 export { analyzePdfTemplateEndpoint as analyzePdfTemplate } from './contract/analyzePdf';
 export { analyzeContractVariables } from './contract/analyzeContractVariables';
 export { checkViterbitEmail } from './integrations/checkViterbitEmail';

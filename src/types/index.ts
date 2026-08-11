@@ -232,6 +232,10 @@ export interface Candidate {
   reissuePriorStatus?: CandidateStatus;
   reissuedAt?: Timestamp;
   reissueCount?: number;
+  // Contract reissue (see reissueContract function) — prior state archived in
+  // the same reissue_history subcollection (scope: 'contract')
+  contractReissuedAt?: Timestamp;
+  contractReissueCount?: number;
   viterbitHiringManager?: string;
   viterbitCompany?: string;
   viterbitDepartmentProfile?: string;

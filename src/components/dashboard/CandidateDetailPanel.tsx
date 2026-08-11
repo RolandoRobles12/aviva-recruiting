@@ -43,6 +43,7 @@ import {
   reissueOffer,
   sendInvitationEmail,
   sendContractEmail,
+  reissueContract,
   refreshCandidateViterbit,
   createDriveFolderManual,
   appendSheetsRowManual,
@@ -1476,9 +1477,86 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
               </button>
             </Section>
           )}
+
+          {/* Reissue contract — for signed contracts whose data was wrong */}
+          {(c.contractSignedAt || c.status === 'contract_signed') && (
+            <ReissueContractSection c={c} onDone={onCandidateChange} />
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reissue contract — corrects wrong contract data without deleting the candidate
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function ReissueContractSection({ c, onDone }: { c: Candidate; onDone: () => void }) {
+  const { can } = useAuth();
+  const [confirming, setConfirming] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+
+  // Restricted action: only líder de reclutamiento, nómina, legal, and admin.
+  if (!can('process_reissue_contract')) return null;
+
+  async function handleReissue() {
+    setWorking(true);
+    setError('');
+    try {
+      await reissueContract({ candidateId: c.id });
+      setDone(true);
+      setConfirming(false);
+      onDone();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al reemitir el contrato.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <Section title="Reemitir contrato">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+        <p className="text-xs text-amber-800">
+          Si un dato del contrato estaba mal, corrígelo primero en "Datos para el contrato" arriba y reemite:
+          se enviará un nuevo contrato para firma con los datos actualizados. La carta oferta, los documentos
+          ya subidos y sus validaciones se conservan — no hay que volver a subirlos.
+        </p>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        {done && <p className="text-xs text-green-700 font-medium">Nuevo contrato enviado al candidato.</p>}
+        {!confirming ? (
+          <button
+            onClick={() => { setDone(false); setConfirming(true); }}
+            disabled={working}
+            className="flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} />
+            Reemitir contrato
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleReissue}
+              disabled={working}
+              className="flex items-center gap-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-60"
+            >
+              <RefreshCw size={12} className={working ? 'animate-spin' : ''} />
+              {working ? 'Reemitiendo...' : 'Confirmar reemisión'}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={working}
+              className="text-xs font-medium text-gray-500 hover:text-gray-700 px-2 py-1.5 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
