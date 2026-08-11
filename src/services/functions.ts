@@ -55,6 +55,11 @@ export const sendContractEmail = httpsCallable<
   { success: boolean }
 >(functions, 'sendContractEmail');
 
+export const reissueContract = httpsCallable<
+  { candidateId: string; reason?: string },
+  { success: boolean }
+>(functions, 'reissueContract');
+
 // The maintenance callables walk every candidate — well past the SDK's 70s
 // default, which would surface as a client-side "deadline-exceeded" while the
 // function kept running server-side and the operator re-clicked the button.

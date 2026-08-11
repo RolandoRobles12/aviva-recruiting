@@ -22,6 +22,7 @@ export type PermissionKey =
   | 'process_reissue_offer'
   | 'process_review_docs'
   | 'process_delete_document'
+  | 'process_reissue_contract'
   | 'process_view_contracts'
   | 'process_provision_accounts'
   // Pruebas psicométricas
@@ -96,6 +97,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: 'process_delete_document',
         label: 'Eliminar documento cargado',
         description: 'Borra un documento subido por el candidato (y su archivo) para que lo vuelva a subir',
+      },
+      {
+        key: 'process_reissue_contract',
+        label: 'Reemitir contrato',
+        description: 'Reemitir el contrato con datos corregidos — invalida el contrato firmado y envía uno nuevo',
       },
       {
         key: 'process_view_contracts',
@@ -174,6 +180,7 @@ export const ALL_PERMISSIONS: RolePermissions = {
   process_reissue_offer: true,
   process_review_docs: true,
   process_delete_document: true,
+  process_reissue_contract: true,
   process_view_contracts: true,
   process_provision_accounts: true,
   psychometric_sessions: true,
@@ -198,6 +205,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_reissue_offer: false,
     process_review_docs: true,
     process_delete_document: false,
+    process_reissue_contract: false,
     process_view_contracts: false,
     process_provision_accounts: false,
     psychometric_sessions: true,
@@ -217,6 +225,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_reissue_offer: true,
     process_review_docs: true,
     process_delete_document: false,
+    process_reissue_contract: true,
     process_view_contracts: true,
     process_provision_accounts: true,
     psychometric_sessions: true,
@@ -236,6 +245,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_reissue_offer: true,
     process_review_docs: false,
     process_delete_document: false,
+    process_reissue_contract: true,
     process_view_contracts: true,
     process_provision_accounts: true,
     psychometric_sessions: false,
@@ -255,6 +265,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_reissue_offer: true,
     process_review_docs: true,
     process_delete_document: false,
+    process_reissue_contract: true,
     process_view_contracts: true,
     process_provision_accounts: false,
     psychometric_sessions: false,
