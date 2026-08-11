@@ -7,6 +7,7 @@ import { sendEmail } from '../email/gmailClient';
 import { offerTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLogoUrl } from '../utils/branding';
+import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -26,10 +27,9 @@ export async function sendOfferEmailCore(
   const offerToken = candidate.offerToken as string | undefined;
   if (!offerToken) throw new HttpsError('failed-precondition', 'El candidato no tiene carta oferta generada.');
 
-  const missingSalary = !(candidate.viterbitSalary as string | undefined)?.trim();
-  const missingDate = !(candidate.viterbitStartDate as string | undefined)?.trim();
-  if (missingSalary || missingDate) {
-    const missing = [missingSalary && 'salario', missingDate && 'fecha de inicio'].filter(Boolean).join(' y ');
+  const missingDetails = getMissingHiringDetails(candidate);
+  if (missingDetails.length > 0) {
+    const missing = formatMissingHiringDetails(missingDetails);
     throw new HttpsError('failed-precondition', `Faltan datos de Viterbit: ${missing}. Refresca los datos antes de enviar.`);
   }
 
@@ -90,6 +90,7 @@ export async function sendOfferEmailCore(
     db.collection('candidates').doc(candidateId).update({
       status: 'offer_sent',
       offerEmailSent: true,
+      offerHeldReasons: [],
       updatedAt: FieldValue.serverTimestamp(),
     }),
   ]);

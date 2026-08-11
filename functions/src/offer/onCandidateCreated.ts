@@ -7,6 +7,7 @@ import { sendEmail } from '../email/gmailClient';
 import { offerTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLogoUrl } from '../utils/branding';
+import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
@@ -31,6 +32,22 @@ export const onCandidateCreated = functions
 
     // Skip if the webhook already sent the email
     if (candidate.offerEmailSent === true) return null;
+
+    // Hold the letter until every hiring detail is known (salary, start date,
+    // buró and psicometría de integridad) — same gate as the Viterbit webhook,
+    // applied here for candidates created through any other path.
+    const missingDetails = getMissingHiringDetails(candidate);
+    if (missingDetails.length > 0) {
+      const missing = formatMissingHiringDetails(missingDetails);
+      console.warn(`[onCandidateCreated] offer held for ${candidateId} — missing: ${missing}`);
+      await snap.ref.update({
+        status: 'offer_held',
+        offerEmailSent: false,
+        offerHeldReasons: missingDetails,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return null;
+    }
 
     const offerUrl = `${APP_URL}/offer/${offerToken}`;
     const expiresAt = candidate.offerExpiresAt?.toDate?.() as Date | undefined;
@@ -59,7 +76,11 @@ export const onCandidateCreated = functions
         recruiterUid: createdBy !== 'viterbit_webhook' ? createdBy : undefined,
       });
 
-      await snap.ref.update({ offerEmailSent: true, updatedAt: FieldValue.serverTimestamp() });
+      await snap.ref.update({
+        offerEmailSent: true,
+        offerHeldReasons: [],
+        updatedAt: FieldValue.serverTimestamp(),
+      });
 
       await db.collection('email_logs').add({
         candidateId,

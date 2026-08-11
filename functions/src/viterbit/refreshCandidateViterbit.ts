@@ -5,6 +5,11 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { toIsoDateString } from '../utils/startDate';
+import {
+  readScreeningFields,
+  mergeScreeningFields,
+  type ViterbitScreeningFields,
+} from '../utils/viterbitFields';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -23,29 +28,70 @@ async function fetchViterbitUser(userId: string, apiKey: string): Promise<string
   }
 }
 
-// Fetches salary and start date from the candidature's hired_info.
+interface CandidatureRefresh extends ViterbitScreeningFields {
+  salary: string;
+  startDate: string;
+  startDateIso: string;
+}
+
+const EMPTY_CANDIDATURE: CandidatureRefresh = {
+  salary: '', startDate: '', startDateIso: '', buro: '', psicometriaIntegridad: '',
+};
+
+// Fetches salary/start date from the candidature's hired_info, plus the buró and
+// psicometría de integridad custom fields (both gate the offer letter).
 async function fetchCandidatureHiredInfo(
   candidatureId: string,
   apiKey: string,
-): Promise<{ salary: string; startDate: string; startDateIso: string }> {
+): Promise<CandidatureRefresh> {
+  // The include is what surfaces custom_field_values; fall back to the plain
+  // endpoint on accounts that reject it.
+  const urls = [
+    `${VITERBIT_API_BASE}/candidatures/${candidatureId}?includes[]=custom_field_values`,
+    `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
+  ];
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+      if (!resp.ok) continue;
+      const json = (await resp.json()) as Record<string, unknown>;
+      const data = (json.data as Record<string, unknown>) ?? json;
+      const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
+      const salaryAmount = hiredInfo.salary as number | undefined;
+      const currency = (hiredInfo.currency as string) ?? 'MXN';
+      const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
+      const rawStartDate = (hiredInfo.start_at as string) ?? '';
+      const startDate = rawStartDate
+        ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
+        : '';
+      return {
+        salary,
+        startDate,
+        startDateIso: toIsoDateString(rawStartDate),
+        ...readScreeningFields(data),
+      };
+    } catch {
+      // try the next URL
+    }
+  }
+  return EMPTY_CANDIDATURE;
+}
+
+// Buró / psicometría may live on the candidate instead of the candidature.
+async function fetchCandidateScreening(
+  candidateViterbitId: string,
+  apiKey: string,
+): Promise<ViterbitScreeningFields> {
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateViterbitId}`, {
       headers: { 'X-API-Key': apiKey },
     });
-    if (!resp.ok) return { salary: '', startDate: '', startDateIso: '' };
+    if (!resp.ok) return { buro: '', psicometriaIntegridad: '' };
     const json = (await resp.json()) as Record<string, unknown>;
     const data = (json.data as Record<string, unknown>) ?? json;
-    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
-    const salaryAmount = hiredInfo.salary as number | undefined;
-    const currency = (hiredInfo.currency as string) ?? 'MXN';
-    const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
-    const rawStartDate = (hiredInfo.start_at as string) ?? '';
-    const startDate = rawStartDate
-      ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
-      : '';
-    return { salary, startDate, startDateIso: toIsoDateString(rawStartDate) };
+    return readScreeningFields(data);
   } catch {
-    return { salary: '', startDate: '', startDateIso: '' };
+    return { buro: '', psicometriaIntegridad: '' };
   }
 }
 
@@ -77,8 +123,17 @@ export const refreshCandidateViterbit = onCall(
         `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
         { headers: { 'X-API-Key': apiKey } },
       ),
-      candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve({ salary: '', startDate: '', startDateIso: '' }),
+      candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve(EMPTY_CANDIDATURE),
     ]);
+
+    // Screening results: candidature first, candidate as fallback.
+    const candidateViterbitId = candidate.viterbitCandidateId as string | undefined;
+    const needsCandidateLookup =
+      candidateViterbitId && (!candidatureInfo.buro || !candidatureInfo.psicometriaIntegridad);
+    const candidateScreening = needsCandidateLookup
+      ? await fetchCandidateScreening(candidateViterbitId, apiKey)
+      : { buro: '', psicometriaIntegridad: '' };
+    const screening = mergeScreeningFields(candidatureInfo, candidateScreening);
 
     if (!jobResp.ok) {
       throw new HttpsError('unavailable', `Viterbit API devolvió HTTP ${jobResp.status}`);
@@ -170,6 +225,11 @@ export const refreshCandidateViterbit = onCall(
     if (startDateIso) updates.viterbitStartDateIso = startDateIso;
     if (hiringManager) updates.viterbitHiringManager = hiringManager;
     if (company) updates.viterbitCompany = company;
+    // Only overwrite when Viterbit has a value — never clear what we already know.
+    if (screening.buro) updates.viterbitBuro = screening.buro;
+    if (screening.psicometriaIntegridad) {
+      updates.viterbitPsicometriaIntegridad = screening.psicometriaIntegridad;
+    }
     if (departmentProfile) {
       updates.viterbitDepartmentProfile = departmentProfile;
       updates.profile = departmentProfile;
@@ -182,6 +242,8 @@ export const refreshCandidateViterbit = onCall(
       salary: (updates.viterbitSalary as string) || null,
       startDate: (updates.viterbitStartDate as string) || null,
       position: (updates.position as string) || null,
+      buro: screening.buro || null,
+      psicometriaIntegridad: screening.psicometriaIntegridad || null,
     };
   },
 );

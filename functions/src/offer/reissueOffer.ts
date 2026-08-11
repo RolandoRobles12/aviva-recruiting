@@ -8,35 +8,56 @@ import { db } from '../utils/admin';
 import { getLinkDuration } from '../utils/linkDuration';
 import { toIsoDateString } from '../utils/startDate';
 import { userHasPermission } from '../utils/permissions';
+import { readScreeningFields, mergeScreeningFields } from '../utils/viterbitFields';
+import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 import { sendOfferEmailCore } from './sendOfferEmail';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
+interface HiredInfoRefresh {
+  salary: string;
+  startDate: string;
+  startDateIso: string;
+  buro: string;
+  psicometriaIntegridad: string;
+}
+
+const EMPTY_HIRED_INFO: HiredInfoRefresh = {
+  salary: '', startDate: '', startDateIso: '', buro: '', psicometriaIntegridad: '',
+};
+
 async function fetchHiredInfo(
   candidatureId: string,
   apiKey: string,
-): Promise<{ salary: string; startDate: string; startDateIso: string }> {
-  const empty = { salary: '', startDate: '', startDateIso: '' };
-  try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) return empty;
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
-    const salaryAmount = hiredInfo.salary as number | undefined;
-    const currency = (hiredInfo.currency as string) ?? 'MXN';
-    const rawStartDate = (hiredInfo.start_at as string) ?? '';
-    return {
-      salary: salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '',
-      startDate: rawStartDate ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es }) : '',
-      startDateIso: toIsoDateString(rawStartDate),
-    };
-  } catch {
-    return empty;
+): Promise<HiredInfoRefresh> {
+  // The include surfaces custom_field_values (buró / psicometría); the plain
+  // endpoint is the fallback for accounts that reject it.
+  const urls = [
+    `${VITERBIT_API_BASE}/candidatures/${candidatureId}?includes[]=custom_field_values`,
+    `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
+  ];
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+      if (!resp.ok) continue;
+      const json = (await resp.json()) as Record<string, unknown>;
+      const data = (json.data as Record<string, unknown>) ?? json;
+      const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
+      const salaryAmount = hiredInfo.salary as number | undefined;
+      const currency = (hiredInfo.currency as string) ?? 'MXN';
+      const rawStartDate = (hiredInfo.start_at as string) ?? '';
+      return {
+        salary: salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '',
+        startDate: rawStartDate ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es }) : '',
+        startDateIso: toIsoDateString(rawStartDate),
+        ...readScreeningFields(data),
+      };
+    } catch {
+      // try the next URL
+    }
   }
+  return EMPTY_HIRED_INFO;
 }
 
 /**
@@ -87,14 +108,24 @@ export const reissueOffer = onCall(
     const candidatureId = candidate.viterbitCandidatureId as string | undefined;
     const refreshed = candidatureId && apiKey
       ? await fetchHiredInfo(candidatureId, apiKey)
-      : { salary: '', startDate: '', startDateIso: '' };
+      : EMPTY_HIRED_INFO;
 
     const viterbitSalary = refreshed.salary || (candidate.viterbitSalary as string) || '';
     const viterbitStartDate = refreshed.startDate || (candidate.viterbitStartDate as string) || '';
     const viterbitStartDateIso = refreshed.startDateIso || (candidate.viterbitStartDateIso as string) || '';
+    const screening = mergeScreeningFields(refreshed, {
+      buro: candidate.viterbitBuro as string | undefined,
+      psicometriaIntegridad: candidate.viterbitPsicometriaIntegridad as string | undefined,
+    });
 
-    if (!viterbitSalary.trim() || !viterbitStartDate.trim()) {
-      const missing = [!viterbitSalary.trim() && 'salario', !viterbitStartDate.trim() && 'fecha de inicio'].filter(Boolean).join(' y ');
+    const missingDetails = getMissingHiringDetails({
+      viterbitSalary,
+      viterbitStartDate,
+      viterbitBuro: screening.buro,
+      viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
+    });
+    if (missingDetails.length > 0) {
+      const missing = formatMissingHiringDetails(missingDetails);
       throw new HttpsError('failed-precondition', `Faltan datos en Viterbit: ${missing}. Corrígelos allá y vuelve a intentar.`);
     }
 
@@ -125,6 +156,8 @@ export const reissueOffer = onCall(
       viterbitSalary,
       viterbitStartDate,
       viterbitStartDateIso: viterbitStartDateIso || null,
+      viterbitBuro: screening.buro,
+      viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
       status: 'offer_sent',
       offerToken,
       offerExpiresAt,
@@ -166,7 +199,15 @@ export const reissueOffer = onCall(
     // Send the new offer email with the refreshed data.
     await sendOfferEmailCore(
       candidateId,
-      { ...candidate, offerToken, offerExpiresAt, viterbitSalary, viterbitStartDate },
+      {
+        ...candidate,
+        offerToken,
+        offerExpiresAt,
+        viterbitSalary,
+        viterbitStartDate,
+        viterbitBuro: screening.buro,
+        viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
+      },
       request.auth.uid,
     );
 

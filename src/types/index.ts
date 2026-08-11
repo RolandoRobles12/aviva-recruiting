@@ -114,7 +114,7 @@ export interface FormQuestion {
 // ─── Candidate ────────────────────────────────────────────────────────────────
 
 export type CandidateStatus =
-  | 'offer_held'           // candidate created but offer withheld — missing salary or start date in Viterbit
+  | 'offer_held'           // candidate created but offer withheld — salary, start date, buró or psicometría de integridad still unknown in Viterbit
   | 'offer_sent'           // offer letter sent, pending candidate signature
   | 'offer_signed'         // candidate signed offer, document collection active
   | 'invited'              // documents link sent, no documents yet
@@ -222,6 +222,11 @@ export interface Candidate {
   viterbitSalary?: string;
   viterbitStartDate?: string;      // display text, e.g. "15 de julio de 2026"
   viterbitStartDateIso?: string;   // canonical machine-readable date, e.g. "2026-07-15"
+  // Screening results — the offer letter is held until both are known
+  viterbitBuro?: string;
+  viterbitPsicometriaIntegridad?: string;
+  /** Hiring details still missing while the candidate sits in offer_held */
+  offerHeldReasons?: string[];
   // Offer reissue (see reissueOffer function) — prior state archived in the
   // reissue_history subcollection
   reissuePriorStatus?: CandidateStatus;
