@@ -5,7 +5,8 @@
  * The offer is only emailed once every hiring detail is known in Viterbit:
  *
  *   - salario y fecha de inicio — they are printed on the letter itself
- *   - buró y psicometría de integridad — screening results the hire depends on
+ *   - buró y psicometría de integridad — candidate-level Viterbit custom fields
+ *     holding a link to each report; a value present means the result is in
  *
  * When anything is still unknown the candidate is created but parked in
  * `offer_held`; the recruiter fills the data in Viterbit, refreshes it from the

@@ -12,7 +12,8 @@ import { getLinkDuration } from '../utils/linkDuration';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 import { getAllowedHiringProfiles } from '../utils/hiringProfiles';
 import { toIsoDateString } from '../utils/startDate';
-import { readScreeningFields, mergeScreeningFields } from '../utils/viterbitFields';
+import { readScreeningFields } from '../utils/viterbitFields';
+import { fetchCandidateRaw } from './candidateScreening';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
@@ -136,8 +137,6 @@ interface ViterbitCandidatureInfo {
   salary: string;
   startDate: string;
   jobId: string;
-  buro: string;
-  psicometriaIntegridad: string;
 }
 
 /**
@@ -251,42 +250,21 @@ async function moveToStage(candidatureId: string, stageId: string, apiKey: strin
   }
 }
 
-/**
- * Fetches a candidature, asking for custom_field_values (where buró and
- * psicometría de integridad live). Older/limited accounts reject the include,
- * so a plain fetch is used as a fallback.
- */
-export async function fetchCandidatureRaw(
-  candidatureId: string,
-  apiKey: string,
-): Promise<Record<string, unknown> | null> {
-  const urls = [
-    `${VITERBIT_API_BASE}/candidatures/${candidatureId}?includes[]=custom_field_values`,
-    `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
-  ];
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
-      if (!resp.ok) {
-        console.error(`[viterbit] fetchCandidatureRaw ${candidatureId} → HTTP ${resp.status} (${url})`);
-        continue;
-      }
-      const json = (await resp.json()) as Record<string, unknown>;
-      return (json.data as Record<string, unknown>) ?? json;
-    } catch (err) {
-      console.error('[viterbit] fetchCandidatureRaw error:', err);
-    }
-  }
-  return null;
-}
-
 async function fetchViterbitCandidature(
   candidatureId: string,
   apiKey: string
 ): Promise<ViterbitCandidatureInfo | null> {
   try {
-    const data = await fetchCandidatureRaw(candidatureId, apiKey);
-    if (!data) return null;
+    const resp = await fetch(
+      `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
+      { headers: { 'X-API-Key': apiKey } },
+    );
+    if (!resp.ok) {
+      console.error(`[viterbit] fetchViterbitCandidature ${candidatureId} → HTTP ${resp.status}`);
+      return null;
+    }
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
 
     const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
     const stageId   = (currentStage.id   as string) ?? '';
@@ -299,18 +277,8 @@ async function fetchViterbitCandidature(
     const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
     const startDate = (hiredInfo.start_at as string) ?? '';
 
-    const screening = readScreeningFields(data);
-
     if (!stageId && !jobId) return null;
-    return {
-      stageId,
-      stageName,
-      salary,
-      startDate,
-      jobId,
-      buro: screening.buro,
-      psicometriaIntegridad: screening.psicometriaIntegridad,
-    };
+    return { stageId, stageName, salary, startDate, jobId };
   } catch (err) {
     console.error('[viterbit] fetchViterbitCandidature error:', err);
     return null;
@@ -337,15 +305,11 @@ async function fetchViterbitCandidate(
   apiKey: string
 ): Promise<ViterbitCandidate | null> {
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) {
-      console.error(`[viterbit] fetchCandidate ${candidateId} → HTTP ${resp.status}`);
+    const data = await fetchCandidateRaw(candidateId, apiKey);
+    if (!data) {
+      console.error(`[viterbit] fetchCandidate ${candidateId} → no data`);
       return null;
     }
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
 
     // Log full response keys and raw name fields to debug Viterbit API shape
     console.log('[viterbit] fetchCandidate response keys:', Object.keys(data));
@@ -558,10 +522,11 @@ export async function handleAprobado(
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
 
-  // Buró / psicometría de integridad may sit on the candidature or on the
-  // candidate depending on how the Viterbit account is configured — take
-  // whichever carries a value.
-  const screening = mergeScreeningFields(candidatureInfo, viterbitCandidate);
+  // Buró / psicometría de integridad are candidate-level custom fields.
+  const screening = {
+    buro: viterbitCandidate.buro,
+    psicometriaIntegridad: viterbitCandidate.psicometriaIntegridad,
+  };
 
   console.log('[webhook] handleAprobado candidate resolved → firstName:', firstName, '| lastName:', lastName, '| email:', candidateEmail);
 

@@ -8,56 +8,38 @@ import { db } from '../utils/admin';
 import { getLinkDuration } from '../utils/linkDuration';
 import { toIsoDateString } from '../utils/startDate';
 import { userHasPermission } from '../utils/permissions';
-import { readScreeningFields, mergeScreeningFields } from '../utils/viterbitFields';
+import { mergeScreeningFields } from '../utils/viterbitFields';
+import { fetchCandidateScreening } from '../viterbit/candidateScreening';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 import { sendOfferEmailCore } from './sendOfferEmail';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
-interface HiredInfoRefresh {
-  salary: string;
-  startDate: string;
-  startDateIso: string;
-  buro: string;
-  psicometriaIntegridad: string;
-}
-
-const EMPTY_HIRED_INFO: HiredInfoRefresh = {
-  salary: '', startDate: '', startDateIso: '', buro: '', psicometriaIntegridad: '',
-};
-
 async function fetchHiredInfo(
   candidatureId: string,
   apiKey: string,
-): Promise<HiredInfoRefresh> {
-  // The include surfaces custom_field_values (buró / psicometría); the plain
-  // endpoint is the fallback for accounts that reject it.
-  const urls = [
-    `${VITERBIT_API_BASE}/candidatures/${candidatureId}?includes[]=custom_field_values`,
-    `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
-  ];
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
-      if (!resp.ok) continue;
-      const json = (await resp.json()) as Record<string, unknown>;
-      const data = (json.data as Record<string, unknown>) ?? json;
-      const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
-      const salaryAmount = hiredInfo.salary as number | undefined;
-      const currency = (hiredInfo.currency as string) ?? 'MXN';
-      const rawStartDate = (hiredInfo.start_at as string) ?? '';
-      return {
-        salary: salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '',
-        startDate: rawStartDate ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es }) : '',
-        startDateIso: toIsoDateString(rawStartDate),
-        ...readScreeningFields(data),
-      };
-    } catch {
-      // try the next URL
-    }
+): Promise<{ salary: string; startDate: string; startDateIso: string }> {
+  const empty = { salary: '', startDate: '', startDateIso: '' };
+  try {
+    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!resp.ok) return empty;
+    const json = (await resp.json()) as Record<string, unknown>;
+    const data = (json.data as Record<string, unknown>) ?? json;
+    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
+    const salaryAmount = hiredInfo.salary as number | undefined;
+    const currency = (hiredInfo.currency as string) ?? 'MXN';
+    const rawStartDate = (hiredInfo.start_at as string) ?? '';
+    return {
+      salary: salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '',
+      startDate: rawStartDate ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es }) : '',
+      startDateIso: toIsoDateString(rawStartDate),
+    };
+  } catch {
+    return empty;
   }
-  return EMPTY_HIRED_INFO;
 }
 
 /**
@@ -106,14 +88,20 @@ export const reissueOffer = onCall(
     // Refresh hiring details from Viterbit — the recruiter fixes the date there first.
     const apiKey = VITERBIT_API_KEY.value();
     const candidatureId = candidate.viterbitCandidatureId as string | undefined;
-    const refreshed = candidatureId && apiKey
-      ? await fetchHiredInfo(candidatureId, apiKey)
-      : EMPTY_HIRED_INFO;
+    const candidateViterbitId = candidate.viterbitCandidateId as string | undefined;
+    const [refreshed, refreshedScreening] = await Promise.all([
+      candidatureId && apiKey
+        ? fetchHiredInfo(candidatureId, apiKey)
+        : Promise.resolve({ salary: '', startDate: '', startDateIso: '' }),
+      candidateViterbitId && apiKey
+        ? fetchCandidateScreening(candidateViterbitId, apiKey)
+        : Promise.resolve({ buro: '', psicometriaIntegridad: '' }),
+    ]);
 
     const viterbitSalary = refreshed.salary || (candidate.viterbitSalary as string) || '';
     const viterbitStartDate = refreshed.startDate || (candidate.viterbitStartDate as string) || '';
     const viterbitStartDateIso = refreshed.startDateIso || (candidate.viterbitStartDateIso as string) || '';
-    const screening = mergeScreeningFields(refreshed, {
+    const screening = mergeScreeningFields(refreshedScreening, {
       buro: candidate.viterbitBuro as string | undefined,
       psicometriaIntegridad: candidate.viterbitPsicometriaIntegridad as string | undefined,
     });

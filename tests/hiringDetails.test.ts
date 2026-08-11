@@ -11,15 +11,22 @@ import {
   readScreeningFields,
 } from '../functions/src/utils/viterbitFields';
 
+// Buró and psicometría are candidate custom fields holding a link to the
+// uploaded report — see the /candidates/{id}?includes[]=custom_field_values
+// response.
+const BURO_URL = 'https://files.viterbit.com/reports/buro-julio.pdf';
+const PSICOMETRIA_URL = 'https://files.viterbit.com/reports/psicometria-julio.pdf';
+
 const complete = {
   viterbitSalary: '$15,000 MXN',
   viterbitStartDate: '15 de julio de 2026',
-  viterbitBuro: 'Aprobado',
-  viterbitPsicometriaIntegridad: '82',
+  viterbitBuro: BURO_URL,
+  viterbitPsicometriaIntegridad: PSICOMETRIA_URL,
 };
 
 describe('isHiringDetailKnown', () => {
   it('accepts any non-empty value', () => {
+    expect(isHiringDetailKnown(BURO_URL)).toBe(true);
     expect(isHiringDetailKnown('Aprobado')).toBe(true);
     expect(isHiringDetailKnown('0')).toBe(true);
     expect(isHiringDetailKnown('No aplica')).toBe(true);
@@ -46,7 +53,7 @@ describe('getMissingHiringDetails', () => {
     expect(getMissingHiringDetails(complete)).toEqual([]);
   });
 
-  it('holds the offer when buró is unknown', () => {
+  it('holds the offer when the buró report is not uploaded yet', () => {
     expect(getMissingHiringDetails({ ...complete, viterbitBuro: '' })).toEqual(['buró']);
     expect(getMissingHiringDetails({ ...complete, viterbitBuro: 'Pendiente' })).toEqual(['buró']);
   });
@@ -112,22 +119,36 @@ describe('readCustomField', () => {
 });
 
 describe('readScreeningFields', () => {
-  it('extracts both screening results from custom_field_values', () => {
+  // Shape returned by /candidates/{id}?includes[]=custom_field_values:
+  // custom_field_values is a plain map keyed by field id, holding the report URL.
+  it('reads the report links straight off custom_field_values', () => {
     expect(readScreeningFields({
       custom_field_values: {
-        buro: { value: 'Aprobado' },
-        psicometria_integridad: { value: 'Apto' },
+        contrasena_correo_corporativo: 'x',
+        buro: BURO_URL,
+        psicometria_integridad: PSICOMETRIA_URL,
       },
-    })).toEqual({ buro: 'Aprobado', psicometriaIntegridad: 'Apto' });
+    })).toEqual({ buro: BURO_URL, psicometriaIntegridad: PSICOMETRIA_URL });
+  });
+
+  it('unwraps the value / url object shapes', () => {
+    expect(readScreeningFields({
+      custom_field_values: {
+        buro: { value: BURO_URL },
+        psicometria_integridad: { url: PSICOMETRIA_URL },
+      },
+    })).toEqual({ buro: BURO_URL, psicometriaIntegridad: PSICOMETRIA_URL });
   });
 
   it('falls back to top-level fields', () => {
-    expect(readScreeningFields({ buro: 'Aprobado', psicometria_integridad: 'Apto' }))
-      .toEqual({ buro: 'Aprobado', psicometriaIntegridad: 'Apto' });
+    expect(readScreeningFields({ buro: BURO_URL, psicometria_integridad: PSICOMETRIA_URL }))
+      .toEqual({ buro: BURO_URL, psicometriaIntegridad: PSICOMETRIA_URL });
   });
 
-  it('returns empty strings when nothing is filled in', () => {
+  it('returns empty strings when the reports are not uploaded', () => {
     expect(readScreeningFields({})).toEqual({ buro: '', psicometriaIntegridad: '' });
+    expect(readScreeningFields({ custom_field_values: { buro: null, psicometria_integridad: null } }))
+      .toEqual({ buro: '', psicometriaIntegridad: '' });
   });
 });
 

@@ -778,10 +778,15 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
               <DataCell icon={<Calendar size={12} />} label="Inicio" value={c.viterbitStartDate} />
             )}
             {c.viterbitBuro && (
-              <DataCell icon={<ShieldCheck size={12} />} label="Buró" value={c.viterbitBuro} />
+              <DataCell icon={<ShieldCheck size={12} />} label="Buró" value={c.viterbitBuro} linkText="Ver reporte" />
             )}
             {c.viterbitPsicometriaIntegridad && (
-              <DataCell icon={<ShieldCheck size={12} />} label="Psicometría integridad" value={c.viterbitPsicometriaIntegridad} />
+              <DataCell
+                icon={<ShieldCheck size={12} />}
+                label="Psicometría integridad"
+                value={c.viterbitPsicometriaIntegridad}
+                linkText="Ver reporte"
+              />
             )}
           </div>
         </Section>
@@ -1778,14 +1783,33 @@ function InfoRow({ icon, children }: { icon: React.ReactNode; children: React.Re
   );
 }
 
-function DataCell({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function DataCell({ icon, label, value, linkText }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  /** When the value is a URL (e.g. the buró report), show this text instead. */
+  linkText?: string;
+}) {
+  const isUrl = /^https?:\/\//i.test(value.trim());
   return (
     <div className="bg-gray-50 rounded-lg px-3 py-2">
       <div className="flex items-center gap-1 text-gray-400 mb-0.5">
         {icon}
         <span className="text-[10px] uppercase font-medium tracking-wide">{label}</span>
       </div>
-      <p className="text-xs text-gray-700 font-medium">{value}</p>
+      {isUrl ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+        >
+          {linkText ?? 'Ver documento'}
+          <ExternalLink size={10} className="shrink-0" />
+        </a>
+      ) : (
+        <p className="text-xs text-gray-700 font-medium break-words">{value}</p>
+      )}
     </div>
   );
 }

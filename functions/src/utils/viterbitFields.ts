@@ -18,6 +18,11 @@ function asText(val: unknown): string {
   if (typeof val === 'object') {
     const obj = val as Record<string, unknown>;
     if ('value' in obj) return asText(obj.value);
+    // File-type fields (buró and psicometría are uploaded reports) may arrive
+    // as an object wrapping the link rather than a bare URL string.
+    if ('url' in obj) return asText(obj.url);
+    if ('file_url' in obj) return asText(obj.file_url);
+    if ('link' in obj) return asText(obj.link);
     if ('label' in obj) return asText(obj.label);
     if ('name' in obj) return asText(obj.name);
     return '';
@@ -75,16 +80,17 @@ export const PSICOMETRIA_INTEGRIDAD_FIELD_KEYS = [
 ];
 
 export interface ViterbitScreeningFields {
-  /** Credit bureau result, empty string when Viterbit has no value yet. */
+  /** Link to the credit bureau report; empty string when not uploaded yet. */
   buro: string;
-  /** Integrity psychometrics result, empty string when not filled in yet. */
+  /** Link to the integrity psychometrics report; empty when not uploaded yet. */
   psicometriaIntegridad: string;
 }
 
 /**
  * Extracts the buró and integrity-psychometrics results from a Viterbit
- * candidate or candidature payload. Both are recruiter-filled custom fields,
- * so either object may carry them depending on how the account is configured.
+ * candidate payload (`/candidates/{id}?includes[]=custom_field_values`).
+ * Both are candidate-level custom fields holding a link to the uploaded
+ * report, so a non-empty value means the result is in.
  */
 export function readScreeningFields(data: Record<string, unknown>): ViterbitScreeningFields {
   const raw = data.custom_field_values ?? data.custom_fields;
