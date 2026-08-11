@@ -8,6 +8,9 @@ import { db } from '../utils/admin';
 import { getLinkDuration } from '../utils/linkDuration';
 import { toIsoDateString } from '../utils/startDate';
 import { userHasPermission } from '../utils/permissions';
+import { mergeScreeningFields } from '../utils/viterbitFields';
+import { fetchCandidateScreening } from '../viterbit/candidateScreening';
+import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 import { sendOfferEmailCore } from './sendOfferEmail';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -85,16 +88,32 @@ export const reissueOffer = onCall(
     // Refresh hiring details from Viterbit — the recruiter fixes the date there first.
     const apiKey = VITERBIT_API_KEY.value();
     const candidatureId = candidate.viterbitCandidatureId as string | undefined;
-    const refreshed = candidatureId && apiKey
-      ? await fetchHiredInfo(candidatureId, apiKey)
-      : { salary: '', startDate: '', startDateIso: '' };
+    const candidateViterbitId = candidate.viterbitCandidateId as string | undefined;
+    const [refreshed, refreshedScreening] = await Promise.all([
+      candidatureId && apiKey
+        ? fetchHiredInfo(candidatureId, apiKey)
+        : Promise.resolve({ salary: '', startDate: '', startDateIso: '' }),
+      candidateViterbitId && apiKey
+        ? fetchCandidateScreening(candidateViterbitId, apiKey)
+        : Promise.resolve({ buro: '', psicometriaIntegridad: '' }),
+    ]);
 
     const viterbitSalary = refreshed.salary || (candidate.viterbitSalary as string) || '';
     const viterbitStartDate = refreshed.startDate || (candidate.viterbitStartDate as string) || '';
     const viterbitStartDateIso = refreshed.startDateIso || (candidate.viterbitStartDateIso as string) || '';
+    const screening = mergeScreeningFields(refreshedScreening, {
+      buro: candidate.viterbitBuro as string | undefined,
+      psicometriaIntegridad: candidate.viterbitPsicometriaIntegridad as string | undefined,
+    });
 
-    if (!viterbitSalary.trim() || !viterbitStartDate.trim()) {
-      const missing = [!viterbitSalary.trim() && 'salario', !viterbitStartDate.trim() && 'fecha de inicio'].filter(Boolean).join(' y ');
+    const missingDetails = getMissingHiringDetails({
+      viterbitSalary,
+      viterbitStartDate,
+      viterbitBuro: screening.buro,
+      viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
+    });
+    if (missingDetails.length > 0) {
+      const missing = formatMissingHiringDetails(missingDetails);
       throw new HttpsError('failed-precondition', `Faltan datos en Viterbit: ${missing}. Corrígelos allá y vuelve a intentar.`);
     }
 
@@ -125,6 +144,8 @@ export const reissueOffer = onCall(
       viterbitSalary,
       viterbitStartDate,
       viterbitStartDateIso: viterbitStartDateIso || null,
+      viterbitBuro: screening.buro,
+      viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
       status: 'offer_sent',
       offerToken,
       offerExpiresAt,
@@ -166,7 +187,15 @@ export const reissueOffer = onCall(
     // Send the new offer email with the refreshed data.
     await sendOfferEmailCore(
       candidateId,
-      { ...candidate, offerToken, offerExpiresAt, viterbitSalary, viterbitStartDate },
+      {
+        ...candidate,
+        offerToken,
+        offerExpiresAt,
+        viterbitSalary,
+        viterbitStartDate,
+        viterbitBuro: screening.buro,
+        viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
+      },
       request.auth.uid,
     );
 

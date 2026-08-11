@@ -20,11 +20,18 @@ import {
   ClipboardList,
   Users,
   UserX,
+  ShieldCheck,
   TableProperties,
 } from 'lucide-react';
 import { PARENTESCO_LABELS } from '../../types';
 import type { Candidate } from '../../types';
 import { getCandidateDocTypes, computeCompletion } from '../../utils/candidateCompletion';
+import {
+  getMissingHiringDetails,
+  formatMissingHiringDetails,
+  CONTRACT_HIRING_DETAIL_KEYS,
+  type HiringDetailKey,
+} from '../../utils/hiringDetails';
 import { useFormQuestions } from '../../hooks/useFormQuestions';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ProgressBar } from '../ui/ProgressBar';
@@ -757,7 +764,8 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
       </Section>
 
       {/* Viterbit / position data */}
-      {((c.profile ?? c.viterbitDepartmentProfile) || c.viterbitStartDate || c.viterbitHiringManager) && (
+      {((c.profile ?? c.viterbitDepartmentProfile) || c.viterbitStartDate || c.viterbitHiringManager
+        || c.viterbitBuro || c.viterbitPsicometriaIntegridad) && (
         <Section title="Datos del puesto">
           <div className="grid grid-cols-2 gap-3">
             {(c.profile ?? c.viterbitDepartmentProfile) && (
@@ -768,6 +776,17 @@ function TabInfo({ c, notes, setNotes, savingNotes, onSaveNotes }: {
             )}
             {c.viterbitStartDate && (
               <DataCell icon={<Calendar size={12} />} label="Inicio" value={c.viterbitStartDate} />
+            )}
+            {c.viterbitBuro && (
+              <DataCell icon={<ShieldCheck size={12} />} label="Buró" value={c.viterbitBuro} linkText="Ver reporte" />
+            )}
+            {c.viterbitPsicometriaIntegridad && (
+              <DataCell
+                icon={<ShieldCheck size={12} />}
+                label="Psicometría integridad"
+                value={c.viterbitPsicometriaIntegridad}
+                linkText="Ver reporte"
+              />
             )}
           </div>
         </Section>
@@ -941,21 +960,22 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Viterbit data alert — shown when salary or start date are missing
+   Viterbit data alert — shown while any hiring detail is still unknown
+   (salario, fecha de inicio, buró, psicometría de integridad)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function ViterbitDataAlert({ c, onRefreshed }: { c: Candidate; onRefreshed: () => void }) {
+function ViterbitDataAlert({ c, onRefreshed, keys, note }: {
+  c: Candidate;
+  onRefreshed: () => void;
+  keys?: HiringDetailKey[];
+  note?: string;
+}) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
   const [refreshed, setRefreshed] = useState(false);
 
-  const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
-  const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
-  if (!missingSalary && !missingDate) return null;
-
-  const missing: string[] = [];
-  if (missingSalary) missing.push('salario');
-  if (missingDate) missing.push('fecha de inicio');
+  const missing = getMissingHiringDetails(c, keys);
+  if (missing.length === 0) return null;
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -977,10 +997,10 @@ function ViterbitDataAlert({ c, onRefreshed }: { c: Candidate; onRefreshed: () =
         <AlertTriangle size={15} className="text-amber-600 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-amber-800">
-            Faltan datos de Viterbit: {missing.join(' y ')}
+            Faltan datos de Viterbit: {formatMissingHiringDetails(missing)}
           </p>
           <p className="text-xs text-amber-700 mt-0.5">
-            El documento se generará con campos vacíos. Actualiza el puesto en Viterbit y luego refresca.
+            {note ?? 'La carta oferta no se envía hasta que todos estos datos estén capturados. Complétalos en Viterbit y luego refresca.'}
           </p>
         </div>
       </div>
@@ -1017,9 +1037,8 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOff
   const [offerSendError, setOfferSendError] = useState('');
   const offerExpired = c.offerExpiresAt?.toDate ? c.offerExpiresAt.toDate() < new Date() : false;
 
-  const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
-  const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
-  const missingHiringDetails = missingSalary || missingDate;
+  const missingDetails = getMissingHiringDetails(c);
+  const missingHiringDetails = missingDetails.length > 0;
 
   async function handleResendOffer() {
     setSendingOffer(true);
@@ -1132,7 +1151,9 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOff
                 <p className="text-xs text-red-600 mb-2">{offerSendError}</p>
               )}
               {missingHiringDetails && (
-                <p className="text-xs text-amber-700 mb-2">Completa los datos de Viterbit antes de reenviar.</p>
+                <p className="text-xs text-amber-700 mb-2">
+                  Falta capturar en Viterbit: {formatMissingHiringDetails(missingDetails)}. Complétalo antes de enviar.
+                </p>
               )}
               <button
                 onClick={handleResendOffer}
@@ -1253,9 +1274,10 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
   const [contractSendError, setContractSendError] = useState('');
   const contractExpired = c.contractExpiresAt?.toDate ? c.contractExpiresAt.toDate() < new Date() : false;
 
-  const missingSalary = !c.viterbitSalary || c.viterbitSalary.trim() === '';
-  const missingDate = !c.viterbitStartDate || c.viterbitStartDate.trim() === '';
-  const missingHiringDetails = missingSalary || missingDate;
+  // Only the fields the contract itself prints — buró/psicometría gate the
+  // offer letter, not the contract.
+  const missingHiringDetails =
+    getMissingHiringDetails(c, CONTRACT_HIRING_DETAIL_KEYS).length > 0;
   const reviewRequired = !!c.contractReviewRequired && !c.contractSignedAt && c.status !== 'contract_signed';
   // Contract was sent (token/expiry exist) but a later Viterbit stage move overwrote
   // `status` before the candidate signed — the public signing link is now blocked.
@@ -1278,7 +1300,12 @@ function TabContract({ c, contractUrl, copied, onCopy, onCandidateChange, extend
 
   return (
     <div className="px-5 py-4 space-y-5">
-      <ViterbitDataAlert c={c} onRefreshed={onCandidateChange} />
+      <ViterbitDataAlert
+        c={c}
+        onRefreshed={onCandidateChange}
+        keys={CONTRACT_HIRING_DETAIL_KEYS}
+        note="El documento se generará con campos vacíos. Actualiza el puesto en Viterbit y luego refresca."
+      />
       {/* Contract data always visible so recruiter can review OCR fields at any stage */}
       <Section title="Datos para el contrato">
         <ContractDataSection c={c} />
@@ -1756,14 +1783,33 @@ function InfoRow({ icon, children }: { icon: React.ReactNode; children: React.Re
   );
 }
 
-function DataCell({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function DataCell({ icon, label, value, linkText }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  /** When the value is a URL (e.g. the buró report), show this text instead. */
+  linkText?: string;
+}) {
+  const isUrl = /^https?:\/\//i.test(value.trim());
   return (
     <div className="bg-gray-50 rounded-lg px-3 py-2">
       <div className="flex items-center gap-1 text-gray-400 mb-0.5">
         {icon}
         <span className="text-[10px] uppercase font-medium tracking-wide">{label}</span>
       </div>
-      <p className="text-xs text-gray-700 font-medium">{value}</p>
+      {isUrl ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+        >
+          {linkText ?? 'Ver documento'}
+          <ExternalLink size={10} className="shrink-0" />
+        </a>
+      ) : (
+        <p className="text-xs text-gray-700 font-medium break-words">{value}</p>
+      )}
     </div>
   );
 }

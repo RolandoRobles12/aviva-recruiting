@@ -96,7 +96,14 @@ export const recalculatePerformanceStatuses = httpsCallable<
 
 export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
-  { success: boolean; salary: string | null; startDate: string | null; position: string | null }
+  {
+    success: boolean;
+    salary: string | null;
+    startDate: string | null;
+    position: string | null;
+    buro: string | null;
+    psicometriaIntegridad: string | null;
+  }
 >(functions, 'refreshCandidateViterbit');
 
 export const createDriveFolderManual = httpsCallable<

@@ -12,6 +12,9 @@ import { getLinkDuration } from '../utils/linkDuration';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 import { getAllowedHiringProfiles } from '../utils/hiringProfiles';
 import { toIsoDateString } from '../utils/startDate';
+import { readScreeningFields } from '../utils/viterbitFields';
+import { fetchCandidateRaw } from './candidateScreening';
+import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -116,6 +119,8 @@ interface ViterbitCandidate {
   phone?: string;
   reference?: string;
   contrasena?: string;
+  buro: string;
+  psicometriaIntegridad: string;
 }
 
 interface ViterbitJobInfo {
@@ -300,15 +305,11 @@ async function fetchViterbitCandidate(
   apiKey: string
 ): Promise<ViterbitCandidate | null> {
   try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidates/${candidateId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) {
-      console.error(`[viterbit] fetchCandidate ${candidateId} → HTTP ${resp.status}`);
+    const data = await fetchCandidateRaw(candidateId, apiKey);
+    if (!data) {
+      console.error(`[viterbit] fetchCandidate ${candidateId} → no data`);
       return null;
     }
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
 
     // Log full response keys and raw name fields to debug Viterbit API shape
     console.log('[viterbit] fetchCandidate response keys:', Object.keys(data));
@@ -374,7 +375,19 @@ async function fetchViterbitCandidate(
     }
     contrasena = contrasena || (data.contrasena_correo_corporativo as string) || undefined;
 
-    return { name, email, phone, reference, contrasena };
+    // Screening results (buró / psicometría de integridad) — the offer letter is
+    // held until both are known, see utils/hiringDetails.
+    const screening = readScreeningFields(data);
+
+    return {
+      name,
+      email,
+      phone,
+      reference,
+      contrasena,
+      buro: screening.buro,
+      psicometriaIntegridad: screening.psicometriaIntegridad,
+    };
   } catch (err) {
     console.error('[viterbit] fetchCandidate error:', err);
     return null;
@@ -509,6 +522,12 @@ export async function handleAprobado(
   const firstName = nameParts[0] ?? candidateName;
   const lastName = nameParts.slice(1).join(' ') || '';
 
+  // Buró / psicometría de integridad are candidate-level custom fields.
+  const screening = {
+    buro: viterbitCandidate.buro,
+    psicometriaIntegridad: viterbitCandidate.psicometriaIntegridad,
+  };
+
   console.log('[webhook] handleAprobado candidate resolved → firstName:', firstName, '| lastName:', lastName, '| email:', candidateEmail);
 
   // Secondary idempotency check by email + jobId — catches race conditions where two
@@ -535,6 +554,18 @@ export async function handleAprobado(
   const offerToken = generateToken();
   const offerExpiresAt = new Date(Date.now() + linkDurations.offerDays * 24 * 60 * 60 * 1000);
 
+  // The offer letter only goes out once every hiring detail is known: salary,
+  // start date, buró and psicometría de integridad. Anything missing parks the
+  // candidate in `offer_held` so the recruiter can complete it in Viterbit,
+  // refresh, and send the letter from the dashboard.
+  const missingDetails = getMissingHiringDetails({
+    viterbitSalary,
+    viterbitStartDate,
+    viterbitBuro: screening.buro,
+    viterbitPsicometriaIntegridad: screening.psicometriaIntegridad,
+  });
+  const offerHeld = missingDetails.length > 0;
+
   // Create candidate in Firestore.
   // Using candidatureId as document ID guarantees uniqueness at the DB level —
   // a concurrent duplicate webhook will simply overwrite the same document
@@ -548,7 +579,7 @@ export async function handleAprobado(
     email: candidateEmail,
     phone: candidatePhone ?? null,
     position: jobTitle,
-    status: 'offer_sent',
+    status: offerHeld ? 'offer_held' : 'offer_sent',
     // Offer fields
     offerToken,
     offerExpiresAt,
@@ -559,7 +590,10 @@ export async function handleAprobado(
     documents: buildInitialDocuments(),
     completionPercentage: 0,
     reminderCount: 0,
-    offerEmailSent: true,
+    // Pre-set so the onCandidateCreated trigger does not double-send the email
+    // we are about to send below; a held offer keeps it false.
+    offerEmailSent: !offerHeld,
+    offerHeldReasons: offerHeld ? missingDetails : [],
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy: 'viterbit_webhook',
@@ -572,6 +606,9 @@ export async function handleAprobado(
     viterbitHiringManager: viterbitHiringManager || null,
     viterbitCompany: viterbitCompany || null,
     viterbitDepartmentProfile: viterbitDepartmentProfile || null,
+    // Screening results — required before the offer letter is emailed
+    viterbitBuro: screening.buro || null,
+    viterbitPsicometriaIntegridad: screening.psicometriaIntegridad || null,
     // Viterbit IDs
     viterbitCandidateId: candidateViterbitId || null,
     viterbitCandidatureId: candidatureId || null,
@@ -588,17 +625,16 @@ export async function handleAprobado(
     },
   });
 
-  // Send offer email — only when all required hiring details are present.
-  // If missing, the candidate is created but the offer is held so the recruiter
-  // can refresh the data in Viterbit and resend manually.
+  // Send offer email — only when all required hiring details are known.
+  // If any is missing, the candidate is created but the offer is held so the
+  // recruiter can complete the data in Viterbit and resend manually.
   const appUrl = APP_URL.value();
   const offerUrl = `${appUrl}/offer/${offerToken}`;
   const offerExpiresAtStr = format(offerExpiresAt, "d 'de' MMMM 'de' yyyy", { locale: es });
 
-  if (!viterbitSalary || !viterbitStartDate) {
-    const missing = [!viterbitSalary && 'salario', !viterbitStartDate && 'fecha de inicio'].filter(Boolean).join(' y ');
+  if (offerHeld) {
+    const missing = formatMissingHiringDetails(missingDetails);
     console.warn(`[webhook] handleAprobado offer NOT sent — missing hiring details (${missing}) for candidate ${candidateRef.id}`);
-    await candidateRef.update({ status: 'offer_held', offerEmailSent: false, updatedAt: FieldValue.serverTimestamp() });
     await logRef.update({ status: 'processed', candidateId: candidateRef.id, offerHeld: true, offerHeldReason: `missing: ${missing}` });
     return { action: 'offer_held', candidateId: candidateRef.id, reason: `missing hiring details: ${missing}` };
   }

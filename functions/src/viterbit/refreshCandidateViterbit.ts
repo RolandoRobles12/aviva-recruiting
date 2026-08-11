@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { toIsoDateString } from '../utils/startDate';
+import { fetchCandidateScreening } from './candidateScreening';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -79,6 +80,12 @@ export const refreshCandidateViterbit = onCall(
       ),
       candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve({ salary: '', startDate: '', startDateIso: '' }),
     ]);
+
+    // Buró / psicometría de integridad live on the candidate, not the candidature.
+    const candidateViterbitId = candidate.viterbitCandidateId as string | undefined;
+    const screening = candidateViterbitId
+      ? await fetchCandidateScreening(candidateViterbitId, apiKey)
+      : { buro: '', psicometriaIntegridad: '' };
 
     if (!jobResp.ok) {
       throw new HttpsError('unavailable', `Viterbit API devolvió HTTP ${jobResp.status}`);
@@ -170,6 +177,11 @@ export const refreshCandidateViterbit = onCall(
     if (startDateIso) updates.viterbitStartDateIso = startDateIso;
     if (hiringManager) updates.viterbitHiringManager = hiringManager;
     if (company) updates.viterbitCompany = company;
+    // Only overwrite when Viterbit has a value — never clear what we already know.
+    if (screening.buro) updates.viterbitBuro = screening.buro;
+    if (screening.psicometriaIntegridad) {
+      updates.viterbitPsicometriaIntegridad = screening.psicometriaIntegridad;
+    }
     if (departmentProfile) {
       updates.viterbitDepartmentProfile = departmentProfile;
       updates.profile = departmentProfile;
@@ -182,6 +194,8 @@ export const refreshCandidateViterbit = onCall(
       salary: (updates.viterbitSalary as string) || null,
       startDate: (updates.viterbitStartDate as string) || null,
       position: (updates.position as string) || null,
+      buro: screening.buro || null,
+      psicometriaIntegridad: screening.psicometriaIntegridad || null,
     };
   },
 );
