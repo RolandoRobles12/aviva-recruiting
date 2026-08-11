@@ -966,7 +966,9 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
 
 function ViterbitDataAlert({ c, onRefreshed, keys, note }: {
   c: Candidate;
-  onRefreshed: () => void;
+  /** Called after a successful refresh; offerAutoSent is true when this refresh
+   *  completed the last missing hiring detail and the offer letter went out. */
+  onRefreshed: (info: { offerAutoSent: boolean }) => void;
   keys?: HiringDetailKey[];
   note?: string;
 }) {
@@ -981,9 +983,9 @@ function ViterbitDataAlert({ c, onRefreshed, keys, note }: {
     setRefreshing(true);
     setRefreshError('');
     try {
-      await refreshCandidateViterbit({ candidateId: c.id });
+      const result = await refreshCandidateViterbit({ candidateId: c.id });
       setRefreshed(true);
-      onRefreshed();
+      onRefreshed({ offerAutoSent: result.data.offerAutoSent });
     } catch (err: unknown) {
       setRefreshError(err instanceof Error ? err.message : 'Error al refrescar datos.');
     } finally {
@@ -1035,6 +1037,7 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOff
   const [sendingOffer, setSendingOffer] = useState(false);
   const [offerSent, setOfferSent] = useState(false);
   const [offerSendError, setOfferSendError] = useState('');
+  const [autoSentNotice, setAutoSentNotice] = useState(false);
   const offerExpired = c.offerExpiresAt?.toDate ? c.offerExpiresAt.toDate() < new Date() : false;
 
   const missingDetails = getMissingHiringDetails(c);
@@ -1056,7 +1059,22 @@ function TabOffer({ c, offerUrl, copied, onCopy, onCandidateChange, extendingOff
 
   return (
     <div className="px-5 py-4 space-y-5">
-      <ViterbitDataAlert c={c} onRefreshed={onCandidateChange} />
+      {autoSentNotice && (
+        <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+          <CheckCircle size={14} className="shrink-0" />
+          <span className="font-medium">Datos completos — la carta oferta se envió automáticamente.</span>
+        </div>
+      )}
+      <ViterbitDataAlert
+        c={c}
+        onRefreshed={(info) => {
+          onCandidateChange();
+          if (info.offerAutoSent) {
+            setAutoSentNotice(true);
+            setTimeout(() => setAutoSentNotice(false), 6000);
+          }
+        }}
+      />
       {!offerUrl && !c.offerPdfUrl ? (
         <div className="text-center py-12">
           <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">

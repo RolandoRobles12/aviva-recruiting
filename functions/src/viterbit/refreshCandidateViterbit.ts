@@ -6,6 +6,8 @@ import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { toIsoDateString } from '../utils/startDate';
 import { fetchCandidateScreening } from './candidateScreening';
+import { getMissingHiringDetails, type HiringDetailFields } from '../utils/hiringDetails';
+import { sendOfferEmailCore } from '../offer/sendOfferEmail';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -189,6 +191,36 @@ export const refreshCandidateViterbit = onCall(
 
     await snap.ref.update(updates);
 
+    // The candidate was parked in offer_held because a hiring detail was
+    // missing. If this refresh just filled in the last one, send the letter
+    // now instead of leaving the recruiter to notice and click "Reenviar
+    // correo de carta oferta" separately — refreshing IS the fix, so it
+    // should finish the job.
+    let offerAutoSent = false;
+    let offerAutoSendError: string | null = null;
+    if (candidate.status === 'offer_held') {
+      const merged: HiringDetailFields = {
+        viterbitSalary: updates.viterbitSalary ?? candidate.viterbitSalary,
+        viterbitStartDate: updates.viterbitStartDate ?? candidate.viterbitStartDate,
+        viterbitBuro: updates.viterbitBuro ?? candidate.viterbitBuro,
+        viterbitPsicometriaIntegridad:
+          updates.viterbitPsicometriaIntegridad ?? candidate.viterbitPsicometriaIntegridad,
+      };
+      if (getMissingHiringDetails(merged).length === 0) {
+        try {
+          await sendOfferEmailCore(
+            candidateId,
+            { ...candidate, ...updates },
+            request.auth.uid,
+          );
+          offerAutoSent = true;
+        } catch (err) {
+          offerAutoSendError = err instanceof Error ? err.message : String(err);
+          console.error(`[refreshCandidateViterbit] auto-send failed for ${candidateId}:`, err);
+        }
+      }
+    }
+
     return {
       success: true,
       salary: (updates.viterbitSalary as string) || null,
@@ -196,6 +228,8 @@ export const refreshCandidateViterbit = onCall(
       position: (updates.position as string) || null,
       buro: screening.buro || null,
       psicometriaIntegridad: screening.psicometriaIntegridad || null,
+      offerAutoSent,
+      offerAutoSendError,
     };
   },
 );

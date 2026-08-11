@@ -103,6 +103,9 @@ export const refreshCandidateViterbit = httpsCallable<
     position: string | null;
     buro: string | null;
     psicometriaIntegridad: string | null;
+    /** True when this refresh completed the last missing hiring detail and the offer letter was sent automatically. */
+    offerAutoSent: boolean;
+    offerAutoSendError: string | null;
   }
 >(functions, 'refreshCandidateViterbit');
 
