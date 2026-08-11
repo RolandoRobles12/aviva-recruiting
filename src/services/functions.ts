@@ -1,6 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
-import type { SendInvitationPayload, SendReminderPayload, CreateCandidatePayload } from '../types';
+import type { SendInvitationPayload, SendReminderPayload, CreateCandidatePayload, DocumentType } from '../types';
 
 // ─── Cloud Function Callers ────────────────────────────────────────────────────
 
@@ -43,6 +43,12 @@ export const reissueOffer = httpsCallable<
   { candidateId: string; reason?: string },
   { success: boolean }
 >(functions, 'reissueOffer');
+
+/** Admin-only: deletes an uploaded document (and its file) so the candidate can re-upload it. */
+export const deleteCandidateDocument = httpsCallable<
+  { candidateId: string; documentType: DocumentType },
+  { success: boolean }
+>(functions, 'deleteCandidateDocument');
 
 export const sendContractEmail = httpsCallable<
   { candidateId: string },

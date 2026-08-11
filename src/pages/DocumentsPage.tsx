@@ -325,6 +325,7 @@ function Expediente({ c }: { c: Candidate }) {
             return (
               <CandidateDocumentCard
                 key={type}
+                candidateId={c.id}
                 type={type}
                 doc={docItem ?? { id: type, type, status: 'pending' }}
               />

@@ -879,6 +879,7 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
             return (
               <div key={type}>
                 <CandidateDocumentCard
+                  candidateId={c.id}
                   type={type}
                   doc={docItem ?? { id: type, type, status: 'pending' }}
                 />

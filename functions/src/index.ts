@@ -19,6 +19,7 @@ export { provisionAccountsManual } from './integrations/provisionAccounts';
 export { createDriveFolderManual } from './integrations/createDriveFolderManual';
 export { appendSheetsRowManual } from './integrations/appendSheetsRowManual';
 export { backfillCandidateDocuments } from './utils/backfillDocuments';
+export { deleteCandidateDocument } from './candidates/deleteCandidateDocument';
 export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';
 export { processPendingApprovals } from './viterbit/processPendingApprovals';
 export { dailyPerformanceCheck } from './performance/performanceCheck';
