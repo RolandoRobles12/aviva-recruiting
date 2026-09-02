@@ -72,10 +72,22 @@ export const backfillCandidateDocuments = httpsCallable<
   { updated: number; message: string }
 >(functions, 'backfillCandidateDocuments', MAINTENANCE_TIMEOUT);
 
-export const backfillPerformanceChecks = httpsCallable<
+/**
+ * Runs the full performance cycle on demand — schedules missing checks and
+ * evaluates everything already due, instead of waiting for the 09:00 job.
+ */
+export const runPerformanceChecksNow = httpsCallable<
   Record<string, never>,
-  { created: number; skipped: number; isoFilled: number; unparseable: string[]; message: string }
->(functions, 'backfillPerformanceChecks', MAINTENANCE_TIMEOUT);
+  {
+    scheduled: number;
+    isoFilled: number;
+    evaluated: number;
+    failed: number;
+    remaining: number;
+    sinFechaDeIngreso: string[];
+    message: string;
+  }
+>(functions, 'runPerformanceChecksNow', MAINTENANCE_TIMEOUT);
 
 export interface PerformanceRecalcChange {
   candidateId: string;

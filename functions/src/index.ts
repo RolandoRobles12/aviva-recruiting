@@ -25,7 +25,7 @@ export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';
 export { backfillCandidatePlaza } from './viterbit/backfillPlaza';
 export { processPendingApprovals } from './viterbit/processPendingApprovals';
 export { dailyPerformanceCheck } from './performance/performanceCheck';
-export { backfillPerformanceChecks } from './performance/backfillPerformanceChecks';
+export { runPerformanceChecksNow } from './performance/runPerformanceChecksNow';
 export { recalculatePerformanceStatuses } from './performance/recalculatePerformance';
 export { getPsychometricTest } from './psychometricTest/getTest';
 export { submitPsychometricTest } from './psychometricTest/submitTest';

@@ -160,7 +160,7 @@ export const PENDING_ISSUE_LABELS: Record<PendingIssue, string> = {
 export const PENDING_ISSUE_HINTS: Record<PendingIssue, string> = {
   sin_fecha:   'Sin fecha de ingreso no se programaron sus cortes de 15 y 30 días. Captura la fecha en Viterbit y actualiza al candidato.',
   sin_hubspot: 'El corte diario lo salta porque no tiene correo corporativo ni usuario de HubSpot con qué contar sus solicitudes: primero hay que provisionar sus cuentas.',
-  sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Reprogramar checks de desempeño" en Configuración → Admin.',
+  sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Evaluar desempeño ahora" en Configuración → Admin.',
 };
 
 /**

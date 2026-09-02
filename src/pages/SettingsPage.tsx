@@ -10,7 +10,7 @@ import { useSettings } from '../hooks/useSettings';
 import {
   backfillCandidateDocuments,
   backfillCandidatePlaza,
-  backfillPerformanceChecks,
+  runPerformanceChecksNow,
   recalculatePerformanceStatuses,
 } from '../services/functions';
 import type { PerformanceRecalcChange } from '../services/functions';
@@ -69,11 +69,11 @@ function AdminTab() {
     }
   };
 
-  const handlePerformanceBackfill = async () => {
+  const handleRunPerformance = async () => {
     setRunningPerf(true);
     setPerfResult(null);
     try {
-      const res = await backfillPerformanceChecks({});
+      const res = await runPerformanceChecksNow({});
       setPerfResult(res.data.message);
     } catch (err) {
       setPerfResult(err instanceof Error ? err.message : 'Error desconocido');
@@ -150,19 +150,21 @@ function AdminTab() {
       </div>
       <div className="border border-gray-200 rounded-xl p-4 space-y-3">
         <div>
-          <p className="text-sm font-medium text-gray-700">Reprogramar checks de desempeño (15/30 días)</p>
+          <p className="text-sm font-medium text-gray-700">Evaluar desempeño ahora</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Crea los checks de 15/30 días que no se programaron para candidatos ya firmados
-            y completa la fecha de ingreso en formato ISO donde solo quedó el texto en español.
-            No duplica los que ya existen ni los ya evaluados.
+            Para promotores que nunca fueron evaluados: programa sus cortes de 15 y 30 días si
+            faltan, completa la fecha de ingreso, cuenta sus solicitudes en HubSpot y aplica el
+            resultado en el momento — Promotor Exitoso en Viterbit o Bajo Desempeño — sin esperar
+            al corte diario de las 09:00. Usa el mismo proceso que ese corte, así que no re-evalúa
+            a nadie que ya tenga veredicto.
           </p>
         </div>
         <button
-          onClick={handlePerformanceBackfill}
+          onClick={handleRunPerformance}
           disabled={runningPerf}
           className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
         >
-          {runningPerf ? 'Procesando...' : 'Ejecutar backfill'}
+          {runningPerf ? 'Evaluando...' : 'Evaluar ahora'}
         </button>
         {perfResult && (
           <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{perfResult}</p>
@@ -172,6 +174,7 @@ function AdminTab() {
         <div>
           <p className="text-sm font-medium text-gray-700">Recalcular desempeño a 30 días</p>
           <p className="text-xs text-gray-400 mt-0.5">
+            Solo para quienes ya tienen veredicto: corrige el pasado, no pone al día.
             Vuelve a contar los deals de cada candidato ya evaluado en su ventana real
             (fecha de ingreso + 30 días) y actualiza su etapa: Promotor Exitoso o Bajo Desempeño.
             No modifica a quienes ya están en Promotor Exitoso ni a los descalificados.
