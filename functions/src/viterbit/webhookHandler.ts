@@ -14,6 +14,7 @@ import { getAllowedHiringProfiles } from '../utils/hiringProfiles';
 import { toIsoDateString } from '../utils/startDate';
 import { readScreeningFields } from '../utils/viterbitFields';
 import { fetchCandidateRaw } from './candidateScreening';
+import { extractJobPlaza } from './jobPlaza';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
@@ -129,6 +130,10 @@ interface ViterbitJobInfo {
   hiringManagerId: string;
   company: string;
   departmentProfile: string;
+  /** Store name — the job's external_id, verbatim ("MEX0147 Oxkutzcab BA"). */
+  plaza: string;
+  /** City of the store, from the job's address. */
+  city: string;
 }
 
 interface ViterbitCandidatureInfo {
@@ -154,6 +159,7 @@ interface ViterbitCandidatureInfo {
 async function fetchViterbitJob(jobId: string, apiKey: string): Promise<ViterbitJobInfo> {
   const empty: ViterbitJobInfo = {
     title: '', stages: [], hiringManagerId: '', company: '', departmentProfile: '',
+    plaza: '', city: '',
   };
   try {
     const resp = await fetch(
@@ -225,12 +231,16 @@ async function fetchViterbitJob(jobId: string, apiKey: string): Promise<Viterbit
     console.log('[viterbit] fetchViterbitJob keys:', Object.keys(data).join(', '));
     console.log('[viterbit] fetchViterbitJob title:', JSON.stringify(title), '| department_profile:', JSON.stringify(deptProfileRaw), '| resolved:', JSON.stringify(departmentProfile));
 
+    const { plaza, city } = extractJobPlaza(data);
+
     return {
       title,
       stages: (data.stages as ViterbitStage[]) ?? [],
       hiringManagerId: getCustom('hiring_manager'),
       company:         getCustom('empresa') || getCustom('custom_job_empresa') || getCustom('company') || 'Aviva',
       departmentProfile,
+      plaza,
+      city,
     };
   } catch (err) {
     console.error('[viterbit] fetchViterbitJob error:', err);
@@ -472,7 +482,8 @@ export async function handleAprobado(
   ]);
 
   const { title: jobTitle, stages, hiringManagerId,
-    company: viterbitCompany, departmentProfile: viterbitDepartmentProfile } = jobInfo;
+    company: viterbitCompany, departmentProfile: viterbitDepartmentProfile,
+    plaza, city: plazaCity } = jobInfo;
 
   const viterbitHiringManager = hiringManagerId
     ? await fetchViterbitUser(hiringManagerId, apiKey)
@@ -606,6 +617,9 @@ export async function handleAprobado(
     viterbitHiringManager: viterbitHiringManager || null,
     viterbitCompany: viterbitCompany || null,
     viterbitDepartmentProfile: viterbitDepartmentProfile || null,
+    // Store and city of the job — the reporting dimensions "plaza" and "ciudad"
+    plaza: plaza || null,
+    plazaCity: plazaCity || null,
     // Screening results — required before the offer letter is emailed
     viterbitBuro: screening.buro || null,
     viterbitPsicometriaIntegridad: screening.psicometriaIntegridad || null,

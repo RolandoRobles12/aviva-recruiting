@@ -105,6 +105,18 @@ export const recalculatePerformanceStatuses = httpsCallable<
   }
 >(functions, 'recalculatePerformanceStatuses', MAINTENANCE_TIMEOUT);
 
+export const backfillCandidatePlaza = httpsCallable<
+  { force?: boolean },
+  {
+    updated: number;
+    skipped: number;
+    withoutJob: number;
+    jobsFetched: number;
+    failedJobs: string[];
+    message: string;
+  }
+>(functions, 'backfillCandidatePlaza', MAINTENANCE_TIMEOUT);
+
 export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
   {

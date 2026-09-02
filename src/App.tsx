@@ -11,6 +11,7 @@ import { ContractPage } from './pages/ContractPage';
 import { OfferTemplatesPage } from './pages/OfferTemplatesPage';
 import { ContractTemplatesPage } from './pages/ContractTemplatesPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { OperationsDashboardPage } from './pages/OperationsDashboardPage';
 import { GmailCallbackPage } from './pages/GmailCallbackPage';
 import { EmailTemplatesPage } from './pages/EmailTemplatesPage';
 import { FormConfigPage } from './pages/FormConfigPage';
@@ -62,6 +63,16 @@ export default function App() {
 
         {/* ── Dashboard (requires being logged in) ── */}
         <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+
+        {/* ── Operations report (requires reports_view permission) ── */}
+        <Route
+          path="/dashboard"
+          element={
+            <PermissionRoute permission="reports_view">
+              <OperationsDashboardPage />
+            </PermissionRoute>
+          }
+        />
 
         {/* ── Documents / Expedientes ── */}
         <Route
