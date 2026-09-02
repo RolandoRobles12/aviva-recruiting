@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  averageDailyDeals,
   buildReportRows,
+  countOutcomes,
   dealAverage,
   formatIsoDate,
+  funnelStages,
+  groupOutcomes,
+  monthlyCohorts,
   parseStartDate,
   promotorOutcome,
   resolveVertical,
   rowsToCsv,
+  SIN_DATO,
   SIN_VERTICAL,
 } from '../src/utils/reporting';
 import type { Candidate } from '../src/types';
@@ -134,6 +140,92 @@ describe('buildReportRows', () => {
       vertical: 'Aviva tu Compra',
       outcome: 'si',
     });
+  });
+});
+
+describe('countOutcomes', () => {
+  const rows = buildReportRows([
+    candidate({ id: '1', status: 'promotor_exitoso' }),
+    candidate({ id: '2', status: 'promotor_exitoso' }),
+    candidate({ id: '3', status: 'bajo_desempeno' }),
+    candidate({ id: '4', status: 'induction' }),
+    candidate({ id: '5', status: 'disqualified', contractSignedAt: {} as never }),
+  ]);
+
+  it('counts each outcome', () => {
+    expect(countOutcomes(rows)).toMatchObject({ si: 2, no: 1, baja: 1, pendiente: 1, total: 5 });
+  });
+
+  it('leaves the unevaluated out of the success rate', () => {
+    const counts = countOutcomes(rows);
+    expect(counts.evaluados).toBe(3);
+    expect(counts.tasaExito).toBeCloseTo(2 / 3);
+  });
+
+  it('reports no rate at all when nobody has been evaluated', () => {
+    expect(countOutcomes(buildReportRows([candidate({ status: 'induction' })])).tasaExito).toBeNull();
+  });
+});
+
+describe('groupOutcomes', () => {
+  it('ranks by evidence, so a small perfect group does not outrank a large one', () => {
+    const rows = buildReportRows([
+      candidate({ id: 'a1', status: 'promotor_exitoso', plaza: 'Grande' }),
+      candidate({ id: 'a2', status: 'bajo_desempeno', plaza: 'Grande' }),
+      candidate({ id: 'a3', status: 'promotor_exitoso', plaza: 'Grande' }),
+      candidate({ id: 'b1', status: 'promotor_exitoso', plaza: 'Chica' }),
+    ]);
+    const groups = groupOutcomes(rows, (r) => r.plaza);
+    expect(groups.map((g) => g.key)).toEqual(['Grande', 'Chica']);
+    expect(groups[0].counts.tasaExito).toBeCloseTo(2 / 3);
+    expect(groups[1].counts.tasaExito).toBe(1);
+  });
+
+  it('buckets rows with no value under "Sin dato"', () => {
+    const groups = groupOutcomes(buildReportRows([candidate({ status: 'induction' })]), (r) => r.plaza);
+    expect(groups[0].key).toBe(SIN_DATO);
+  });
+});
+
+describe('funnelStages', () => {
+  it('narrows from ingresaron to evaluados to exitosos with each conversion', () => {
+    const rows = buildReportRows([
+      candidate({ id: '1', status: 'promotor_exitoso' }),
+      candidate({ id: '2', status: 'bajo_desempeno' }),
+      candidate({ id: '3', status: 'induction' }),
+      candidate({ id: '4', status: 'induction' }),
+    ]);
+    expect(funnelStages(rows).map((s) => [s.key, s.value, s.conversion])).toEqual([
+      ['ingresaron', 4, null],
+      ['evaluados', 2, 0.5],
+      ['exitosos', 1, 0.5],
+    ]);
+  });
+});
+
+describe('monthlyCohorts', () => {
+  it('groups by month of hire, oldest first, keeping only the most recent months', () => {
+    const rows = buildReportRows([
+      candidate({ id: '1', status: 'promotor_exitoso', viterbitStartDateIso: '2026-01-05' }),
+      candidate({ id: '2', status: 'bajo_desempeno', viterbitStartDateIso: '2026-01-20' }),
+      candidate({ id: '3', status: 'induction', viterbitStartDateIso: '2026-02-02' }),
+      candidate({ id: '4', status: 'induction' }),
+    ]);
+    const cohorts = monthlyCohorts(rows, 2);
+    expect(cohorts.map((c) => [c.label, c.counts.total])).toEqual([['ene 26', 2], ['feb 26', 1]]);
+    expect(cohorts[0].counts.tasaExito).toBe(0.5);
+  });
+});
+
+describe('averageDailyDeals', () => {
+  it('averages only the promoters with a measured window', () => {
+    const rows = buildReportRows([
+      candidate({ id: '1', status: 'induction', performance30DayDeals: 30 }),
+      candidate({ id: '2', status: 'induction', performance30DayDeals: 60 }),
+      candidate({ id: '3', status: 'induction' }),
+    ]);
+    expect(averageDailyDeals(rows)).toBeCloseTo(1.5);
+    expect(averageDailyDeals(buildReportRows([candidate({ status: 'induction' })]))).toBeNull();
   });
 });
 

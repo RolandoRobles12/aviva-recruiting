@@ -40,6 +40,9 @@ const NORMALIZED_VERTICALS = Object.entries(VERTICAL_BY_PROFILE)
 
 export const SIN_VERTICAL = 'Sin vertical';
 
+/** Label for a grouping key the candidate has no value for (plaza, ciudad). */
+export const SIN_DATO = 'Sin dato';
+
 /**
  * The vertical of a candidate, from their canonical profile and, when that is
  * missing, the job title — which carries a store suffix ("Promotor/a Aviva tu
@@ -203,6 +206,121 @@ export function buildReportRows(candidates: Candidate[]): ReportRow[] {
       (c.status === 'disqualified' && !!c.contractSignedAt))
     .map(toReportRow)
     .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0));
+}
+
+// ─── Agregados para el dashboard ──────────────────────────────────────────────
+
+/** Reading order of the outcomes: settled verdicts first, then who is still open. */
+export const OUTCOME_ORDER: PromotorOutcome[] = ['si', 'no', 'baja', 'pendiente'];
+
+export interface OutcomeCounts {
+  si: number;
+  no: number;
+  baja: number;
+  pendiente: number;
+  total: number;
+  /** Promoters with a settled 30-day verdict (sí + no) — the success-rate denominator. */
+  evaluados: number;
+  /** Share of evaluated promoters who made it, or null while nobody is evaluated. */
+  tasaExito: number | null;
+}
+
+export function countOutcomes(rows: ReportRow[]): OutcomeCounts {
+  const counts = { si: 0, no: 0, baja: 0, pendiente: 0 };
+  for (const row of rows) counts[row.outcome]++;
+
+  const evaluados = counts.si + counts.no;
+  return {
+    ...counts,
+    total: rows.length,
+    evaluados,
+    // A promoter still inside their 30-day window is not a failure, so they stay
+    // out of the denominator — otherwise every fresh cohort drags the rate down.
+    tasaExito: evaluados > 0 ? counts.si / evaluados : null,
+  };
+}
+
+export interface OutcomeGroup {
+  key: string;
+  counts: OutcomeCounts;
+}
+
+/**
+ * Outcomes grouped by any dimension (vertical, plaza, ciudad), ordered by how
+ * much evidence each group carries: a 100% rate over two promoters should not
+ * outrank a 70% rate over forty.
+ */
+export function groupOutcomes(rows: ReportRow[], keyOf: (row: ReportRow) => string): OutcomeGroup[] {
+  const groups = new Map<string, ReportRow[]>();
+  for (const row of rows) {
+    const key = keyOf(row) || SIN_DATO;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(row);
+    else groups.set(key, [row]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, groupRows]) => ({ key, counts: countOutcomes(groupRows) }))
+    .sort((a, b) =>
+      b.counts.evaluados - a.counts.evaluados ||
+      b.counts.total - a.counts.total ||
+      a.key.localeCompare(b.key));
+}
+
+export interface FunnelStage {
+  key: 'ingresaron' | 'evaluados' | 'exitosos';
+  label: string;
+  value: number;
+  /** Conversion from the previous stage, null on the first one. */
+  conversion: number | null;
+}
+
+/** Ingresaron → llegaron al corte de 30 días → alcanzaron la meta. */
+export function funnelStages(rows: ReportRow[]): FunnelStage[] {
+  const { total, evaluados, si } = countOutcomes(rows);
+  return [
+    { key: 'ingresaron', label: 'Ingresaron',            value: total,     conversion: null },
+    { key: 'evaluados',  label: 'Evaluados a 30 días',   value: evaluados, conversion: total > 0 ? evaluados / total : null },
+    { key: 'exitosos',   label: 'Promotor Exitoso',      value: si,        conversion: evaluados > 0 ? si / evaluados : null },
+  ];
+}
+
+export interface MonthlyCohort {
+  /** "2026-07" — sortable key. */
+  month: string;
+  /** "jul 26" — axis label. */
+  label: string;
+  counts: OutcomeCounts;
+}
+
+const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Cohorts by month of hire, oldest first, capped to the most recent `limit`. */
+export function monthlyCohorts(rows: ReportRow[], limit = 12): MonthlyCohort[] {
+  const months = new Map<string, ReportRow[]>();
+  for (const row of rows) {
+    if (!row.startDate) continue;
+    const month = formatIsoDate(row.startDate).slice(0, 7);
+    const bucket = months.get(month);
+    if (bucket) bucket.push(row);
+    else months.set(month, [row]);
+  }
+
+  return Array.from(months.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-limit)
+    .map(([month, monthRows]) => ({
+      month,
+      label: `${MONTH_ABBR[Number(month.slice(5, 7)) - 1]} ${month.slice(2, 4)}`,
+      counts: countOutcomes(monthRows),
+    }));
+}
+
+/** Average of the promoters who have a measured window; null when none do. */
+export function averageDailyDeals(rows: ReportRow[]): number | null {
+  const measured = rows.filter((r) => r.dealAverage);
+  if (measured.length === 0) return null;
+  return measured.reduce((acc, r) => acc + (r.dealAverage?.average ?? 0), 0) / measured.length;
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────
