@@ -9,6 +9,7 @@ import { BrandingTab } from '../components/settings/BrandingTab';
 import { useSettings } from '../hooks/useSettings';
 import {
   backfillCandidateDocuments,
+  backfillCandidatePlaza,
   backfillPerformanceChecks,
   recalculatePerformanceStatuses,
 } from '../services/functions';
@@ -40,6 +41,8 @@ const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
 function AdminTab() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [runningPlaza, setRunningPlaza] = useState(false);
+  const [plazaResult, setPlazaResult] = useState<string | null>(null);
   const [runningPerf, setRunningPerf] = useState(false);
   const [perfResult, setPerfResult] = useState<string | null>(null);
   const [runningRecalc, setRunningRecalc] = useState<'dry' | 'real' | null>(null);
@@ -79,6 +82,19 @@ function AdminTab() {
     }
   };
 
+  const handlePlazaBackfill = async () => {
+    setRunningPlaza(true);
+    setPlazaResult(null);
+    try {
+      const res = await backfillCandidatePlaza({});
+      setPlazaResult(res.data.message);
+    } catch (err) {
+      setPlazaResult(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setRunningPlaza(false);
+    }
+  };
+
   const handleBackfill = async () => {
     setRunning(true);
     setResult(null);
@@ -111,6 +127,25 @@ function AdminTab() {
         </button>
         {result && (
           <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{result}</p>
+        )}
+      </div>
+      <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+        <div>
+          <p className="text-sm font-medium text-gray-700">Completar plaza y ciudad</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Trae de Viterbit la plaza (external_id de la vacante) y la ciudad de su dirección
+            para los candidatos que aún no las tienen. Alimenta el Dashboard de operación.
+          </p>
+        </div>
+        <button
+          onClick={handlePlazaBackfill}
+          disabled={runningPlaza}
+          className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
+        >
+          {runningPlaza ? 'Procesando...' : 'Ejecutar backfill'}
+        </button>
+        {plazaResult && (
+          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{plazaResult}</p>
         )}
       </div>
       <div className="border border-gray-200 rounded-xl p-4 space-y-3">

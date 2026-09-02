@@ -28,6 +28,8 @@ export type PermissionKey =
   // Pruebas psicométricas
   | 'psychometric_sessions'
   | 'psychometric_manage_bank'
+  // Reportes
+  | 'reports_view'
   // Configuración
   | 'config_templates'
   | 'config_settings'
@@ -132,6 +134,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    id: 'reports',
+    label: 'Reportes',
+    items: [
+      {
+        key: 'reports_view',
+        label: 'Ver dashboard de operación',
+        description: 'Acceso al reporte de promotores por plaza, vertical y desempeño',
+      },
+    ],
+  },
+  {
     id: 'config',
     label: 'Configuración',
     items: [
@@ -185,6 +198,7 @@ export const ALL_PERMISSIONS: RolePermissions = {
   process_provision_accounts: true,
   psychometric_sessions: true,
   psychometric_manage_bank: true,
+  reports_view: true,
   config_templates: true,
   config_settings: true,
   config_form: true,
@@ -210,6 +224,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_provision_accounts: false,
     psychometric_sessions: true,
     psychometric_manage_bank: false,
+    reports_view: false,
     config_templates: false,
     config_settings: false,
     config_form: false,
@@ -230,6 +245,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_provision_accounts: true,
     psychometric_sessions: true,
     psychometric_manage_bank: false,
+    reports_view: true,
     config_templates: false,
     config_settings: true,
     config_form: false,
@@ -250,6 +266,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_provision_accounts: true,
     psychometric_sessions: false,
     psychometric_manage_bank: false,
+    reports_view: false,
     config_templates: false,
     config_settings: false,
     config_form: false,
@@ -270,6 +287,7 @@ export const ROLE_DEFAULTS: Record<RoleType, RolePermissions> = {
     process_provision_accounts: false,
     psychometric_sessions: false,
     psychometric_manage_bank: false,
+    reports_view: false,
     config_templates: false,
     config_settings: false,
     config_form: false,

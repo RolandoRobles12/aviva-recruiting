@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Shield,
   Brain,
+  BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { ROLE_META, normalizeRole } from '../../types/permissions';
@@ -41,6 +42,7 @@ export function DashboardLayout({ children }: Props) {
   const showDocs          = can('process_review_docs');
   const showFormConfig    = can('config_form');
   const showPsychometric  = can('psychometric_sessions');
+  const showReports       = can('reports_view');
   const showTemplates     = can('config_templates');
   const showSettings      = can('config_settings');
   const showRoles         = can('admin_manage_roles');
@@ -65,7 +67,7 @@ export function DashboardLayout({ children }: Props) {
         {/* Nav */}
         <nav className="flex-1 py-4 px-2 lg:px-3 space-y-5 overflow-y-auto">
           {/* Principal */}
-          {(showCandidates || showDocs || showFormConfig || showPsychometric) && (
+          {(showCandidates || showDocs || showFormConfig || showPsychometric || showReports) && (
             <div className="space-y-1">
               <p className="hidden lg:block px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
                 Principal
@@ -92,6 +94,12 @@ export function DashboardLayout({ children }: Props) {
                 <NavLink to="/psychometric-tests" className={navClass}>
                   <Brain size={18} className="shrink-0" />
                   <span className="hidden lg:block">Pruebas Psicométricas</span>
+                </NavLink>
+              )}
+              {showReports && (
+                <NavLink to="/dashboard" className={navClass}>
+                  <BarChart3 size={18} className="shrink-0" />
+                  <span className="hidden lg:block">Dashboard</span>
                 </NavLink>
               )}
             </div>

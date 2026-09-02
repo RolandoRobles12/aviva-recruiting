@@ -239,6 +239,10 @@ export interface Candidate {
   viterbitHiringManager?: string;
   viterbitCompany?: string;
   viterbitDepartmentProfile?: string;
+  /** Store the candidate was hired for — the Viterbit job's external_id, verbatim */
+  plaza?: string;
+  /** City of that store, from the Viterbit job's address (not the candidate's home city) */
+  plazaCity?: string;
 }
 
 // ─── Psychometric Test (standalone module — not yet linked to Candidate) ──────

@@ -6,6 +6,7 @@ import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
 import { toIsoDateString } from '../utils/startDate';
 import { fetchCandidateScreening } from './candidateScreening';
+import { extractJobPlaza } from './jobPlaza';
 import { getMissingHiringDetails, type HiringDetailFields } from '../utils/hiringDetails';
 import { sendOfferEmailCore } from '../offer/sendOfferEmail';
 
@@ -168,10 +169,14 @@ export const refreshCandidateViterbit = onCall(
     const hiringManagerId = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
     const hiringManager = hiringManagerId ? await fetchViterbitUser(hiringManagerId, apiKey) : '';
     const company = getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || '';
+    const { plaza, city: plazaCity } = extractJobPlaza(data);
 
     const updates: Record<string, unknown> = {
       updatedAt: FieldValue.serverTimestamp(),
     };
+
+    if (plaza) updates.plaza = plaza;
+    if (plazaCity) updates.plazaCity = plazaCity;
 
     if (title) updates.position = title;
     if (salary) updates.viterbitSalary = salary;
