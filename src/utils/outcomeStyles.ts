@@ -22,7 +22,7 @@ export const OUTCOME_CHART_LABELS: Record<PromotorOutcome, string> = {
   si:        'Promotor Exitoso',
   no:        'Bajo Desempeño',
   baja:      'Baja',
-  pendiente: 'Pendiente (sin corte de 30 días)',
+  pendiente: 'Pendiente (sin veredicto)',
 };
 
 /** One bar of an outcome-split stacked chart. */

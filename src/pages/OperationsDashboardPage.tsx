@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BarChart3, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmptyState } from '../components/ui/EmptyState';
 import {
@@ -14,6 +14,8 @@ import { OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
 import { useCandidates } from '../hooks/useCandidates';
 import {
   OUTCOME_LABELS,
+  PENDING_ISSUE_HINTS,
+  PENDING_ISSUE_LABELS,
   averageDailyDeals,
   buildReportRows,
   countOutcomes,
@@ -25,6 +27,8 @@ import {
   monthlyCohorts,
   plazaRotation,
   rowsToCsv,
+  stuckPending,
+  type OutcomeFilter,
   type PromotorOutcome,
   type ReportRow,
 } from '../utils/reporting';
@@ -43,11 +47,12 @@ const OUTCOME_STYLES: Record<PromotorOutcome, string> = {
   baja:      'bg-amber-50 text-amber-700',
 };
 
-const OUTCOME_FILTERS: { value: 'all' | PromotorOutcome; label: string }[] = [
+const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
   { value: 'all', label: 'Todos los resultados' },
   { value: 'si', label: 'Promotor Exitoso' },
   { value: 'no', label: 'Bajo Desempeño' },
   { value: 'pendiente', label: 'Pendientes' },
+  { value: 'atrasado', label: 'Sin evaluar y ya vencidos' },
   { value: 'baja', label: 'Bajas' },
 ];
 
@@ -69,7 +74,7 @@ export function OperationsDashboardPage() {
   const [search, setSearch] = useState('');
   const [vertical, setVertical] = useState('');
   const [plaza, setPlaza] = useState('');
-  const [outcome, setOutcome] = useState<'all' | PromotorOutcome>('all');
+  const [outcome, setOutcome] = useState<OutcomeFilter>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
@@ -104,6 +109,7 @@ export function OperationsDashboardPage() {
   const byVertical = useMemo(() => groupOutcomes(rows, (r) => r.vertical), [rows]);
   const rotation = useMemo(() => plazaRotation(dimensionRows), [dimensionRows]);
   const cohorts = useMemo(() => monthlyCohorts(rows), [rows]);
+  const stuck = useMemo(() => stuckPending(rows), [rows]);
 
   // Clamped rather than reset in an effect, so changing a filter cannot leave the
   // table on a page that no longer exists (or flash an empty page first).
@@ -164,7 +170,7 @@ export function OperationsDashboardPage() {
           </select>
           <select
             value={outcome}
-            onChange={(e) => withReset(setOutcome)(e.target.value as 'all' | PromotorOutcome)}
+            onChange={(e) => withReset(setOutcome)(e.target.value as OutcomeFilter)}
             className="input-field text-sm w-auto"
           >
             {OUTCOME_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -191,6 +197,36 @@ export function OperationsDashboardPage() {
             />
           ) : (
             <div className="p-5 space-y-4">
+              {stuck.total > 0 && (
+                <div className="border border-amber-200 bg-amber-50/60 rounded-xl px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-sm text-gray-700">
+                    <p>
+                      <span className="font-semibold">{stuck.total}</span>{' '}
+                      {stuck.total === 1 ? 'promotor ya pasó' : 'promotores ya pasaron'} los 30 días
+                      y sigue{stuck.total === 1 ? '' : 'n'} sin veredicto. No es que les falte tiempo:
+                      su evaluación quedó atorada.
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs text-gray-600">
+                      {stuck.byIssue.map(({ issue, total }) => (
+                        <li key={issue} title={PENDING_ISSUE_HINTS[issue]}>
+                          <span className="font-semibold tabular-nums">{total}</span>{' '}
+                          {PENDING_ISSUE_LABELS[issue]} — {PENDING_ISSUE_HINTS[issue]}
+                        </li>
+                      ))}
+                    </ul>
+                    {outcome !== 'atrasado' && (
+                      <button
+                        onClick={() => withReset(setOutcome)('atrasado')}
+                        className="mt-2 text-xs font-medium text-primary-700 hover:text-primary-800 underline underline-offset-2"
+                      >
+                        Ver solo estos promotores
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Headline + funnel + distribución */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="border border-gray-200 rounded-xl p-4 bg-white flex flex-col">
@@ -330,9 +366,16 @@ export function OperationsDashboardPage() {
                           )}
                         </td>
                         <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}>
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: OUTCOME_COLORS[r.outcome] }} />
-                            {OUTCOME_LABELS[r.outcome]}
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}
+                            title={r.pendingIssue ? PENDING_ISSUE_HINTS[r.pendingIssue] : undefined}
+                          >
+                            {r.pendingIssue ? (
+                              <AlertTriangle size={11} className="text-amber-600 shrink-0" />
+                            ) : (
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: OUTCOME_COLORS[r.outcome] }} />
+                            )}
+                            {r.pendingIssue ? PENDING_ISSUE_LABELS[r.pendingIssue] : OUTCOME_LABELS[r.outcome]}
                           </span>
                         </td>
                       </tr>

@@ -15,6 +15,7 @@ import {
   promotorOutcome,
   resolveVertical,
   rowsToCsv,
+  stuckPending,
   SIN_DATO,
   SIN_VERTICAL,
 } from '../src/utils/reporting';
@@ -221,6 +222,59 @@ describe('plazaRotation', () => {
   });
 });
 
+describe('pendingIssue', () => {
+  const now = new Date(2026, 8, 2); // 2 de septiembre de 2026
+
+  const issueOf = (fields: Partial<Candidate>) =>
+    buildReportRows([candidate({ status: 'onboarding_iniciado', hubspotOwnerId: '96665933', ...fields })], now)[0]
+      .pendingIssue;
+
+  it('leaves a promoter alone while their 30 days are still running', () => {
+    // Ingresó el 6 de agosto: su corte cae el 5 de septiembre.
+    expect(issueOf({ viterbitStartDateIso: '2026-08-06' })).toBeNull();
+  });
+
+  it('waits out the grace period, since the check only runs once a day', () => {
+    expect(issueOf({ viterbitStartDateIso: '2026-08-02' })).toBeNull();
+    expect(issueOf({ viterbitStartDateIso: '2026-07-31' })).toBe('sin_conteo');
+  });
+
+  it('names the dead end that is holding the verdict', () => {
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01', hubspotOwnerId: undefined })).toBe('sin_hubspot');
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01' })).toBe('sin_conteo');
+    expect(issueOf({})).toBe('sin_fecha');
+  });
+
+  it('never flags a promoter whose verdict already landed', () => {
+    expect(issueOf({ status: 'promotor_exitoso', viterbitStartDateIso: '2026-01-01' })).toBeNull();
+    expect(issueOf({ status: 'bajo_desempeno', viterbitStartDateIso: '2026-01-01' })).toBeNull();
+    expect(issueOf({ status: 'disqualified', contractSignedAt: {} as never })).toBeNull();
+  });
+});
+
+describe('stuckPending', () => {
+  const now = new Date(2026, 8, 2);
+
+  it('counts the stuck promoters by dead end, biggest first', () => {
+    const rows = buildReportRows([
+      candidate({ id: '1', status: 'induction', viterbitStartDateIso: '2026-06-01' }),
+      candidate({ id: '2', status: 'induction', viterbitStartDateIso: '2026-06-02' }),
+      candidate({ id: '3', status: 'induction', viterbitStartDateIso: '2026-06-03', hubspotOwnerId: '1' }),
+      candidate({ id: '4', status: 'induction', viterbitStartDateIso: '2026-08-30', hubspotOwnerId: '1' }),
+    ], now);
+
+    expect(stuckPending(rows)).toEqual({
+      total: 3,
+      byIssue: [{ issue: 'sin_hubspot', total: 2 }, { issue: 'sin_conteo', total: 1 }],
+    });
+  });
+
+  it('reports nothing when every pending promoter is still inside their window', () => {
+    const rows = buildReportRows([candidate({ status: 'induction', viterbitStartDateIso: '2026-08-30' })], now);
+    expect(stuckPending(rows)).toEqual({ total: 0, byIssue: [] });
+  });
+});
+
 describe('filters', () => {
   const rows = buildReportRows([
     candidate({ id: 'a', status: 'promotor_exitoso', plaza: 'MEX0001', plazaCity: 'Mérida', profile: 'Promotor/a Aviva tu Casa', viterbitStartDateIso: '2026-01-10' }),
@@ -312,8 +366,18 @@ describe('rowsToCsv', () => {
     ]);
     const lines = rowsToCsv(rows).split('\r\n');
     expect(lines[0]).toContain('"Fecha de ingreso"');
+    expect(lines).toHaveLength(2);
     expect(lines[1]).toBe(
       '"2026-07-15","Ana ""La Jefa""","MEX0147 Oxkutzcab BA","Oxkutzcab","Aviva tu Compra","1.50","Sí"',
     );
+  });
+
+  it('carries the dead end of a stuck promoter, so it can be chased from Excel', () => {
+    const rows = buildReportRows(
+      [candidate({ status: 'induction', viterbitStartDateIso: '2026-06-01' })],
+      new Date(2026, 8, 2),
+    );
+    expect(rowsToCsv(rows).split('\r\n')[1])
+      .toContain('"Pendiente — sin cuenta de HubSpot vinculada"');
   });
 });
