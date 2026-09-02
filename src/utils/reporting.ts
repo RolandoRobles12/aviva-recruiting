@@ -10,6 +10,9 @@ import type { Candidate, CandidateStatus } from '../types';
 
 /**
  * Verticals as operations names them, keyed by the Viterbit department profile.
+ * The names live here, not in Viterbit: the branch roles come across as "Trainee
+ * Sucursal (Kiosk Trainee)" and "Gerente de Sucursal (Kiosk Manager)" but the
+ * vertical operations reports on is Aviva Contigo, so the mapping renames them.
  * "Aviva tu Compra CM" (Casa Marchand) is its own vertical, not a variant of
  * "Aviva tu Compra", so it must be matched before the shorter name — the list
  * is sorted longest-first for exactly that reason.
@@ -19,8 +22,8 @@ const VERTICAL_BY_PROFILE: Record<string, string> = {
   'Promotor/a Aviva tu Compra':    'Aviva tu Compra',
   'Promotor/a Aviva tu Negocio':   'Aviva tu Negocio',
   'Promotor/a Aviva tu Casa':      'Aviva tu Casa',
-  'Trainee Sucursal':              'Sucursal',
-  'Gerente de Sucursal':           'Sucursal',
+  'Trainee Sucursal':              'Aviva Contigo',
+  'Gerente de Sucursal':           'Aviva Contigo',
 };
 
 /** Mirrors functions/src/performance/targets.ts so both read the same profiles. */
@@ -39,6 +42,9 @@ const NORMALIZED_VERTICALS = Object.entries(VERTICAL_BY_PROFILE)
   .sort((a, b) => b.normalized.length - a.normalized.length);
 
 export const SIN_VERTICAL = 'Sin vertical';
+
+/** Label for a grouping key the candidate has no value for (plaza, ciudad). */
+export const SIN_DATO = 'Sin dato';
 
 /**
  * The vertical of a candidate, from their canonical profile and, when that is
@@ -203,6 +209,199 @@ export function buildReportRows(candidates: Candidate[]): ReportRow[] {
       (c.status === 'disqualified' && !!c.contractSignedAt))
     .map(toReportRow)
     .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0));
+}
+
+// ─── Filtros ──────────────────────────────────────────────────────────────────
+
+/**
+ * Filters that pick *which* promoters the dashboard is about — a store, a
+ * vertical, a name. Rotation history honours these: "las plazas de Aviva tu
+ * Casa" is still a question about whole plazas.
+ */
+export interface DimensionFilters {
+  search?: string;
+  vertical?: string;
+  plaza?: string;
+}
+
+/**
+ * Filters that cut a slice out of each promoter's history — a hiring window, a
+ * verdict. Rotation deliberately ignores these: a plaza that burned through
+ * four people over a year is a difficult plaza even when you are looking at
+ * August, and counting only the ones who failed would not be counting hires
+ * any more.
+ */
+export interface SliceFilters {
+  outcome?: 'all' | PromotorOutcome;
+  /** ISO dates, inclusive. */
+  from?: string;
+  to?: string;
+}
+
+export function filterByDimensions(rows: ReportRow[], filters: DimensionFilters): ReportRow[] {
+  const term = filters.search?.trim().toLowerCase() ?? '';
+  return rows.filter((row) => {
+    if (term && !`${row.name} ${row.plaza} ${row.city}`.toLowerCase().includes(term)) return false;
+    if (filters.vertical && row.vertical !== filters.vertical) return false;
+    if (filters.plaza && row.plaza !== filters.plaza) return false;
+    return true;
+  });
+}
+
+export function filterBySlice(rows: ReportRow[], filters: SliceFilters): ReportRow[] {
+  return rows.filter((row) => {
+    if (filters.outcome && filters.outcome !== 'all' && row.outcome !== filters.outcome) return false;
+    const iso = formatIsoDate(row.startDate);
+    // A promoter with no parseable start date cannot be placed in a window, so
+    // any date bound excludes them rather than silently keeping them in.
+    if (filters.from && (!iso || iso < filters.from)) return false;
+    if (filters.to && (!iso || iso > filters.to)) return false;
+    return true;
+  });
+}
+
+// ─── Agregados para el dashboard ──────────────────────────────────────────────
+
+/** Reading order of the outcomes: settled verdicts first, then who is still open. */
+export const OUTCOME_ORDER: PromotorOutcome[] = ['si', 'no', 'baja', 'pendiente'];
+
+export interface OutcomeCounts {
+  si: number;
+  no: number;
+  baja: number;
+  pendiente: number;
+  total: number;
+  /** Promoters with a settled 30-day verdict (sí + no) — the success-rate denominator. */
+  evaluados: number;
+  /** Share of evaluated promoters who made it, or null while nobody is evaluated. */
+  tasaExito: number | null;
+}
+
+export function countOutcomes(rows: ReportRow[]): OutcomeCounts {
+  const counts = { si: 0, no: 0, baja: 0, pendiente: 0 };
+  for (const row of rows) counts[row.outcome]++;
+
+  const evaluados = counts.si + counts.no;
+  return {
+    ...counts,
+    total: rows.length,
+    evaluados,
+    // A promoter still inside their 30-day window is not a failure, so they stay
+    // out of the denominator — otherwise every fresh cohort drags the rate down.
+    tasaExito: evaluados > 0 ? counts.si / evaluados : null,
+  };
+}
+
+export interface OutcomeGroup {
+  key: string;
+  counts: OutcomeCounts;
+}
+
+/**
+ * Outcomes grouped by any dimension (vertical, plaza, ciudad), ordered by how
+ * much evidence each group carries: a 100% rate over two promoters should not
+ * outrank a 70% rate over forty.
+ */
+export function groupOutcomes(rows: ReportRow[], keyOf: (row: ReportRow) => string): OutcomeGroup[] {
+  const groups = new Map<string, ReportRow[]>();
+  for (const row of rows) {
+    const key = keyOf(row) || SIN_DATO;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(row);
+    else groups.set(key, [row]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, groupRows]) => ({ key, counts: countOutcomes(groupRows) }))
+    .sort((a, b) =>
+      b.counts.evaluados - a.counts.evaluados ||
+      b.counts.total - a.counts.total ||
+      a.key.localeCompare(b.key));
+}
+
+export interface PlazaRotation {
+  /** Plazas that already hired more than once, most hires first. */
+  plazas: OutcomeGroup[];
+  /** Plazas with at least one hire — the denominator of the rotation share. */
+  totalPlazas: number;
+  /** How many of those plazas already needed a second person. */
+  conRotacion: number;
+}
+
+/**
+ * Hiring repeated on the same store, which is a warning sign rather than a
+ * ranking of good plazas: a store only opens a second vacancy because the first
+ * promoter left, so more hires on one plaza means the seat is not holding.
+ *
+ * Rows with no plaza are dropped: they are different unknown stores, and piling
+ * them into one bucket would invent the worst plaza in the report.
+ */
+export function plazaRotation(rows: ReportRow[]): PlazaRotation {
+  const groups = groupOutcomes(rows.filter((r) => r.plaza), (r) => r.plaza);
+  const repetidas = groups.filter((g) => g.counts.total > 1);
+
+  return {
+    plazas: [...repetidas].sort((a, b) =>
+      b.counts.total - a.counts.total || a.key.localeCompare(b.key)),
+    totalPlazas: groups.length,
+    conRotacion: repetidas.length,
+  };
+}
+
+export interface FunnelStage {
+  key: 'ingresaron' | 'evaluados' | 'exitosos';
+  label: string;
+  value: number;
+  /** Conversion from the previous stage, null on the first one. */
+  conversion: number | null;
+}
+
+/** Ingresaron → llegaron al corte de 30 días → alcanzaron la meta. */
+export function funnelStages(rows: ReportRow[]): FunnelStage[] {
+  const { total, evaluados, si } = countOutcomes(rows);
+  return [
+    { key: 'ingresaron', label: 'Ingresaron',            value: total,     conversion: null },
+    { key: 'evaluados',  label: 'Evaluados a 30 días',   value: evaluados, conversion: total > 0 ? evaluados / total : null },
+    { key: 'exitosos',   label: 'Promotor Exitoso',      value: si,        conversion: evaluados > 0 ? si / evaluados : null },
+  ];
+}
+
+export interface MonthlyCohort {
+  /** "2026-07" — sortable key. */
+  month: string;
+  /** "jul 26" — axis label. */
+  label: string;
+  counts: OutcomeCounts;
+}
+
+const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Cohorts by month of hire, oldest first, capped to the most recent `limit`. */
+export function monthlyCohorts(rows: ReportRow[], limit = 12): MonthlyCohort[] {
+  const months = new Map<string, ReportRow[]>();
+  for (const row of rows) {
+    if (!row.startDate) continue;
+    const month = formatIsoDate(row.startDate).slice(0, 7);
+    const bucket = months.get(month);
+    if (bucket) bucket.push(row);
+    else months.set(month, [row]);
+  }
+
+  return Array.from(months.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-limit)
+    .map(([month, monthRows]) => ({
+      month,
+      label: `${MONTH_ABBR[Number(month.slice(5, 7)) - 1]} ${month.slice(2, 4)}`,
+      counts: countOutcomes(monthRows),
+    }));
+}
+
+/** Average of the promoters who have a measured window; null when none do. */
+export function averageDailyDeals(rows: ReportRow[]): number | null {
+  const measured = rows.filter((r) => r.dealAverage);
+  if (measured.length === 0) return null;
+  return measured.reduce((acc, r) => acc + (r.dealAverage?.average ?? 0), 0) / measured.length;
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────

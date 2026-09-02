@@ -1,12 +1,29 @@
 import { useMemo, useState } from 'react';
-import { BarChart3, Download, Search, Trophy, TrendingDown, Clock, Users } from 'lucide-react';
+import { BarChart3, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmptyState } from '../components/ui/EmptyState';
+import {
+  ChartCard,
+  Funnel,
+  OutcomeDonut,
+  OutcomeLegend,
+  OutcomeStackedBars,
+  SuccessRateBars,
+} from '../components/dashboard/OperationsCharts';
+import { OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
 import { useCandidates } from '../hooks/useCandidates';
 import {
   OUTCOME_LABELS,
+  averageDailyDeals,
   buildReportRows,
+  countOutcomes,
+  filterByDimensions,
+  filterBySlice,
   formatIsoDate,
+  funnelStages,
+  groupOutcomes,
+  monthlyCohorts,
+  plazaRotation,
   rowsToCsv,
   type PromotorOutcome,
   type ReportRow,
@@ -27,14 +44,14 @@ const OUTCOME_STYLES: Record<PromotorOutcome, string> = {
 };
 
 const OUTCOME_FILTERS: { value: 'all' | PromotorOutcome; label: string }[] = [
-  { value: 'all', label: 'Todos' },
+  { value: 'all', label: 'Todos los resultados' },
   { value: 'si', label: 'Promotor Exitoso' },
   { value: 'no', label: 'Bajo Desempeño' },
   { value: 'pendiente', label: 'Pendientes' },
   { value: 'baja', label: 'Bajas' },
 ];
 
-const SIN_DATO = 'Sin dato';
+const PAGE_SIZES = [25, 50, 100];
 
 /** Downloads the filtered rows as a CSV Excel opens with the accents intact. */
 function downloadCsv(rows: ReportRow[]) {
@@ -55,6 +72,8 @@ export function OperationsDashboardPage() {
   const [outcome, setOutcome] = useState<'all' | PromotorOutcome>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
   const allRows = useMemo(() => buildReportRows(candidates), [candidates]);
 
@@ -67,64 +86,44 @@ export function OperationsDashboardPage() {
     [allRows],
   );
 
-  const rows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return allRows.filter((r) => {
-      if (term && !`${r.name} ${r.plaza} ${r.city}`.toLowerCase().includes(term)) return false;
-      if (vertical && r.vertical !== vertical) return false;
-      if (plaza && r.plaza !== plaza) return false;
-      if (outcome !== 'all' && r.outcome !== outcome) return false;
-      const iso = formatIsoDate(r.startDate);
-      if (from && (!iso || iso < from)) return false;
-      if (to && (!iso || iso > to)) return false;
-      return true;
-    });
-  }, [allRows, search, vertical, plaza, outcome, from, to]);
-
-  const stats = useMemo(() => {
-    const measured = rows.filter((r) => r.dealAverage);
-    const sum = measured.reduce((acc, r) => acc + (r.dealAverage?.average ?? 0), 0);
-    const exitosos = rows.filter((r) => r.outcome === 'si').length;
-    const evaluados = rows.filter((r) => r.outcome === 'si' || r.outcome === 'no').length;
-    return {
-      total: rows.length,
-      exitosos,
-      bajoDesempeno: rows.filter((r) => r.outcome === 'no').length,
-      pendientes: rows.filter((r) => r.outcome === 'pendiente').length,
-      // Over evaluated promoters only — counting the ones still inside their
-      // window as failures would understate the rate every single month.
-      tasaExito: evaluados > 0 ? Math.round((exitosos / evaluados) * 100) : null,
-      promedioSolicitudes: measured.length > 0 ? sum / measured.length : null,
-    };
-  }, [rows]);
-
-  const byVertical = useMemo(() => groupBy(rows, (r) => r.vertical), [rows]);
-  const byPlaza = useMemo(
-    () => groupBy(rows, (r) => r.plaza || SIN_DATO).slice(0, 10),
-    [rows],
+  // Two scopes: everything reads the fully filtered slice, except the rotation
+  // card, which is a historical property of the plaza and so keeps every hire
+  // regardless of the date range and the outcome filter.
+  const dimensionRows = useMemo(
+    () => filterByDimensions(allRows, { search, vertical, plaza }),
+    [allRows, search, vertical, plaza],
   );
-  const byMonth = useMemo(() => {
-    const buckets = new Map<string, number>();
-    for (const r of rows) {
-      if (!r.startDate) continue;
-      const month = formatIsoDate(r.startDate).slice(0, 7);
-      buckets.set(month, (buckets.get(month) ?? 0) + 1);
-    }
-    return Array.from(buckets.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-12)
-      .map(([month, total]) => ({
-        label: `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(2, 4)}`,
-        total,
-      }));
-  }, [rows]);
+  const rows = useMemo(
+    () => filterBySlice(dimensionRows, { outcome, from, to }),
+    [dimensionRows, outcome, from, to],
+  );
+
+  const counts = useMemo(() => countOutcomes(rows), [rows]);
+  const stages = useMemo(() => funnelStages(rows), [rows]);
+  const solicitudes = useMemo(() => averageDailyDeals(rows), [rows]);
+  const byVertical = useMemo(() => groupOutcomes(rows, (r) => r.vertical), [rows]);
+  const rotation = useMemo(() => plazaRotation(dimensionRows), [dimensionRows]);
+  const cohorts = useMemo(() => monthlyCohorts(rows), [rows]);
+
+  // Clamped rather than reset in an effect, so changing a filter cannot leave the
+  // table on a page that no longer exists (or flash an empty page first).
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageRows = rows.slice(pageStart, pageStart + pageSize);
+
+  /** Every filter change sends the reader back to the first page of the new slice. */
+  const withReset = <T,>(setter: (value: T) => void) => (value: T) => {
+    setter(value);
+    setPage(1);
+  };
 
   return (
     <DashboardLayout>
       <div className="h-full flex flex-col overflow-hidden">
-        {/* Header + stats */}
+        {/* Header */}
         <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Dashboard de operación</h2>
               <p className="text-xs text-gray-400">
@@ -135,59 +134,51 @@ export function OperationsDashboardPage() {
             <button
               onClick={() => downloadCsv(rows)}
               disabled={rows.length === 0}
-              className="btn-primary flex items-center gap-2 text-sm py-1.5 px-3 disabled:opacity-50"
+              title="Exporta los promotores que pasan los filtros actuales, no solo la página visible"
+              className="btn-primary flex items-center gap-2 text-sm py-1.5 px-3 disabled:opacity-50 shrink-0"
             >
               <Download size={14} />
               Exportar CSV
             </button>
           </div>
-
-          <div className="flex flex-wrap gap-2">
-            <StatChip icon={<Users size={13} />}       label="Promotores"        value={String(stats.total)} color="gray" />
-            <StatChip icon={<Trophy size={13} />}      label="Promotor Exitoso"  value={String(stats.exitosos)} color="green" />
-            <StatChip icon={<TrendingDown size={13} />} label="Bajo Desempeño"   value={String(stats.bajoDesempeno)} color="red" />
-            <StatChip icon={<Clock size={13} />}       label="Pendientes"        value={String(stats.pendientes)} color="amber" />
-            <StatChip icon={<BarChart3 size={13} />}   label="Tasa de éxito"     value={stats.tasaExito === null ? '—' : `${stats.tasaExito}%`} color="blue" />
-            <StatChip icon={<BarChart3 size={13} />}   label="Solicitudes/día"   value={stats.promedioSolicitudes === null ? '—' : stats.promedioSolicitudes.toFixed(2)} color="indigo" />
-          </div>
         </div>
 
-        {/* Filters */}
+        {/* Filters — one row above everything they scope */}
         <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0 flex flex-wrap items-center gap-2">
           <div className="relative w-64">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => withReset(setSearch)(e.target.value)}
               placeholder="Buscar promotor, plaza o ciudad..."
               className="input-field pl-9 text-sm"
             />
           </div>
-          <select value={vertical} onChange={(e) => setVertical(e.target.value)} className="input-field text-sm w-auto">
+          <select value={vertical} onChange={(e) => withReset(setVertical)(e.target.value)} className="input-field text-sm w-auto">
             <option value="">Todas las verticales</option>
             {verticals.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
-          <select value={plaza} onChange={(e) => setPlaza(e.target.value)} className="input-field text-sm w-auto max-w-56">
+          <select value={plaza} onChange={(e) => withReset(setPlaza)(e.target.value)} className="input-field text-sm w-auto max-w-56">
             <option value="">Todas las plazas</option>
             {plazas.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
           <select
             value={outcome}
-            onChange={(e) => setOutcome(e.target.value as 'all' | PromotorOutcome)}
+            onChange={(e) => withReset(setOutcome)(e.target.value as 'all' | PromotorOutcome)}
             className="input-field text-sm w-auto"
           >
             {OUTCOME_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
           <label className="flex items-center gap-1.5 text-xs text-gray-500">
             Ingreso
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input-field text-sm w-auto" />
+            <input type="date" value={from} onChange={(e) => withReset(setFrom)(e.target.value)} className="input-field text-sm w-auto" />
             <span>a</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input-field text-sm w-auto" />
+            <input type="date" value={to} onChange={(e) => withReset(setTo)(e.target.value)} className="input-field text-sm w-auto" />
           </label>
         </div>
 
-        {/* Report */}
-        <div className="flex-1 overflow-auto bg-white">
+        {/* Dashboard */}
+        <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
@@ -199,74 +190,168 @@ export function OperationsDashboardPage() {
               description="Ajusta los filtros o espera a que se firmen los primeros contratos."
             />
           ) : (
-            <>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr className="text-left text-gray-500">
-                    <th className="px-5 py-2.5 font-medium">Fecha de ingreso</th>
-                    <th className="px-5 py-2.5 font-medium">Nombre promotor</th>
-                    <th className="px-5 py-2.5 font-medium">Plaza</th>
-                    <th className="px-5 py-2.5 font-medium">Vertical</th>
-                    <th className="px-5 py-2.5 font-medium text-right">Solicitudes diarias (prom.)</th>
-                    <th className="px-5 py-2.5 font-medium">Promotor exitoso</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {rows.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50/60">
-                      <td className="px-5 py-2.5 text-gray-600 whitespace-nowrap">{formatStartDate(r.startDate)}</td>
-                      <td className="px-5 py-2.5 text-gray-800 font-medium">{r.name || '—'}</td>
-                      <td className="px-5 py-2.5">
-                        <p className="text-gray-700 leading-snug">{r.plaza || '—'}</p>
-                        {r.city && <p className="text-xs text-gray-400 leading-snug">{r.city}</p>}
-                      </td>
-                      <td className="px-5 py-2.5 text-gray-600">{r.vertical}</td>
-                      <td className="px-5 py-2.5 text-right tabular-nums">
-                        {r.dealAverage ? (
-                          <span title={`${r.dealAverage.deals} solicitudes en ${r.dealAverage.days} días`}>
-                            {r.dealAverage.average.toFixed(2)}
-                            <span className="text-gray-400 text-xs ml-1">/{r.dealAverage.days}d</span>
-                          </span>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-2.5">
-                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}>
-                          {OUTCOME_LABELS[r.outcome]}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Charts — secondary to the table, so they sit below it */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-5 border-t border-gray-100">
-                <ChartCard title="Promotores por vertical" bars={byVertical.map((g) => ({
-                  label: g.key,
-                  value: g.total,
-                  caption: `${g.total}`,
-                }))} />
-                <ChartCard title="Tasa de éxito por vertical" bars={byVertical.map((g) => ({
-                  label: g.key,
-                  value: g.evaluados > 0 ? Math.round((g.exitosos / g.evaluados) * 100) : 0,
-                  caption: g.evaluados > 0 ? `${Math.round((g.exitosos / g.evaluados) * 100)}%` : 'sin evaluar',
-                }))} />
-                <ChartCard title="Top 10 plazas por promotores" bars={byPlaza.map((g) => ({
-                  label: g.key,
-                  value: g.total,
-                  caption: `${g.total}`,
-                }))} />
-                <div className="lg:col-span-3">
-                  <ChartCard title="Ingresos por mes" bars={byMonth.map((m) => ({
-                    label: m.label,
-                    value: m.total,
-                    caption: `${m.total}`,
-                  }))} />
+            <div className="p-5 space-y-4">
+              {/* Headline + funnel + distribución */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="border border-gray-200 rounded-xl p-4 bg-white flex flex-col">
+                  <p className="text-sm font-semibold text-gray-800">Tasa de éxito</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Promotores que alcanzaron su meta, sobre los que ya tienen veredicto de 30 días.
+                  </p>
+                  <p className="text-5xl font-semibold text-gray-900 mt-4 leading-none">
+                    {counts.tasaExito === null ? '—' : `${Math.round(counts.tasaExito * 100)}%`}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {counts.si} de {counts.evaluados} evaluados
+                  </p>
+                  <dl className="mt-auto pt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <dt className="text-gray-400">Promotores</dt>
+                      <dd className="text-gray-900 font-semibold text-sm tabular-nums">{counts.total}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-400">Solicitudes/día</dt>
+                      <dd className="text-gray-900 font-semibold text-sm tabular-nums">
+                        {solicitudes === null ? '—' : solicitudes.toFixed(2)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-400">Bajo desempeño</dt>
+                      <dd className="text-gray-900 font-semibold text-sm tabular-nums">{counts.no}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-400">Sin evaluar</dt>
+                      <dd className="text-gray-900 font-semibold text-sm tabular-nums">{counts.pendiente}</dd>
+                    </div>
+                  </dl>
                 </div>
+
+                <ChartCard
+                  title="Del ingreso al Promotor Exitoso"
+                  subtitle="Cuántos llegan al corte de 30 días y cuántos alcanzan la meta"
+                >
+                  <Funnel stages={stages} />
+                </ChartCard>
+
+                <ChartCard
+                  title="Resultado de los promotores"
+                  subtitle="Distribución de los promotores filtrados"
+                >
+                  <OutcomeDonut counts={counts} />
+                </ChartCard>
               </div>
-            </>
+
+              {/* Éxito por vertical + ranking */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <ChartCard
+                  title="Tasa de éxito por vertical"
+                  subtitle="Exitosos entre evaluados; el conteo indica sobre cuántos se calcula"
+                >
+                  <SuccessRateBars groups={byVertical} emptyLabel="Sin verticales para este filtro" />
+                </ChartCard>
+
+                <ChartCard
+                  title="Rotación por plaza"
+                  subtitle={
+                    rotation.totalPlazas === 0
+                      ? 'Sin plazas registradas'
+                      : `${rotation.conRotacion} de ${rotation.totalPlazas} plazas (${Math.round((rotation.conRotacion / rotation.totalPlazas) * 100)}%) ya contrataron a más de una persona. Cada contratación extra en la misma plaza significa que la anterior salió.`
+                  }
+                  action={
+                    <span
+                      className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-100 rounded-md px-2 py-1"
+                      title="Cuenta todas las contrataciones históricas de cada plaza: no se ajusta al rango de fechas ni al filtro de resultado"
+                    >
+                      Histórico
+                    </span>
+                  }
+                >
+                  <OutcomeStackedBars
+                    bars={groupBars(rotation.plazas.slice(0, 10))}
+                    annotate={(counts) => `${counts.total} contrataciones`}
+                    emptyLabel="Ninguna plaza ha contratado a más de una persona."
+                  />
+                  <OutcomeLegend />
+                </ChartCard>
+              </div>
+
+              {/* Cohortes */}
+              <ChartCard
+                title="Cohortes por mes de ingreso"
+                subtitle="Cada mes de ingreso, partido por resultado — los meses recientes siguen mayormente pendientes"
+              >
+                <OutcomeStackedBars bars={cohortBars(cohorts)} emptyLabel="Sin fechas de ingreso registradas" />
+                <OutcomeLegend />
+              </ChartCard>
+
+              {/* Table */}
+              <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-gray-800">Promotores</h3>
+                  <Pagination
+                    page={currentPage}
+                    totalPages={totalPages}
+                    onPage={setPage}
+                    summary={`${pageStart + 1}–${pageStart + pageRows.length} de ${rows.length}`}
+                    pageSize={pageSize}
+                    onPageSize={(size) => { setPageSize(size); setPage(1); }}
+                  />
+                </div>
+
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr className="text-left text-gray-500">
+                      <th className="px-4 py-2.5 font-medium">Fecha de ingreso</th>
+                      <th className="px-4 py-2.5 font-medium">Nombre promotor</th>
+                      <th className="px-4 py-2.5 font-medium">Plaza</th>
+                      <th className="px-4 py-2.5 font-medium">Vertical</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Solicitudes diarias (prom.)</th>
+                      <th className="px-4 py-2.5 font-medium">Promotor exitoso</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {pageRows.map((r) => (
+                      <tr key={r.id} className="hover:bg-gray-50/60">
+                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{formatStartDate(r.startDate)}</td>
+                        <td className="px-4 py-2.5 text-gray-800 font-medium">{r.name || '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <p className="text-gray-700 leading-snug">{r.plaza || '—'}</p>
+                          {r.city && <p className="text-xs text-gray-400 leading-snug">{r.city}</p>}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600">{r.vertical}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {r.dealAverage ? (
+                            <span title={`${r.dealAverage.deals} solicitudes en ${r.dealAverage.days} días`}>
+                              {r.dealAverage.average.toFixed(2)}
+                              <span className="text-gray-400 text-xs ml-1">/{r.dealAverage.days}d</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: OUTCOME_COLORS[r.outcome] }} />
+                            {OUTCOME_LABELS[r.outcome]}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {totalPages > 1 && (
+                  <div className="px-4 py-3 border-t border-gray-100 flex justify-end">
+                    <Pagination
+                      page={currentPage}
+                      totalPages={totalPages}
+                      onPage={setPage}
+                      summary={`${pageStart + 1}–${pageStart + pageRows.length} de ${rows.length}`}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -274,83 +359,51 @@ export function OperationsDashboardPage() {
   );
 }
 
-/* ─── Aggregation ─────────────────────────────────────────────────────────── */
+/* ─── Pagination ─────────────────────────────────────────────────── */
 
-interface Group {
-  key: string;
-  total: number;
-  exitosos: number;
-  /** Promoters whose 30-day verdict is already in — the success-rate denominator. */
-  evaluados: number;
-}
-
-function groupBy(rows: ReportRow[], keyOf: (row: ReportRow) => string): Group[] {
-  const groups = new Map<string, Group>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const group = groups.get(key) ?? { key, total: 0, exitosos: 0, evaluados: 0 };
-    group.total++;
-    if (row.outcome === 'si') { group.exitosos++; group.evaluados++; }
-    if (row.outcome === 'no') group.evaluados++;
-    groups.set(key, group);
-  }
-  return Array.from(groups.values()).sort((a, b) => b.total - a.total);
-}
-
-/* ─── Presentational ──────────────────────────────────────────────────────── */
-
-const CHIP_COLORS: Record<string, string> = {
-  gray:   'bg-gray-100 text-gray-700',
-  green:  'bg-green-50 text-green-700',
-  red:    'bg-red-50 text-red-700',
-  amber:  'bg-amber-50 text-amber-700',
-  blue:   'bg-blue-50 text-blue-700',
-  indigo: 'bg-indigo-50 text-indigo-700',
-};
-
-function StatChip({ icon, label, value, color }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  color: string;
+/** Rows-per-page picker is optional: the footer copy repeats the nav, not the control. */
+function Pagination({ page, totalPages, onPage, summary, pageSize, onPageSize }: {
+  page: number;
+  totalPages: number;
+  onPage: (page: number) => void;
+  summary: string;
+  pageSize?: number;
+  onPageSize?: (size: number) => void;
 }) {
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${CHIP_COLORS[color] ?? CHIP_COLORS.gray}`}>
-      {icon}
-      <span>{label}</span>
-      <span className="font-bold">{value}</span>
-    </div>
-  );
-}
-
-function ChartCard({ title, bars }: {
-  title: string;
-  bars: { label: string; value: number; caption: string }[];
-}) {
-  const max = Math.max(1, ...bars.map((b) => b.value));
-  return (
-    <div className="border border-gray-200 rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-gray-800 mb-3">{title}</h3>
-      {bars.length === 0 ? (
-        <p className="text-xs text-gray-400">Sin datos</p>
-      ) : (
-        <div className="space-y-2">
-          {bars.map((bar) => (
-            <div key={bar.label}>
-              <div className="flex items-center justify-between text-xs text-gray-600 mb-0.5">
-                <span className="truncate pr-2" title={bar.label}>{bar.label}</span>
-                <span className="text-gray-400 shrink-0">{bar.caption}</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary-500 rounded-full"
-                  style={{ width: `${(bar.value / max) * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="flex items-center gap-3 text-xs text-gray-500">
+      {pageSize !== undefined && onPageSize && (
+        <label className="flex items-center gap-1.5">
+          Filas
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="input-field text-xs w-auto py-1"
+          >
+            {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </label>
       )}
+      <span className="tabular-nums">{summary}</span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPage(page - 1)}
+          disabled={page === 1}
+          aria-label="Página anterior"
+          className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <span className="tabular-nums px-1">{page} / {totalPages}</span>
+        <button
+          onClick={() => onPage(page + 1)}
+          disabled={page === totalPages}
+          aria-label="Página siguiente"
+          className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
     </div>
   );
 }
