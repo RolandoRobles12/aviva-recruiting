@@ -9,6 +9,7 @@ import {
   groupOutcomes,
   monthlyCohorts,
   parseStartDate,
+  plazaRotation,
   promotorOutcome,
   resolveVertical,
   rowsToCsv,
@@ -39,8 +40,11 @@ describe('resolveVertical', () => {
   it('maps Negocio, Casa and the branch roles', () => {
     expect(resolveVertical('Promotor/a Aviva tu Negocio')).toBe('Aviva tu Negocio');
     expect(resolveVertical('Promotor/a Aviva tu Casa')).toBe('Aviva tu Casa');
-    expect(resolveVertical('Trainee Sucursal (Kiosk Trainee)')).toBe('Sucursal');
-    expect(resolveVertical('Gerente de Sucursal (Kiosk Manager)')).toBe('Sucursal');
+  });
+
+  it('reports the branch roles as Aviva Contigo, whatever Viterbit calls the profile', () => {
+    expect(resolveVertical('Trainee Sucursal (Kiosk Trainee)')).toBe('Aviva Contigo');
+    expect(resolveVertical('Gerente de Sucursal (Kiosk Manager)')).toBe('Aviva Contigo');
   });
 
   it('falls back to the job title when the profile is missing', () => {
@@ -184,6 +188,34 @@ describe('groupOutcomes', () => {
   it('buckets rows with no value under "Sin dato"', () => {
     const groups = groupOutcomes(buildReportRows([candidate({ status: 'induction' })]), (r) => r.plaza);
     expect(groups[0].key).toBe(SIN_DATO);
+  });
+});
+
+describe('plazaRotation', () => {
+  const rows = buildReportRows([
+    candidate({ id: 'a1', status: 'bajo_desempeno', plaza: 'MEX0001' }),
+    candidate({ id: 'a2', status: 'promotor_exitoso', plaza: 'MEX0001' }),
+    candidate({ id: 'a3', status: 'induction', plaza: 'MEX0001' }),
+    candidate({ id: 'b1', status: 'bajo_desempeno', plaza: 'MEX0002' }),
+    candidate({ id: 'b2', status: 'induction', plaza: 'MEX0002' }),
+    candidate({ id: 'c1', status: 'promotor_exitoso', plaza: 'MEX0003' }),
+  ]);
+
+  it('keeps only the plazas that hired more than once, worst first', () => {
+    const { plazas } = plazaRotation(rows);
+    expect(plazas.map((p) => [p.key, p.counts.total])).toEqual([['MEX0001', 3], ['MEX0002', 2]]);
+  });
+
+  it('reports how many plazas rotated out of all the plazas with hires', () => {
+    expect(plazaRotation(rows)).toMatchObject({ conRotacion: 2, totalPlazas: 3 });
+  });
+
+  it('never invents a plaza out of the candidates that have none', () => {
+    const sinPlaza = buildReportRows([
+      candidate({ id: '1', status: 'induction' }),
+      candidate({ id: '2', status: 'induction' }),
+    ]);
+    expect(plazaRotation(sinPlaza)).toMatchObject({ plazas: [], conRotacion: 0, totalPlazas: 0 });
   });
 });
 

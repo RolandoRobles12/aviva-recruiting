@@ -187,11 +187,21 @@ export function SuccessRateBars({ groups, emptyLabel }: { groups: OutcomeGroup[]
 
 /* ─── Stacked outcome bars ────────────────────────────────────────────────── */
 
+const defaultAnnotation = (counts: OutcomeCounts) =>
+  counts.tasaExito === null
+    ? `${counts.total} · sin evaluar`
+    : `${counts.total} · ${pct(counts.tasaExito)} éxito`;
+
 /**
  * One bar per group, split by outcome. Shared scale across bars (never each bar
  * normalised to its own width) so a big group still looks big.
  */
-export function OutcomeStackedBars({ bars, emptyLabel }: { bars: StackedBar[]; emptyLabel: string }) {
+export function OutcomeStackedBars({ bars, emptyLabel, annotate = defaultAnnotation }: {
+  bars: StackedBar[];
+  emptyLabel: string;
+  /** Right-hand label of each bar — say what the length means in this chart. */
+  annotate?: (counts: OutcomeCounts) => string;
+}) {
   if (bars.length === 0) return <p className="text-xs text-gray-400">{emptyLabel}</p>;
   const max = Math.max(1, ...bars.map((b) => b.counts.total));
 
@@ -201,11 +211,7 @@ export function OutcomeStackedBars({ bars, emptyLabel }: { bars: StackedBar[]; e
         <div key={bar.key}>
           <div className="flex items-baseline justify-between text-xs mb-1 gap-2">
             <span className="text-gray-600 truncate" title={bar.label}>{bar.label}</span>
-            <span className="text-gray-400 shrink-0 tabular-nums">
-              {bar.counts.tasaExito === null
-                ? `${bar.counts.total} · sin evaluar`
-                : `${bar.counts.total} · ${pct(bar.counts.tasaExito)} éxito`}
-            </span>
+            <span className="text-gray-400 shrink-0 tabular-nums">{annotate(bar.counts)}</span>
           </div>
           <div
             className="flex h-3 gap-0.5"

@@ -10,6 +10,9 @@ import type { Candidate, CandidateStatus } from '../types';
 
 /**
  * Verticals as operations names them, keyed by the Viterbit department profile.
+ * The names live here, not in Viterbit: the branch roles come across as "Trainee
+ * Sucursal (Kiosk Trainee)" and "Gerente de Sucursal (Kiosk Manager)" but the
+ * vertical operations reports on is Aviva Contigo, so the mapping renames them.
  * "Aviva tu Compra CM" (Casa Marchand) is its own vertical, not a variant of
  * "Aviva tu Compra", so it must be matched before the shorter name — the list
  * is sorted longest-first for exactly that reason.
@@ -19,8 +22,8 @@ const VERTICAL_BY_PROFILE: Record<string, string> = {
   'Promotor/a Aviva tu Compra':    'Aviva tu Compra',
   'Promotor/a Aviva tu Negocio':   'Aviva tu Negocio',
   'Promotor/a Aviva tu Casa':      'Aviva tu Casa',
-  'Trainee Sucursal':              'Sucursal',
-  'Gerente de Sucursal':           'Sucursal',
+  'Trainee Sucursal':              'Aviva Contigo',
+  'Gerente de Sucursal':           'Aviva Contigo',
 };
 
 /** Mirrors functions/src/performance/targets.ts so both read the same profiles. */
@@ -265,6 +268,35 @@ export function groupOutcomes(rows: ReportRow[], keyOf: (row: ReportRow) => stri
       b.counts.evaluados - a.counts.evaluados ||
       b.counts.total - a.counts.total ||
       a.key.localeCompare(b.key));
+}
+
+export interface PlazaRotation {
+  /** Plazas that already hired more than once, most hires first. */
+  plazas: OutcomeGroup[];
+  /** Plazas with at least one hire — the denominator of the rotation share. */
+  totalPlazas: number;
+  /** How many of those plazas already needed a second person. */
+  conRotacion: number;
+}
+
+/**
+ * Hiring repeated on the same store, which is a warning sign rather than a
+ * ranking of good plazas: a store only opens a second vacancy because the first
+ * promoter left, so more hires on one plaza means the seat is not holding.
+ *
+ * Rows with no plaza are dropped: they are different unknown stores, and piling
+ * them into one bucket would invent the worst plaza in the report.
+ */
+export function plazaRotation(rows: ReportRow[]): PlazaRotation {
+  const groups = groupOutcomes(rows.filter((r) => r.plaza), (r) => r.plaza);
+  const repetidas = groups.filter((g) => g.counts.total > 1);
+
+  return {
+    plazas: [...repetidas].sort((a, b) =>
+      b.counts.total - a.counts.total || a.key.localeCompare(b.key)),
+    totalPlazas: groups.length,
+    conRotacion: repetidas.length,
+  };
 }
 
 export interface FunnelStage {

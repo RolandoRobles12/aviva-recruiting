@@ -21,6 +21,7 @@ import {
   funnelStages,
   groupOutcomes,
   monthlyCohorts,
+  plazaRotation,
   rowsToCsv,
   type PromotorOutcome,
   type ReportRow,
@@ -48,12 +49,6 @@ const OUTCOME_FILTERS: { value: 'all' | PromotorOutcome; label: string }[] = [
   { value: 'baja', label: 'Bajas' },
 ];
 
-const GROUP_BY: { value: 'plaza' | 'city' | 'vertical'; label: string }[] = [
-  { value: 'plaza', label: 'Plaza' },
-  { value: 'city', label: 'Ciudad' },
-  { value: 'vertical', label: 'Vertical' },
-];
-
 const PAGE_SIZES = [25, 50, 100];
 
 /** Downloads the filtered rows as a CSV Excel opens with the accents intact. */
@@ -75,7 +70,6 @@ export function OperationsDashboardPage() {
   const [outcome, setOutcome] = useState<'all' | PromotorOutcome>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [groupBy, setGroupBy] = useState<'plaza' | 'city' | 'vertical'>('plaza');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
@@ -108,10 +102,7 @@ export function OperationsDashboardPage() {
   const stages = useMemo(() => funnelStages(rows), [rows]);
   const solicitudes = useMemo(() => averageDailyDeals(rows), [rows]);
   const byVertical = useMemo(() => groupOutcomes(rows, (r) => r.vertical), [rows]);
-  const ranking = useMemo(
-    () => groupOutcomes(rows, (r) => (groupBy === 'plaza' ? r.plaza : groupBy === 'city' ? r.city : r.vertical)).slice(0, 10),
-    [rows, groupBy],
-  );
+  const rotation = useMemo(() => plazaRotation(rows), [rows]);
   const cohorts = useMemo(() => monthlyCohorts(rows), [rows]);
 
   // Clamped rather than reset in an effect, so changing a filter cannot leave the
@@ -260,20 +251,18 @@ export function OperationsDashboardPage() {
                 </ChartCard>
 
                 <ChartCard
-                  title={`Top 10 ${groupBy === 'plaza' ? 'plazas' : groupBy === 'city' ? 'ciudades' : 'verticales'} con más evaluados`}
-                  subtitle="Cómo le fue a cada una: la barra es su total de promotores, partida por resultado"
-                  action={
-                    <select
-                      value={groupBy}
-                      onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
-                      className="input-field text-xs w-auto py-1"
-                      aria-label="Agrupar por"
-                    >
-                      {GROUP_BY.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
-                    </select>
+                  title="Rotación por plaza"
+                  subtitle={
+                    rotation.totalPlazas === 0
+                      ? 'Sin plazas registradas para este filtro'
+                      : `${rotation.conRotacion} de ${rotation.totalPlazas} plazas (${Math.round((rotation.conRotacion / rotation.totalPlazas) * 100)}%) ya contrataron a más de una persona. Cada contratación extra en la misma plaza significa que la anterior salió.`
                   }
                 >
-                  <OutcomeStackedBars bars={groupBars(ranking)} emptyLabel="Sin datos para este filtro" />
+                  <OutcomeStackedBars
+                    bars={groupBars(rotation.plazas.slice(0, 10))}
+                    annotate={(counts) => `${counts.total} contrataciones`}
+                    emptyLabel="Ninguna plaza ha contratado a más de una persona."
+                  />
                   <OutcomeLegend />
                 </ChartCard>
               </div>
