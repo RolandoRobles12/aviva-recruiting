@@ -140,9 +140,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *
  *  - sin_fecha: no parseable start date, so signContract never scheduled the
  *    15/30-day checks and there is nothing to process;
- *  - sin_hubspot: no hubspotOwnerId, so the daily check skips the candidate and
- *    retries forever — there are no deals to count until the corporate/HubSpot
- *    account exists;
+ *  - sin_hubspot: neither a HubSpot owner id nor a corporate email, so the daily
+ *    check skips the candidate and retries forever — there are no deals to count
+ *    until the accounts exist. A missing owner id alone is NOT this case: the
+ *    check recovers it from the corporate email (findOwnerIdByEmail) the first
+ *    time it processes them;
  *  - sin_conteo: everything is in place but no count was ever recorded — the
  *    check doc was never created (contract signed before this flow existed, or
  *    the fire-and-forget write failed) or HubSpot kept failing.
@@ -151,13 +153,13 @@ export type PendingIssue = 'sin_fecha' | 'sin_hubspot' | 'sin_conteo';
 
 export const PENDING_ISSUE_LABELS: Record<PendingIssue, string> = {
   sin_fecha:   'sin fecha de ingreso registrada',
-  sin_hubspot: 'sin cuenta de HubSpot vinculada',
+  sin_hubspot: 'sin cuentas corporativas provisionadas',
   sin_conteo:  'sin conteo de solicitudes registrado',
 };
 
 export const PENDING_ISSUE_HINTS: Record<PendingIssue, string> = {
   sin_fecha:   'Sin fecha de ingreso no se programaron sus cortes de 15 y 30 días. Captura la fecha en Viterbit y actualiza al candidato.',
-  sin_hubspot: 'El corte diario lo salta porque no tiene cuenta de HubSpot: primero hay que provisionar sus cuentas.',
+  sin_hubspot: 'El corte diario lo salta porque no tiene correo corporativo ni usuario de HubSpot con qué contar sus solicitudes: primero hay que provisionar sus cuentas.',
   sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Reprogramar checks de desempeño" en Configuración → Admin.',
 };
 
@@ -178,7 +180,9 @@ function resolvePendingIssue(
   const dueMs = startDate.getTime() + (EVALUATION_WINDOW_DAYS + EVALUATION_GRACE_DAYS) * DAY_MS;
   if (dueMs > now.getTime()) return null;
 
-  if (!candidate.hubspotOwnerId) return 'sin_hubspot';
+  // El corte diario recupera el hubspotOwnerId desde el correo corporativo, así
+  // que solo es bloqueo de HubSpot cuando tampoco hay correo del cual partir.
+  if (!candidate.hubspotOwnerId && !candidate.corporateEmail) return 'sin_hubspot';
   return 'sin_conteo';
 }
 

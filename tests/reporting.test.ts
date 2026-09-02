@@ -245,6 +245,26 @@ describe('pendingIssue', () => {
     expect(issueOf({})).toBe('sin_fecha');
   });
 
+  it('does not blame HubSpot when the daily check can still recover the owner id', () => {
+    // El corte diario resuelve el hubspotOwnerId desde el correo corporativo,
+    // así que lo que falta aquí es el conteo, no las cuentas.
+    expect(issueOf({
+      viterbitStartDateIso: '2026-06-01',
+      hubspotOwnerId: undefined,
+      corporateEmail: 'karina.collazo@avivacredito.com',
+    })).toBe('sin_conteo');
+  });
+
+  it('reads the legacy Spanish start date, so a missing ISO field is not "sin fecha"', () => {
+    // Ingresó el 21 de julio y solo quedó el texto en español: está vencida,
+    // pero el motivo es el conteo que nunca corrió, no la fecha.
+    expect(issueOf({
+      viterbitStartDate: '21 de julio de 2026',
+      hubspotOwnerId: undefined,
+      corporateEmail: 'karina.collazo@avivacredito.com',
+    })).toBe('sin_conteo');
+  });
+
   it('never flags a promoter whose verdict already landed', () => {
     expect(issueOf({ status: 'promotor_exitoso', viterbitStartDateIso: '2026-01-01' })).toBeNull();
     expect(issueOf({ status: 'bajo_desempeno', viterbitStartDateIso: '2026-01-01' })).toBeNull();
@@ -261,11 +281,13 @@ describe('stuckPending', () => {
       candidate({ id: '2', status: 'induction', viterbitStartDateIso: '2026-06-02' }),
       candidate({ id: '3', status: 'induction', viterbitStartDateIso: '2026-06-03', hubspotOwnerId: '1' }),
       candidate({ id: '4', status: 'induction', viterbitStartDateIso: '2026-08-30', hubspotOwnerId: '1' }),
+      // Ya vencido pero con correo corporativo: el corte puede recuperar su owner id.
+      candidate({ id: '5', status: 'induction', viterbitStartDateIso: '2026-06-04', corporateEmail: 'x@avivacredito.com' }),
     ], now);
 
     expect(stuckPending(rows)).toEqual({
-      total: 3,
-      byIssue: [{ issue: 'sin_hubspot', total: 2 }, { issue: 'sin_conteo', total: 1 }],
+      total: 4,
+      byIssue: [{ issue: 'sin_conteo', total: 2 }, { issue: 'sin_hubspot', total: 2 }],
     });
   });
 
@@ -378,6 +400,6 @@ describe('rowsToCsv', () => {
       new Date(2026, 8, 2),
     );
     expect(rowsToCsv(rows).split('\r\n')[1])
-      .toContain('"Pendiente — sin cuenta de HubSpot vinculada"');
+      .toContain('"Pendiente — sin cuentas corporativas provisionadas"');
   });
 });

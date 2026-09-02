@@ -74,7 +74,7 @@ export const backfillCandidateDocuments = httpsCallable<
 
 export const backfillPerformanceChecks = httpsCallable<
   Record<string, never>,
-  { created: number; skipped: number; unparseable: string[]; message: string }
+  { created: number; skipped: number; isoFilled: number; unparseable: string[]; message: string }
 >(functions, 'backfillPerformanceChecks', MAINTENANCE_TIMEOUT);
 
 export interface PerformanceRecalcChange {

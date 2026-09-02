@@ -17,9 +17,11 @@ const SIGNED_STATUSES = [
 /**
  * Creates the pending_performance_checks docs (15d/30d) that signContract
  * failed to schedule while the viterbitStartDate parsing bug aborted the
- * post-signature flow. Idempotent: skips checks that already exist or that
- * were already evaluated (performance15/30DayCheckedAt set on the candidate).
- * processAfter dates in the past are picked up by the next 09:00 scheduler run.
+ * post-signature flow, and fills viterbitStartDateIso where only the Spanish
+ * display text was ever stored. Idempotent: skips checks that already exist or
+ * that were already evaluated (performance15/30DayCheckedAt set on the
+ * candidate). processAfter dates in the past are picked up by the next 09:00
+ * scheduler run.
  */
 export const backfillPerformanceChecks = onCall(
   // Walks every signed candidate with sequential reads/writes; the 60s default
@@ -37,6 +39,7 @@ export const backfillPerformanceChecks = onCall(
 
     let created = 0;
     let skipped = 0;
+    let isoFilled = 0;
     const unparseable: string[] = [];
 
     for (const docSnap of snapshot.docs) {
@@ -46,6 +49,16 @@ export const backfillPerformanceChecks = onCall(
       if (!startDate) {
         unparseable.push(docSnap.id);
         continue;
+      }
+
+      // Candidates hired before the ISO field existed (or whose start date only
+      // reached Viterbit after the webhook created them) carry the Spanish
+      // display text alone. Everything parses it, but the reports filter and
+      // sort on the canonical field, so fill it in while we are here.
+      if (!candidate.viterbitStartDateIso) {
+        const iso = startDate.toISOString().slice(0, 10);
+        await docSnap.ref.update({ viterbitStartDateIso: iso, updatedAt: FieldValue.serverTimestamp() });
+        isoFilled++;
       }
 
       for (const daysMark of [15, 30] as const) {
@@ -77,8 +90,12 @@ export const backfillPerformanceChecks = onCall(
     return {
       created,
       skipped,
+      isoFilled,
       unparseable,
-      message: `${created} check(s) creados, ${skipped} ya existían o ya fueron evaluados, ${unparseable.length} candidato(s) sin fecha de inicio interpretable.`,
+      message:
+        `${created} check(s) creados, ${skipped} ya existían o ya fueron evaluados, ` +
+        `${isoFilled} candidato(s) con fecha de inicio normalizada, ` +
+        `${unparseable.length} candidato(s) sin fecha de inicio interpretable.`,
     };
   },
 );

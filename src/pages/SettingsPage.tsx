@@ -152,7 +152,8 @@ function AdminTab() {
         <div>
           <p className="text-sm font-medium text-gray-700">Reprogramar checks de desempeño (15/30 días)</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Crea los checks de 15/30 días que no se programaron para candidatos ya firmados.
+            Crea los checks de 15/30 días que no se programaron para candidatos ya firmados
+            y completa la fecha de ingreso en formato ISO donde solo quedó el texto en español.
             No duplica los que ya existen ni los ya evaluados.
           </p>
         </div>
