@@ -85,7 +85,16 @@ async function resolvePromotorExitosoStageId(
   return live || cached;
 }
 
-async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnapshot): Promise<void> {
+/**
+ * Evaluates one due check: counts the promoter's deals in their closed window,
+ * stores the count, and at day 30 settles the verdict (Promotor Exitoso in
+ * Viterbit, or Bajo Desempeño internally).
+ *
+ * Exported so the on-demand run and the daily scheduler share one implementation
+ * — two copies of this would drift, and the verdict must not depend on who
+ * triggered it.
+ */
+export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnapshot): Promise<void> {
   const check = checkDoc.data();
   const candidateId = check.candidateId as string;
   const appUrl = APP_URL.value();
@@ -228,7 +237,7 @@ async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnap
  * marked processed exactly once, so a transient Viterbit error must be retried
  * from the candidate-level promotorMovePending flag instead).
  */
-async function retryPendingPromotorMoves(): Promise<void> {
+export async function retryPendingPromotorMoves(): Promise<void> {
   const snap = await db
     .collection('candidates')
     .where('promotorMovePending', '==', true)
@@ -287,7 +296,7 @@ async function retryPendingPromotorMoves(): Promise<void> {
  *
  * promotor_exitoso and disqualified are never touched by either outcome.
  */
-async function sweepEvaluatedCandidates(): Promise<void> {
+export async function sweepEvaluatedCandidates(): Promise<void> {
   const snap = await db
     .collection('candidates')
     .where('performance30DayCheckedAt', '!=', null)

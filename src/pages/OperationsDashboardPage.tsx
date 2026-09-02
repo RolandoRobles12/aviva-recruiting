@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { BarChart3, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
+import {
+  AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BarChart3,
+  ChevronLeft, ChevronRight, Download, Search,
+} from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmptyState } from '../components/ui/EmptyState';
 import {
@@ -14,6 +17,8 @@ import { OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
 import { useCandidates } from '../hooks/useCandidates';
 import {
   OUTCOME_LABELS,
+  PENDING_ISSUE_HINTS,
+  PENDING_ISSUE_LABELS,
   averageDailyDeals,
   buildReportRows,
   countOutcomes,
@@ -25,6 +30,11 @@ import {
   monthlyCohorts,
   plazaRotation,
   rowsToCsv,
+  sortReportRows,
+  stuckPending,
+  type OutcomeFilter,
+  type SortDirection,
+  type SortKey,
   type PromotorOutcome,
   type ReportRow,
 } from '../utils/reporting';
@@ -43,15 +53,25 @@ const OUTCOME_STYLES: Record<PromotorOutcome, string> = {
   baja:      'bg-amber-50 text-amber-700',
 };
 
-const OUTCOME_FILTERS: { value: 'all' | PromotorOutcome; label: string }[] = [
+const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
   { value: 'all', label: 'Todos los resultados' },
   { value: 'si', label: 'Promotor Exitoso' },
   { value: 'no', label: 'Bajo Desempeño' },
   { value: 'pendiente', label: 'Pendientes' },
+  { value: 'atrasado', label: 'Sin evaluar y ya vencidos' },
   { value: 'baja', label: 'Bajas' },
 ];
 
 const PAGE_SIZES = [25, 50, 100];
+
+const COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
+  { key: 'startDate',   label: 'Fecha de ingreso' },
+  { key: 'name',        label: 'Nombre promotor' },
+  { key: 'plaza',       label: 'Plaza' },
+  { key: 'vertical',    label: 'Vertical' },
+  { key: 'dealAverage', label: 'Solicitudes diarias (prom.)', align: 'right' },
+  { key: 'outcome',     label: 'Promotor exitoso' },
+];
 
 /** Downloads the filtered rows as a CSV Excel opens with the accents intact. */
 function downloadCsv(rows: ReportRow[]) {
@@ -69,11 +89,13 @@ export function OperationsDashboardPage() {
   const [search, setSearch] = useState('');
   const [vertical, setVertical] = useState('');
   const [plaza, setPlaza] = useState('');
-  const [outcome, setOutcome] = useState<'all' | PromotorOutcome>('all');
+  const [outcome, setOutcome] = useState<OutcomeFilter>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+  const [sortKey, setSortKey] = useState<SortKey>('startDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const allRows = useMemo(() => buildReportRows(candidates), [candidates]);
 
@@ -104,13 +126,30 @@ export function OperationsDashboardPage() {
   const byVertical = useMemo(() => groupOutcomes(rows, (r) => r.vertical), [rows]);
   const rotation = useMemo(() => plazaRotation(dimensionRows), [dimensionRows]);
   const cohorts = useMemo(() => monthlyCohorts(rows), [rows]);
+  const stuck = useMemo(() => stuckPending(rows), [rows]);
 
   // Clamped rather than reset in an effect, so changing a filter cannot leave the
   // table on a page that no longer exists (or flash an empty page first).
+  const sortedRows = useMemo(
+    () => sortReportRows(rows, sortKey, sortDirection),
+    [rows, sortKey, sortDirection],
+  );
+
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
-  const pageRows = rows.slice(pageStart, pageStart + pageSize);
+  const pageRows = sortedRows.slice(pageStart, pageStart + pageSize);
+
+  /** A column opens on "mayor a menor"; clicking the same one flips it. */
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('desc');
+    }
+    setPage(1);
+  };
 
   /** Every filter change sends the reader back to the first page of the new slice. */
   const withReset = <T,>(setter: (value: T) => void) => (value: T) => {
@@ -132,7 +171,7 @@ export function OperationsDashboardPage() {
               </p>
             </div>
             <button
-              onClick={() => downloadCsv(rows)}
+              onClick={() => downloadCsv(sortedRows)}
               disabled={rows.length === 0}
               title="Exporta los promotores que pasan los filtros actuales, no solo la página visible"
               className="btn-primary flex items-center gap-2 text-sm py-1.5 px-3 disabled:opacity-50 shrink-0"
@@ -164,7 +203,7 @@ export function OperationsDashboardPage() {
           </select>
           <select
             value={outcome}
-            onChange={(e) => withReset(setOutcome)(e.target.value as 'all' | PromotorOutcome)}
+            onChange={(e) => withReset(setOutcome)(e.target.value as OutcomeFilter)}
             className="input-field text-sm w-auto"
           >
             {OUTCOME_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -191,6 +230,36 @@ export function OperationsDashboardPage() {
             />
           ) : (
             <div className="p-5 space-y-4">
+              {stuck.total > 0 && (
+                <div className="border border-amber-200 bg-amber-50/60 rounded-xl px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-sm text-gray-700">
+                    <p>
+                      <span className="font-semibold">{stuck.total}</span>{' '}
+                      {stuck.total === 1 ? 'promotor ya pasó' : 'promotores ya pasaron'} los 30 días
+                      y sigue{stuck.total === 1 ? '' : 'n'} sin veredicto. No es que les falte tiempo:
+                      su evaluación quedó atorada.
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs text-gray-600">
+                      {stuck.byIssue.map(({ issue, total }) => (
+                        <li key={issue} title={PENDING_ISSUE_HINTS[issue]}>
+                          <span className="font-semibold tabular-nums">{total}</span>{' '}
+                          {PENDING_ISSUE_LABELS[issue]} — {PENDING_ISSUE_HINTS[issue]}
+                        </li>
+                      ))}
+                    </ul>
+                    {outcome !== 'atrasado' && (
+                      <button
+                        onClick={() => withReset(setOutcome)('atrasado')}
+                        className="mt-2 text-xs font-medium text-primary-700 hover:text-primary-800 underline underline-offset-2"
+                      >
+                        Ver solo estos promotores
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Headline + funnel + distribución */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="border border-gray-200 rounded-xl p-4 bg-white flex flex-col">
@@ -301,12 +370,15 @@ export function OperationsDashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr className="text-left text-gray-500">
-                      <th className="px-4 py-2.5 font-medium">Fecha de ingreso</th>
-                      <th className="px-4 py-2.5 font-medium">Nombre promotor</th>
-                      <th className="px-4 py-2.5 font-medium">Plaza</th>
-                      <th className="px-4 py-2.5 font-medium">Vertical</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Solicitudes diarias (prom.)</th>
-                      <th className="px-4 py-2.5 font-medium">Promotor exitoso</th>
+                      {COLUMNS.map((column) => (
+                        <SortableHeader
+                          key={column.key}
+                          column={column}
+                          sortKey={sortKey}
+                          sortDirection={sortDirection}
+                          onSort={toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -330,9 +402,16 @@ export function OperationsDashboardPage() {
                           )}
                         </td>
                         <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}>
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: OUTCOME_COLORS[r.outcome] }} />
-                            {OUTCOME_LABELS[r.outcome]}
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}
+                            title={r.pendingIssue ? PENDING_ISSUE_HINTS[r.pendingIssue] : undefined}
+                          >
+                            {r.pendingIssue ? (
+                              <AlertTriangle size={11} className="text-amber-600 shrink-0" />
+                            ) : (
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: OUTCOME_COLORS[r.outcome] }} />
+                            )}
+                            {r.pendingIssue ? PENDING_ISSUE_LABELS[r.pendingIssue] : OUTCOME_LABELS[r.outcome]}
                           </span>
                         </td>
                       </tr>
@@ -405,5 +484,35 @@ function Pagination({ page, totalPages, onPage, summary, pageSize, onPageSize }:
         </button>
       </div>
     </div>
+  );
+}
+
+/* ─── Sortable header ────────────────────────────────────────────── */
+
+function SortableHeader({ column, sortKey, sortDirection, onSort }: {
+  column: { key: SortKey; label: string; align?: 'right' };
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = column.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sortDirection === 'desc' ? ArrowDown : ArrowUp;
+
+  return (
+    <th
+      className={`px-4 py-2.5 font-medium ${column.align === 'right' ? 'text-right' : ''}`}
+      aria-sort={active ? (sortDirection === 'desc' ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        onClick={() => onSort(column.key)}
+        title={active && sortDirection === 'desc' ? 'Ordenar de menor a mayor' : 'Ordenar de mayor a menor'}
+        className={`inline-flex items-center gap-1.5 hover:text-gray-700 transition-colors ${
+          active ? 'text-gray-700' : ''
+        } ${column.align === 'right' ? 'flex-row-reverse' : ''}`}
+      >
+        {column.label}
+        <Icon size={12} className={active ? 'text-primary-600 shrink-0' : 'text-gray-300 shrink-0'} />
+      </button>
+    </th>
   );
 }

@@ -122,6 +122,70 @@ export function promotorOutcome(candidate: Candidate): PromotorOutcome {
   return 'pendiente';
 }
 
+/** Days from the start date to the verdict, matching the 30-day performance check. */
+export const EVALUATION_WINDOW_DAYS = 30;
+
+/**
+ * The check that settles the verdict runs once a day at 09:00 Mexico City, so a
+ * promoter whose day 30 just passed is waiting on the next run, not stuck. The
+ * grace keeps them out of the alert until the run has had its turn.
+ */
+export const EVALUATION_GRACE_DAYS = 2;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Why a promoter is still pending after their 30 days are up — each value is a
+ * distinct dead end in the performance pipeline, not a state of the promoter:
+ *
+ *  - sin_fecha: no parseable start date, so signContract never scheduled the
+ *    15/30-day checks and there is nothing to process;
+ *  - sin_hubspot: neither a HubSpot owner id nor a corporate email, so the daily
+ *    check skips the candidate and retries forever — there are no deals to count
+ *    until the accounts exist. A missing owner id alone is NOT this case: the
+ *    check recovers it from the corporate email (findOwnerIdByEmail) the first
+ *    time it processes them;
+ *  - sin_conteo: everything is in place but no count was ever recorded — the
+ *    check doc was never created (contract signed before this flow existed, or
+ *    the fire-and-forget write failed) or HubSpot kept failing.
+ */
+export type PendingIssue = 'sin_fecha' | 'sin_hubspot' | 'sin_conteo';
+
+export const PENDING_ISSUE_LABELS: Record<PendingIssue, string> = {
+  sin_fecha:   'sin fecha de ingreso registrada',
+  sin_hubspot: 'sin cuentas corporativas provisionadas',
+  sin_conteo:  'sin conteo de solicitudes registrado',
+};
+
+export const PENDING_ISSUE_HINTS: Record<PendingIssue, string> = {
+  sin_fecha:   'Sin fecha de ingreso no se programaron sus cortes de 15 y 30 días. Captura la fecha en Viterbit y actualiza al candidato.',
+  sin_hubspot: 'El corte diario lo salta porque no tiene correo corporativo ni usuario de HubSpot con qué contar sus solicitudes: primero hay que provisionar sus cuentas.',
+  sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Evaluar desempeño ahora" en Configuración → Admin.',
+};
+
+/**
+ * A promoter past their 30 days with no verdict is a stuck pipeline, not a
+ * pending evaluation, so the report names the dead end instead of filing them
+ * under "aún no le toca".
+ */
+function resolvePendingIssue(
+  candidate: Candidate,
+  startDate: Date | null,
+  outcome: PromotorOutcome,
+  now: Date,
+): PendingIssue | null {
+  if (outcome !== 'pendiente') return null;
+  if (!startDate) return 'sin_fecha';
+
+  const dueMs = startDate.getTime() + (EVALUATION_WINDOW_DAYS + EVALUATION_GRACE_DAYS) * DAY_MS;
+  if (dueMs > now.getTime()) return null;
+
+  // El corte diario recupera el hubspotOwnerId desde el correo corporativo, así
+  // que solo es bloqueo de HubSpot cuando tampoco hay correo del cual partir.
+  if (!candidate.hubspotOwnerId && !candidate.corporateEmail) return 'sin_hubspot';
+  return 'sin_conteo';
+}
+
 // ─── Start date ───────────────────────────────────────────────────────────────
 
 const SPANISH_MONTHS = [
@@ -182,18 +246,24 @@ export interface ReportRow {
   vertical: string;
   dealAverage: DealAverage | null;
   outcome: PromotorOutcome;
+  /** Set only when the promoter is stuck: pending with their 30 days already up. */
+  pendingIssue: PendingIssue | null;
 }
 
-export function toReportRow(candidate: Candidate): ReportRow {
+export function toReportRow(candidate: Candidate, now = new Date()): ReportRow {
+  const startDate = parseStartDate(candidate);
+  const outcome = promotorOutcome(candidate);
+
   return {
     id: candidate.id,
-    startDate: parseStartDate(candidate),
+    startDate,
     name: `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim(),
     plaza: candidate.plaza?.trim() ?? '',
     city: candidate.plazaCity?.trim() ?? '',
     vertical: resolveVertical(candidate.profile ?? candidate.viterbitDepartmentProfile, candidate.position),
     dealAverage: dealAverage(candidate),
-    outcome: promotorOutcome(candidate),
+    outcome,
+    pendingIssue: resolvePendingIssue(candidate, startDate, outcome, now),
   };
 }
 
@@ -202,12 +272,12 @@ export function toReportRow(candidate: Candidate): ReportRow {
  * disqualified after signing — they worked, and dropping them would flatter the
  * success rate.
  */
-export function buildReportRows(candidates: Candidate[]): ReportRow[] {
+export function buildReportRows(candidates: Candidate[], now = new Date()): ReportRow[] {
   return candidates
     .filter((c) =>
       JOINED_STATUSES.includes(c.status) ||
       (c.status === 'disqualified' && !!c.contractSignedAt))
-    .map(toReportRow)
+    .map((c) => toReportRow(c, now))
     .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0));
 }
 
@@ -231,8 +301,11 @@ export interface DimensionFilters {
  * August, and counting only the ones who failed would not be counting hires
  * any more.
  */
+/** 'atrasado' selects the stuck promoters rather than one of the four outcomes. */
+export type OutcomeFilter = 'all' | PromotorOutcome | 'atrasado';
+
 export interface SliceFilters {
-  outcome?: 'all' | PromotorOutcome;
+  outcome?: OutcomeFilter;
   /** ISO dates, inclusive. */
   from?: string;
   to?: string;
@@ -250,7 +323,11 @@ export function filterByDimensions(rows: ReportRow[], filters: DimensionFilters)
 
 export function filterBySlice(rows: ReportRow[], filters: SliceFilters): ReportRow[] {
   return rows.filter((row) => {
-    if (filters.outcome && filters.outcome !== 'all' && row.outcome !== filters.outcome) return false;
+    if (filters.outcome === 'atrasado') {
+      if (!row.pendingIssue) return false;
+    } else if (filters.outcome && filters.outcome !== 'all' && row.outcome !== filters.outcome) {
+      return false;
+    }
     const iso = formatIsoDate(row.startDate);
     // A promoter with no parseable start date cannot be placed in a window, so
     // any date bound excludes them rather than silently keeping them in.
@@ -348,6 +425,27 @@ export function plazaRotation(rows: ReportRow[]): PlazaRotation {
   };
 }
 
+export interface StuckPending {
+  total: number;
+  /** Dead ends, biggest first — what to go fix, in order. */
+  byIssue: { issue: PendingIssue; total: number }[];
+}
+
+/** Promoters whose 30 days are up but who never got a verdict, by dead end. */
+export function stuckPending(rows: ReportRow[]): StuckPending {
+  const counts = new Map<PendingIssue, number>();
+  for (const row of rows) {
+    if (row.pendingIssue) counts.set(row.pendingIssue, (counts.get(row.pendingIssue) ?? 0) + 1);
+  }
+
+  return {
+    total: rows.filter((r) => r.pendingIssue).length,
+    byIssue: Array.from(counts.entries())
+      .map(([issue, total]) => ({ issue, total }))
+      .sort((a, b) => b.total - a.total),
+  };
+}
+
 export interface FunnelStage {
   key: 'ingresaron' | 'evaluados' | 'exitosos';
   label: string;
@@ -404,6 +502,52 @@ export function averageDailyDeals(rows: ReportRow[]): number | null {
   return measured.reduce((acc, r) => acc + (r.dealAverage?.average ?? 0), 0) / measured.length;
 }
 
+// ─── Orden ────────────────────────────────────────────────────────────────────
+
+export type SortKey = 'startDate' | 'name' | 'plaza' | 'vertical' | 'dealAverage' | 'outcome';
+export type SortDirection = 'asc' | 'desc';
+
+/** Settled outcomes rank above the open ones, best first. */
+const OUTCOME_RANK: Record<PromotorOutcome, number> = { si: 4, no: 3, baja: 2, pendiente: 1 };
+
+/** The comparable value of a row for each column; null means "no dato". */
+function sortValue(row: ReportRow, key: SortKey): number | string | null {
+  switch (key) {
+    case 'startDate':   return row.startDate?.getTime() ?? null;
+    case 'name':        return row.name || null;
+    case 'plaza':       return row.plaza || null;
+    case 'vertical':    return row.vertical || null;
+    case 'dealAverage': return row.dealAverage?.average ?? null;
+    case 'outcome':     return OUTCOME_RANK[row.outcome];
+  }
+}
+
+/**
+ * Sorts a copy of the rows by one column.
+ *
+ * Rows with no value in that column always sink to the bottom, in either
+ * direction: a promoter with no plaza registered is missing data, not the
+ * smallest plaza, and sorting ascending should not open on a page of dashes.
+ */
+export function sortReportRows(rows: ReportRow[], key: SortKey, direction: SortDirection): ReportRow[] {
+  const factor = direction === 'desc' ? -1 : 1;
+
+  return [...rows].sort((a, b) => {
+    const left = sortValue(a, key);
+    const right = sortValue(b, key);
+
+    if (left === null && right === null) return 0;
+    if (left === null) return 1;
+    if (right === null) return -1;
+
+    const comparison = typeof left === 'string' && typeof right === 'string'
+      ? left.localeCompare(right as string, 'es')
+      : (left as number) - (right as number);
+
+    return comparison * factor;
+  });
+}
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 const CSV_HEADERS = [
@@ -434,7 +578,11 @@ export function rowsToCsv(rows: ReportRow[]): string {
     r.city,
     r.vertical,
     r.dealAverage ? r.dealAverage.average.toFixed(2) : '',
-    OUTCOME_LABELS[r.outcome],
+    // Un pendiente atorado sale con su motivo: la exportación es donde
+    // operación los persigue, y "Pendiente" a secas no dice qué arreglar.
+    r.pendingIssue
+      ? `${OUTCOME_LABELS[r.outcome]} — ${PENDING_ISSUE_LABELS[r.pendingIssue]}`
+      : OUTCOME_LABELS[r.outcome],
   ].map(csvCell).join(','));
 
   return [CSV_HEADERS.map(csvCell).join(','), ...body].join('\r\n');
