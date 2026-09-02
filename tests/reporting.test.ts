@@ -15,6 +15,7 @@ import {
   promotorOutcome,
   resolveVertical,
   rowsToCsv,
+  sortReportRows,
   stuckPending,
   SIN_DATO,
   SIN_VERTICAL,
@@ -369,6 +370,44 @@ describe('averageDailyDeals', () => {
     ]);
     expect(averageDailyDeals(rows)).toBeCloseTo(1.5);
     expect(averageDailyDeals(buildReportRows([candidate({ status: 'induction' })]))).toBeNull();
+  });
+});
+
+describe('sortReportRows', () => {
+  const rows = buildReportRows([
+    candidate({ id: 'b', status: 'bajo_desempeno', plaza: 'MEX0002', viterbitStartDateIso: '2026-03-01', performance30DayDeals: 60 }),
+    candidate({ id: 'a', status: 'promotor_exitoso', plaza: 'MEX0001', viterbitStartDateIso: '2026-05-01', performance30DayDeals: 30 }),
+    candidate({ id: 'c', status: 'induction', viterbitStartDateIso: '2026-01-01' }),
+  ]);
+
+  it('orders by date, deals and outcome, biggest first', () => {
+    expect(sortReportRows(rows, 'startDate', 'desc').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(sortReportRows(rows, 'dealAverage', 'desc').map((r) => r.id)).toEqual(['b', 'a', 'c']);
+    expect(sortReportRows(rows, 'outcome', 'desc').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('reverses on ascending, but keeps the rows with no value at the bottom', () => {
+    // 'c' no tiene plaza ni promedio: es un dato faltante, no el valor más chico.
+    expect(sortReportRows(rows, 'dealAverage', 'asc').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(sortReportRows(rows, 'plaza', 'asc').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(sortReportRows(rows, 'plaza', 'desc').map((r) => r.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('sorts names the way Spanish reads them', () => {
+    const named = buildReportRows([
+      candidate({ id: '1', status: 'induction', firstName: 'Óscar', lastName: 'Núñez' }),
+      candidate({ id: '2', status: 'induction', firstName: 'Ana', lastName: 'Ñandú' }),
+      candidate({ id: '3', status: 'induction', firstName: 'Zoe', lastName: 'Ávila' }),
+    ]);
+    expect(sortReportRows(named, 'name', 'asc').map((r) => r.name)).toEqual([
+      'Ana Ñandú', 'Óscar Núñez', 'Zoe Ávila',
+    ]);
+  });
+
+  it('leaves the original array untouched', () => {
+    const original = [...rows];
+    sortReportRows(rows, 'name', 'asc');
+    expect(rows).toEqual(original);
   });
 });
 

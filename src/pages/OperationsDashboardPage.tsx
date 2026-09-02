@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
+import {
+  AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BarChart3,
+  ChevronLeft, ChevronRight, Download, Search,
+} from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { EmptyState } from '../components/ui/EmptyState';
 import {
@@ -27,8 +30,11 @@ import {
   monthlyCohorts,
   plazaRotation,
   rowsToCsv,
+  sortReportRows,
   stuckPending,
   type OutcomeFilter,
+  type SortDirection,
+  type SortKey,
   type PromotorOutcome,
   type ReportRow,
 } from '../utils/reporting';
@@ -58,6 +64,15 @@ const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
 
 const PAGE_SIZES = [25, 50, 100];
 
+const COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
+  { key: 'startDate',   label: 'Fecha de ingreso' },
+  { key: 'name',        label: 'Nombre promotor' },
+  { key: 'plaza',       label: 'Plaza' },
+  { key: 'vertical',    label: 'Vertical' },
+  { key: 'dealAverage', label: 'Solicitudes diarias (prom.)', align: 'right' },
+  { key: 'outcome',     label: 'Promotor exitoso' },
+];
+
 /** Downloads the filtered rows as a CSV Excel opens with the accents intact. */
 function downloadCsv(rows: ReportRow[]) {
   const blob = new Blob(['﻿', rowsToCsv(rows)], { type: 'text/csv;charset=utf-8;' });
@@ -79,6 +94,8 @@ export function OperationsDashboardPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+  const [sortKey, setSortKey] = useState<SortKey>('startDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const allRows = useMemo(() => buildReportRows(candidates), [candidates]);
 
@@ -113,10 +130,26 @@ export function OperationsDashboardPage() {
 
   // Clamped rather than reset in an effect, so changing a filter cannot leave the
   // table on a page that no longer exists (or flash an empty page first).
+  const sortedRows = useMemo(
+    () => sortReportRows(rows, sortKey, sortDirection),
+    [rows, sortKey, sortDirection],
+  );
+
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
-  const pageRows = rows.slice(pageStart, pageStart + pageSize);
+  const pageRows = sortedRows.slice(pageStart, pageStart + pageSize);
+
+  /** A column opens on "mayor a menor"; clicking the same one flips it. */
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('desc');
+    }
+    setPage(1);
+  };
 
   /** Every filter change sends the reader back to the first page of the new slice. */
   const withReset = <T,>(setter: (value: T) => void) => (value: T) => {
@@ -138,7 +171,7 @@ export function OperationsDashboardPage() {
               </p>
             </div>
             <button
-              onClick={() => downloadCsv(rows)}
+              onClick={() => downloadCsv(sortedRows)}
               disabled={rows.length === 0}
               title="Exporta los promotores que pasan los filtros actuales, no solo la página visible"
               className="btn-primary flex items-center gap-2 text-sm py-1.5 px-3 disabled:opacity-50 shrink-0"
@@ -337,12 +370,15 @@ export function OperationsDashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr className="text-left text-gray-500">
-                      <th className="px-4 py-2.5 font-medium">Fecha de ingreso</th>
-                      <th className="px-4 py-2.5 font-medium">Nombre promotor</th>
-                      <th className="px-4 py-2.5 font-medium">Plaza</th>
-                      <th className="px-4 py-2.5 font-medium">Vertical</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Solicitudes diarias (prom.)</th>
-                      <th className="px-4 py-2.5 font-medium">Promotor exitoso</th>
+                      {COLUMNS.map((column) => (
+                        <SortableHeader
+                          key={column.key}
+                          column={column}
+                          sortKey={sortKey}
+                          sortDirection={sortDirection}
+                          onSort={toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -448,5 +484,35 @@ function Pagination({ page, totalPages, onPage, summary, pageSize, onPageSize }:
         </button>
       </div>
     </div>
+  );
+}
+
+/* ─── Sortable header ────────────────────────────────────────────── */
+
+function SortableHeader({ column, sortKey, sortDirection, onSort }: {
+  column: { key: SortKey; label: string; align?: 'right' };
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = column.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sortDirection === 'desc' ? ArrowDown : ArrowUp;
+
+  return (
+    <th
+      className={`px-4 py-2.5 font-medium ${column.align === 'right' ? 'text-right' : ''}`}
+      aria-sort={active ? (sortDirection === 'desc' ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        onClick={() => onSort(column.key)}
+        title={active && sortDirection === 'desc' ? 'Ordenar de menor a mayor' : 'Ordenar de mayor a menor'}
+        className={`inline-flex items-center gap-1.5 hover:text-gray-700 transition-colors ${
+          active ? 'text-gray-700' : ''
+        } ${column.align === 'right' ? 'flex-row-reverse' : ''}`}
+      >
+        {column.label}
+        <Icon size={12} className={active ? 'text-primary-600 shrink-0' : 'text-gray-300 shrink-0'} />
+      </button>
+    </th>
   );
 }

@@ -502,6 +502,52 @@ export function averageDailyDeals(rows: ReportRow[]): number | null {
   return measured.reduce((acc, r) => acc + (r.dealAverage?.average ?? 0), 0) / measured.length;
 }
 
+// ─── Orden ────────────────────────────────────────────────────────────────────
+
+export type SortKey = 'startDate' | 'name' | 'plaza' | 'vertical' | 'dealAverage' | 'outcome';
+export type SortDirection = 'asc' | 'desc';
+
+/** Settled outcomes rank above the open ones, best first. */
+const OUTCOME_RANK: Record<PromotorOutcome, number> = { si: 4, no: 3, baja: 2, pendiente: 1 };
+
+/** The comparable value of a row for each column; null means "no dato". */
+function sortValue(row: ReportRow, key: SortKey): number | string | null {
+  switch (key) {
+    case 'startDate':   return row.startDate?.getTime() ?? null;
+    case 'name':        return row.name || null;
+    case 'plaza':       return row.plaza || null;
+    case 'vertical':    return row.vertical || null;
+    case 'dealAverage': return row.dealAverage?.average ?? null;
+    case 'outcome':     return OUTCOME_RANK[row.outcome];
+  }
+}
+
+/**
+ * Sorts a copy of the rows by one column.
+ *
+ * Rows with no value in that column always sink to the bottom, in either
+ * direction: a promoter with no plaza registered is missing data, not the
+ * smallest plaza, and sorting ascending should not open on a page of dashes.
+ */
+export function sortReportRows(rows: ReportRow[], key: SortKey, direction: SortDirection): ReportRow[] {
+  const factor = direction === 'desc' ? -1 : 1;
+
+  return [...rows].sort((a, b) => {
+    const left = sortValue(a, key);
+    const right = sortValue(b, key);
+
+    if (left === null && right === null) return 0;
+    if (left === null) return 1;
+    if (right === null) return -1;
+
+    const comparison = typeof left === 'string' && typeof right === 'string'
+      ? left.localeCompare(right as string, 'es')
+      : (left as number) - (right as number);
+
+    return comparison * factor;
+  });
+}
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 const CSV_HEADERS = [
