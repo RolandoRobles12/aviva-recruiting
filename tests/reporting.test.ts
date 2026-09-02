@@ -4,6 +4,8 @@ import {
   buildReportRows,
   countOutcomes,
   dealAverage,
+  filterByDimensions,
+  filterBySlice,
   formatIsoDate,
   funnelStages,
   groupOutcomes,
@@ -216,6 +218,39 @@ describe('plazaRotation', () => {
       candidate({ id: '2', status: 'induction' }),
     ]);
     expect(plazaRotation(sinPlaza)).toMatchObject({ plazas: [], conRotacion: 0, totalPlazas: 0 });
+  });
+});
+
+describe('filters', () => {
+  const rows = buildReportRows([
+    candidate({ id: 'a', status: 'promotor_exitoso', plaza: 'MEX0001', plazaCity: 'Mérida', profile: 'Promotor/a Aviva tu Casa', viterbitStartDateIso: '2026-01-10' }),
+    candidate({ id: 'b', status: 'bajo_desempeno', plaza: 'MEX0002', plazaCity: 'Puebla', profile: 'Promotor/a Aviva tu Compra', viterbitStartDateIso: '2026-08-10' }),
+    candidate({ id: 'c', status: 'induction', plaza: 'MEX0002', plazaCity: 'Puebla', profile: 'Promotor/a Aviva tu Compra' }),
+  ]);
+
+  it('matches the search term against name, plaza and city', () => {
+    expect(filterByDimensions(rows, { search: 'mérida' }).map((r) => r.id)).toEqual(['a']);
+    expect(filterByDimensions(rows, { search: 'MEX0002' }).map((r) => r.id)).toEqual(['b', 'c']);
+  });
+
+  it('narrows by vertical and plaza', () => {
+    expect(filterByDimensions(rows, { vertical: 'Aviva tu Casa' }).map((r) => r.id)).toEqual(['a']);
+    expect(filterByDimensions(rows, { plaza: 'MEX0001' }).map((r) => r.id)).toEqual(['a']);
+  });
+
+  it('slices by outcome and by hiring window', () => {
+    expect(filterBySlice(rows, { outcome: 'si' }).map((r) => r.id)).toEqual(['a']);
+    expect(filterBySlice(rows, { from: '2026-06-01' }).map((r) => r.id)).toEqual(['b']);
+    expect(filterBySlice(rows, { to: '2026-06-01' }).map((r) => r.id)).toEqual(['a']);
+    expect(filterBySlice(rows, { outcome: 'all' }).map((r) => r.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('keeps rotation historical: the date range and the outcome filter never reach it', () => {
+    // Only one MEX0002 hire falls inside the window, but the plaza still shows
+    // both — that is the whole point of a historical rotation number.
+    const scoped = filterByDimensions(rows, { plaza: 'MEX0002' });
+    expect(filterBySlice(scoped, { from: '2026-06-01', outcome: 'no' }).map((r) => r.id)).toEqual(['b']);
+    expect(plazaRotation(scoped).plazas[0].counts.total).toBe(2);
   });
 });
 

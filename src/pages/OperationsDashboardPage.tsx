@@ -17,6 +17,8 @@ import {
   averageDailyDeals,
   buildReportRows,
   countOutcomes,
+  filterByDimensions,
+  filterBySlice,
   formatIsoDate,
   funnelStages,
   groupOutcomes,
@@ -84,25 +86,23 @@ export function OperationsDashboardPage() {
     [allRows],
   );
 
-  const rows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return allRows.filter((r) => {
-      if (term && !`${r.name} ${r.plaza} ${r.city}`.toLowerCase().includes(term)) return false;
-      if (vertical && r.vertical !== vertical) return false;
-      if (plaza && r.plaza !== plaza) return false;
-      if (outcome !== 'all' && r.outcome !== outcome) return false;
-      const iso = formatIsoDate(r.startDate);
-      if (from && (!iso || iso < from)) return false;
-      if (to && (!iso || iso > to)) return false;
-      return true;
-    });
-  }, [allRows, search, vertical, plaza, outcome, from, to]);
+  // Two scopes: everything reads the fully filtered slice, except the rotation
+  // card, which is a historical property of the plaza and so keeps every hire
+  // regardless of the date range and the outcome filter.
+  const dimensionRows = useMemo(
+    () => filterByDimensions(allRows, { search, vertical, plaza }),
+    [allRows, search, vertical, plaza],
+  );
+  const rows = useMemo(
+    () => filterBySlice(dimensionRows, { outcome, from, to }),
+    [dimensionRows, outcome, from, to],
+  );
 
   const counts = useMemo(() => countOutcomes(rows), [rows]);
   const stages = useMemo(() => funnelStages(rows), [rows]);
   const solicitudes = useMemo(() => averageDailyDeals(rows), [rows]);
   const byVertical = useMemo(() => groupOutcomes(rows, (r) => r.vertical), [rows]);
-  const rotation = useMemo(() => plazaRotation(rows), [rows]);
+  const rotation = useMemo(() => plazaRotation(dimensionRows), [dimensionRows]);
   const cohorts = useMemo(() => monthlyCohorts(rows), [rows]);
 
   // Clamped rather than reset in an effect, so changing a filter cannot leave the
@@ -254,8 +254,16 @@ export function OperationsDashboardPage() {
                   title="Rotación por plaza"
                   subtitle={
                     rotation.totalPlazas === 0
-                      ? 'Sin plazas registradas para este filtro'
+                      ? 'Sin plazas registradas'
                       : `${rotation.conRotacion} de ${rotation.totalPlazas} plazas (${Math.round((rotation.conRotacion / rotation.totalPlazas) * 100)}%) ya contrataron a más de una persona. Cada contratación extra en la misma plaza significa que la anterior salió.`
+                  }
+                  action={
+                    <span
+                      className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-100 rounded-md px-2 py-1"
+                      title="Cuenta todas las contrataciones históricas de cada plaza: no se ajusta al rango de fechas ni al filtro de resultado"
+                    >
+                      Histórico
+                    </span>
                   }
                 >
                   <OutcomeStackedBars

@@ -211,6 +211,55 @@ export function buildReportRows(candidates: Candidate[]): ReportRow[] {
     .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0));
 }
 
+// ─── Filtros ──────────────────────────────────────────────────────────────────
+
+/**
+ * Filters that pick *which* promoters the dashboard is about — a store, a
+ * vertical, a name. Rotation history honours these: "las plazas de Aviva tu
+ * Casa" is still a question about whole plazas.
+ */
+export interface DimensionFilters {
+  search?: string;
+  vertical?: string;
+  plaza?: string;
+}
+
+/**
+ * Filters that cut a slice out of each promoter's history — a hiring window, a
+ * verdict. Rotation deliberately ignores these: a plaza that burned through
+ * four people over a year is a difficult plaza even when you are looking at
+ * August, and counting only the ones who failed would not be counting hires
+ * any more.
+ */
+export interface SliceFilters {
+  outcome?: 'all' | PromotorOutcome;
+  /** ISO dates, inclusive. */
+  from?: string;
+  to?: string;
+}
+
+export function filterByDimensions(rows: ReportRow[], filters: DimensionFilters): ReportRow[] {
+  const term = filters.search?.trim().toLowerCase() ?? '';
+  return rows.filter((row) => {
+    if (term && !`${row.name} ${row.plaza} ${row.city}`.toLowerCase().includes(term)) return false;
+    if (filters.vertical && row.vertical !== filters.vertical) return false;
+    if (filters.plaza && row.plaza !== filters.plaza) return false;
+    return true;
+  });
+}
+
+export function filterBySlice(rows: ReportRow[], filters: SliceFilters): ReportRow[] {
+  return rows.filter((row) => {
+    if (filters.outcome && filters.outcome !== 'all' && row.outcome !== filters.outcome) return false;
+    const iso = formatIsoDate(row.startDate);
+    // A promoter with no parseable start date cannot be placed in a window, so
+    // any date bound excludes them rather than silently keeping them in.
+    if (filters.from && (!iso || iso < filters.from)) return false;
+    if (filters.to && (!iso || iso > filters.to)) return false;
+    return true;
+  });
+}
+
 // ─── Agregados para el dashboard ──────────────────────────────────────────────
 
 /** Reading order of the outcomes: settled verdicts first, then who is still open. */
