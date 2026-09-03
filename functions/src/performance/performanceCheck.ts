@@ -106,11 +106,20 @@ async function resolvePromotorExitosoStageId(
   return live || cached;
 }
 
-/** Why a check ended without a deal count. */
+/**
+ * Why a check ended without a deal count.
+ *
+ * The two HubSpot cases are deliberately separate because the fix is different:
+ * 'sin_correo' means provisioning never finished, while 'sin_owner' means the
+ * corporate email exists but HubSpot has no owner for it — creating a HubSpot
+ * user does not make them an owner until the person accepts the invitation, so
+ * until they activate the account there are no deals attributed to them.
+ */
 export type SkipReason =
   | 'corte_invalido'
   | 'candidato_no_encontrado'
-  | 'sin_hubspot'
+  | 'sin_correo'
+  | 'sin_owner'
   | 'sin_fecha'
   | 'error_hubspot';
 
@@ -169,12 +178,13 @@ export async function processPendingCheck(
     }
   }
   if (!hubspotOwnerId) {
-    console.warn(`[performanceCheck] ${candidateId} has no hubspotOwnerId — skipping (retried daily)`);
     // Record why, so the dashboard reports what actually blocked the check
     // instead of inferring it: a corporateEmail that is not a HubSpot owner
     // looks recoverable from Firestore alone, and it is not.
-    await recordBlocked(candidateSnap.ref, 'sin_hubspot');
-    return { status: 'omitido', reason: 'sin_hubspot' };
+    const reason: SkipReason = c.corporateEmail ? 'sin_owner' : 'sin_correo';
+    console.warn(`[performanceCheck] ${candidateId} has no hubspotOwnerId (${reason}) — skipping (retried daily)`);
+    await recordBlocked(candidateSnap.ref, reason);
+    return { status: 'omitido', reason };
   }
 
   const startDate = parseCandidateStartDate(c);

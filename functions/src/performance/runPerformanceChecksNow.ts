@@ -20,7 +20,8 @@ const MAX_CHECKS_PER_RUN = 150;
 
 /** How each dead end reads in the operator's summary. */
 const SKIP_LABELS: Record<SkipReason, string> = {
-  sin_hubspot:             'sin usuario de HubSpot con qué contar',
+  sin_correo:              'sin correo corporativo provisionado',
+  sin_owner:               'con correo corporativo pero sin owner en HubSpot (cuenta sin activar)',
   error_hubspot:           'con error de HubSpot',
   sin_fecha:               'sin fecha de ingreso',
   candidato_no_encontrado: 'de candidatos ya borrados',

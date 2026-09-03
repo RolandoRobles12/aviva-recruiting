@@ -194,7 +194,7 @@ export interface Candidate {
   hubspotOwnerId?: string;
   // 15/30-day performance checks
   /** Why the last check could not produce a count — written by the check itself */
-  performanceBlockedReason?: 'sin_hubspot' | 'error_hubspot' | 'sin_fecha' | string;
+  performanceBlockedReason?: 'sin_correo' | 'sin_owner' | 'sin_hubspot' | 'error_hubspot' | 'sin_fecha' | string;
   performanceBlockedAt?: Timestamp;
   /** A Viterbit move to Promotor Exitoso queued after a failed attempt */
   promotorMovePending?: boolean;

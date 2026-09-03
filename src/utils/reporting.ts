@@ -140,29 +140,39 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *
  *  - sin_fecha: no parseable start date, so signContract never scheduled the
  *    15/30-day checks and there is nothing to process;
- *  - sin_hubspot: the check has nothing to count with — no HubSpot owner, and no
- *    corporate email it could recover one from. A stored corporateEmail is not
- *    proof: findOwnerIdByEmail returns null when that address is not an owner in
- *    HubSpot, which is why the check records what it actually hit
- *    (performanceBlockedReason) and this reads that first;
+ *  - sin_correo: provisioning never finished, so there is no corporate email and
+ *    nothing to look up in HubSpot;
+ *  - sin_owner: the corporate email exists but HubSpot has no owner for it.
+ *    Creating a HubSpot user does not make them an owner until the person
+ *    accepts the invitation, so nothing is attributed to them yet. A stored
+ *    corporateEmail is therefore not proof that the count can work, which is why
+ *    the check records what it actually hit (performanceBlockedReason) and this
+ *    reads that first;
  *  - sin_conteo: everything looks in place but no count was ever recorded — the
  *    check doc was never created (contract signed before this flow existed, or
  *    the fire-and-forget write failed);
  *  - veredicto_no_aplicado: the solicitudes were counted but the stage never
  *    changed, almost always a failed Viterbit move left queued for retry.
  */
-export type PendingIssue = 'sin_fecha' | 'sin_hubspot' | 'sin_conteo' | 'veredicto_no_aplicado';
+export type PendingIssue =
+  | 'sin_fecha'
+  | 'sin_correo'
+  | 'sin_owner'
+  | 'sin_conteo'
+  | 'veredicto_no_aplicado';
 
 export const PENDING_ISSUE_LABELS: Record<PendingIssue, string> = {
   sin_fecha:            'sin fecha de ingreso registrada',
-  sin_hubspot:          'sin usuario de HubSpot con qué contar',
+  sin_correo:           'sin cuentas corporativas provisionadas',
+  sin_owner:            'con su cuenta de HubSpot sin activar',
   sin_conteo:           'sin conteo de solicitudes registrado',
   veredicto_no_aplicado:'con solicitudes contadas pero sin etapa actualizada',
 };
 
 export const PENDING_ISSUE_HINTS: Record<PendingIssue, string> = {
   sin_fecha:   'Sin fecha de ingreso no se programaron sus cortes de 15 y 30 días. Captura la fecha en Viterbit y actualiza al candidato.',
-  sin_hubspot: 'El corte no encuentra su usuario de HubSpot, así que no hay solicitudes que contar. Revisa que su correo corporativo exista como owner en HubSpot y vuelve a provisionar sus cuentas; correr el botón otra vez no lo resuelve.',
+  sin_correo: 'Nunca se completó la provisión: sin correo corporativo no hay usuario de HubSpot al cual contarle solicitudes. Provisiona sus cuentas desde su expediente.',
+  sin_owner: 'Su correo corporativo existe, pero HubSpot no lo reconoce como owner: crear el usuario no lo vuelve owner hasta que la persona acepta la invitación y activa su cuenta. Mientras no la active no hay solicitudes a su nombre que contar, y volver a correr el botón no lo resuelve.',
   sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Evaluar desempeño ahora" en Configuración → Admin.',
   veredicto_no_aplicado: 'Sus solicitudes ya se contaron pero su etapa no cambió, casi siempre porque falló el movimiento en Viterbit. Se reintenta en cada corte; si persiste, revisa la etapa "Promotor Exitoso" en el pipeline de su vacante.',
 };
@@ -187,7 +197,10 @@ function resolvePendingIssue(
   // Lo que el corte encontró manda sobre cualquier deducción nuestra: es el
   // único que sabe si HubSpot respondió y si el correo corporativo sirvió.
   const recorded = candidate.performanceBlockedReason;
-  if (recorded === 'sin_hubspot') return 'sin_hubspot';
+  if (recorded === 'sin_correo') return 'sin_correo';
+  if (recorded === 'sin_owner') return 'sin_owner';
+  // Cortes anteriores no distinguían los dos casos de HubSpot; el correo dice cuál es.
+  if (recorded === 'sin_hubspot') return candidate.corporateEmail ? 'sin_owner' : 'sin_correo';
   if (recorded === 'sin_fecha') return 'sin_fecha';
   if (recorded === 'error_hubspot') return 'sin_conteo';
 
@@ -196,7 +209,7 @@ function resolvePendingIssue(
     return 'veredicto_no_aplicado';
   }
 
-  if (!candidate.hubspotOwnerId && !candidate.corporateEmail) return 'sin_hubspot';
+  if (!candidate.hubspotOwnerId && !candidate.corporateEmail) return 'sin_correo';
   return 'sin_conteo';
 }
 

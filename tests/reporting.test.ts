@@ -241,19 +241,31 @@ describe('pendingIssue', () => {
   });
 
   it('names the dead end that is holding the verdict', () => {
-    expect(issueOf({ viterbitStartDateIso: '2026-06-01', hubspotOwnerId: undefined })).toBe('sin_hubspot');
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01', hubspotOwnerId: undefined })).toBe('sin_correo');
     expect(issueOf({ viterbitStartDateIso: '2026-06-01' })).toBe('sin_conteo');
     expect(issueOf({})).toBe('sin_fecha');
   });
 
   it('believes what the check recorded over what the fields suggest', () => {
-    // Tiene correo corporativo, pero ese correo no es owner en HubSpot: el corte
+    // Tiene correo corporativo, pero HubSpot no lo reconoce como owner: el corte
     // ya lo intentó y lo dejó anotado. Volver a correrlo no lo resuelve.
     expect(issueOf({
       viterbitStartDateIso: '2026-06-01',
       corporateEmail: 'karina.collazo@avivacredito.com',
+      performanceBlockedReason: 'sin_owner',
+    })).toBe('sin_owner');
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01', performanceBlockedReason: 'sin_correo' }))
+      .toBe('sin_correo');
+  });
+
+  it('reads a legacy mark by whether the corporate email ever existed', () => {
+    expect(issueOf({
+      viterbitStartDateIso: '2026-06-01',
+      corporateEmail: 'karina.collazo@avivacredito.com',
       performanceBlockedReason: 'sin_hubspot',
-    })).toBe('sin_hubspot');
+    })).toBe('sin_owner');
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01', performanceBlockedReason: 'sin_hubspot' }))
+      .toBe('sin_correo');
   });
 
   it('separates a verdict that never landed from a count that never happened', () => {
@@ -306,7 +318,7 @@ describe('stuckPending', () => {
 
     expect(stuckPending(rows)).toEqual({
       total: 4,
-      byIssue: [{ issue: 'sin_conteo', total: 2 }, { issue: 'sin_hubspot', total: 2 }],
+      byIssue: [{ issue: 'sin_conteo', total: 2 }, { issue: 'sin_correo', total: 2 }],
     });
   });
 
@@ -457,6 +469,6 @@ describe('rowsToCsv', () => {
       new Date(2026, 8, 2),
     );
     expect(rowsToCsv(rows).split('\r\n')[1])
-      .toContain('"Pendiente — sin usuario de HubSpot con qué contar"');
+      .toContain('"Pendiente — sin cuentas corporativas provisionadas"');
   });
 });
