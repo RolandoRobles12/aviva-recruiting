@@ -13,7 +13,7 @@ import {
   OutcomeStackedBars,
   SuccessRateBars,
 } from '../components/dashboard/OperationsCharts';
-import { OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
+import { OUTCOME_CHART_HINTS, OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
 import { useCandidates } from '../hooks/useCandidates';
 import {
   OUTCOME_LABELS,
@@ -50,7 +50,7 @@ const OUTCOME_STYLES: Record<PromotorOutcome, string> = {
   si:        'bg-green-50 text-green-700',
   no:        'bg-red-50 text-red-700',
   pendiente: 'bg-gray-100 text-gray-600',
-  baja:      'bg-amber-50 text-amber-700',
+  descalificado: 'bg-amber-50 text-amber-700',
 };
 
 const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
@@ -59,7 +59,7 @@ const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
   { value: 'no', label: 'Bajo Desempeño' },
   { value: 'pendiente', label: 'Pendientes' },
   { value: 'atrasado', label: 'Sin evaluar y ya vencidos' },
-  { value: 'baja', label: 'Bajas' },
+  { value: 'descalificado', label: 'Descalificados' },
 ];
 
 const PAGE_SIZES = [25, 50, 100];
@@ -404,7 +404,7 @@ export function OperationsDashboardPage() {
                         <td className="px-4 py-2.5">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}
-                            title={r.pendingIssue ? PENDING_ISSUE_HINTS[r.pendingIssue] : undefined}
+                            title={r.pendingIssue ? PENDING_ISSUE_HINTS[r.pendingIssue] : OUTCOME_CHART_HINTS[r.outcome]}
                           >
                             {r.pendingIssue ? (
                               <AlertTriangle size={11} className="text-amber-600 shrink-0" />

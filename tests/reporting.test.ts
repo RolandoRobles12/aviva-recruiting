@@ -85,7 +85,7 @@ describe('promotorOutcome', () => {
   it('mirrors the status the performance check wrote', () => {
     expect(promotorOutcome(candidate({ status: 'promotor_exitoso' }))).toBe('si');
     expect(promotorOutcome(candidate({ status: 'bajo_desempeno' }))).toBe('no');
-    expect(promotorOutcome(candidate({ status: 'disqualified' }))).toBe('baja');
+    expect(promotorOutcome(candidate({ status: 'disqualified' }))).toBe('descalificado');
     expect(promotorOutcome(candidate({ status: 'induction' }))).toBe('pendiente');
   });
 });
@@ -161,7 +161,7 @@ describe('countOutcomes', () => {
   ]);
 
   it('counts each outcome', () => {
-    expect(countOutcomes(rows)).toMatchObject({ si: 2, no: 1, baja: 1, pendiente: 1, total: 5 });
+    expect(countOutcomes(rows)).toMatchObject({ si: 2, no: 1, descalificado: 1, pendiente: 1, total: 5 });
   });
 
   it('leaves the unevaluated out of the success rate', () => {
