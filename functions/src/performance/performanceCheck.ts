@@ -5,6 +5,7 @@ import { db } from '../utils/admin';
 import { countDealsByOwner, findOwnerIdByEmail } from '../integrations/hubspotService';
 import { notifyPerformanceCheck } from '../integrations/slackService';
 import { parseCandidateStartDate } from '../utils/startDate';
+import { recoverPendingHubspotOwners } from './recoverHubspotOwners';
 import {
   decidePerformanceOutcome,
   isValidDaysMark,
@@ -403,6 +404,18 @@ export const dailyPerformanceCheck = onSchedule(
   },
   async () => {
     const now = Timestamp.now();
+
+    // Antes de evaluar: quien ya activó su cuenta de HubSpot desde ayer debe
+    // tener su owner id listo, o su corte de hoy volvería a quedarse sin nada
+    // que contar.
+    try {
+      const owners = await recoverPendingHubspotOwners();
+      if (owners.recovered > 0) {
+        console.info(`[performanceCheck] ${owners.recovered}/${owners.checked} owner(s) de HubSpot recuperados`);
+      }
+    } catch (err) {
+      console.error('[performanceCheck] recoverPendingHubspotOwners failed:', err);
+    }
 
     const snap = await db
       .collection('pending_performance_checks')

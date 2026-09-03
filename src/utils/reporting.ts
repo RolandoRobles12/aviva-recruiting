@@ -172,7 +172,7 @@ export const PENDING_ISSUE_LABELS: Record<PendingIssue, string> = {
 export const PENDING_ISSUE_HINTS: Record<PendingIssue, string> = {
   sin_fecha:   'Sin fecha de ingreso no se programaron sus cortes de 15 y 30 días. Captura la fecha en Viterbit y actualiza al candidato.',
   sin_correo: 'Nunca se completó la provisión: sin correo corporativo no hay usuario de HubSpot al cual contarle solicitudes. Provisiona sus cuentas desde su expediente.',
-  sin_owner: 'Su correo corporativo existe, pero HubSpot no lo reconoce como owner: crear el usuario no lo vuelve owner hasta que la persona acepta la invitación y activa su cuenta. Mientras no la active no hay solicitudes a su nombre que contar, y volver a correr el botón no lo resuelve.',
+  sin_owner: 'Su correo corporativo existe, pero HubSpot no lo reconoce como owner: crear el usuario no lo vuelve owner hasta que la persona acepta la invitación y activa su cuenta. En cuanto la active, el sistema lo vincula solo — lo revisa en cada corte — y su conteo empieza a correr; si lleva semanas así, confirma que le llegó la invitación de HubSpot a su correo corporativo.',
   sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Evaluar desempeño ahora" en Configuración → Admin.',
   veredicto_no_aplicado: 'Sus solicitudes ya se contaron pero su etapa no cambió, casi siempre porque falló el movimiento en Viterbit. Se reintenta en cada corte; si persiste, revisa la etapa "Promotor Exitoso" en el pipeline de su vacante.',
 };
