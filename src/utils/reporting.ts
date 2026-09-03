@@ -140,27 +140,31 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *
  *  - sin_fecha: no parseable start date, so signContract never scheduled the
  *    15/30-day checks and there is nothing to process;
- *  - sin_hubspot: neither a HubSpot owner id nor a corporate email, so the daily
- *    check skips the candidate and retries forever — there are no deals to count
- *    until the accounts exist. A missing owner id alone is NOT this case: the
- *    check recovers it from the corporate email (findOwnerIdByEmail) the first
- *    time it processes them;
- *  - sin_conteo: everything is in place but no count was ever recorded — the
+ *  - sin_hubspot: the check has nothing to count with — no HubSpot owner, and no
+ *    corporate email it could recover one from. A stored corporateEmail is not
+ *    proof: findOwnerIdByEmail returns null when that address is not an owner in
+ *    HubSpot, which is why the check records what it actually hit
+ *    (performanceBlockedReason) and this reads that first;
+ *  - sin_conteo: everything looks in place but no count was ever recorded — the
  *    check doc was never created (contract signed before this flow existed, or
- *    the fire-and-forget write failed) or HubSpot kept failing.
+ *    the fire-and-forget write failed);
+ *  - veredicto_no_aplicado: the solicitudes were counted but the stage never
+ *    changed, almost always a failed Viterbit move left queued for retry.
  */
-export type PendingIssue = 'sin_fecha' | 'sin_hubspot' | 'sin_conteo';
+export type PendingIssue = 'sin_fecha' | 'sin_hubspot' | 'sin_conteo' | 'veredicto_no_aplicado';
 
 export const PENDING_ISSUE_LABELS: Record<PendingIssue, string> = {
-  sin_fecha:   'sin fecha de ingreso registrada',
-  sin_hubspot: 'sin cuentas corporativas provisionadas',
-  sin_conteo:  'sin conteo de solicitudes registrado',
+  sin_fecha:            'sin fecha de ingreso registrada',
+  sin_hubspot:          'sin usuario de HubSpot con qué contar',
+  sin_conteo:           'sin conteo de solicitudes registrado',
+  veredicto_no_aplicado:'con solicitudes contadas pero sin etapa actualizada',
 };
 
 export const PENDING_ISSUE_HINTS: Record<PendingIssue, string> = {
   sin_fecha:   'Sin fecha de ingreso no se programaron sus cortes de 15 y 30 días. Captura la fecha en Viterbit y actualiza al candidato.',
-  sin_hubspot: 'El corte diario lo salta porque no tiene correo corporativo ni usuario de HubSpot con qué contar sus solicitudes: primero hay que provisionar sus cuentas.',
+  sin_hubspot: 'El corte no encuentra su usuario de HubSpot, así que no hay solicitudes que contar. Revisa que su correo corporativo exista como owner en HubSpot y vuelve a provisionar sus cuentas; correr el botón otra vez no lo resuelve.',
   sin_conteo:  'Ya pasaron 30 días y nunca se registró su conteo. Corre "Evaluar desempeño ahora" en Configuración → Admin.',
+  veredicto_no_aplicado: 'Sus solicitudes ya se contaron pero su etapa no cambió, casi siempre porque falló el movimiento en Viterbit. Se reintenta en cada corte; si persiste, revisa la etapa "Promotor Exitoso" en el pipeline de su vacante.',
 };
 
 /**
@@ -180,8 +184,18 @@ function resolvePendingIssue(
   const dueMs = startDate.getTime() + (EVALUATION_WINDOW_DAYS + EVALUATION_GRACE_DAYS) * DAY_MS;
   if (dueMs > now.getTime()) return null;
 
-  // El corte diario recupera el hubspotOwnerId desde el correo corporativo, así
-  // que solo es bloqueo de HubSpot cuando tampoco hay correo del cual partir.
+  // Lo que el corte encontró manda sobre cualquier deducción nuestra: es el
+  // único que sabe si HubSpot respondió y si el correo corporativo sirvió.
+  const recorded = candidate.performanceBlockedReason;
+  if (recorded === 'sin_hubspot') return 'sin_hubspot';
+  if (recorded === 'sin_fecha') return 'sin_fecha';
+  if (recorded === 'error_hubspot') return 'sin_conteo';
+
+  // Contadas pero sin veredicto: el conteo existe, lo que falló fue aplicarlo.
+  if (typeof candidate.performance30DayDeals === 'number' || candidate.promotorMovePending) {
+    return 'veredicto_no_aplicado';
+  }
+
   if (!candidate.hubspotOwnerId && !candidate.corporateEmail) return 'sin_hubspot';
   return 'sin_conteo';
 }

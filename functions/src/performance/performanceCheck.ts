@@ -30,6 +30,27 @@ function getMonthlyTarget(candidate: FirebaseFirestore.DocumentData, candidateId
   return target;
 }
 
+/**
+ * Leaves on the candidate the reason their check could not produce a count, so
+ * the operations dashboard can name it instead of guessing from the fields that
+ * happen to be stored. Cleared as soon as a check succeeds.
+ */
+async function recordBlocked(
+  ref: FirebaseFirestore.DocumentReference,
+  reason: SkipReason,
+): Promise<void> {
+  try {
+    await ref.update({
+      performanceBlockedReason: reason,
+      performanceBlockedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    // Diagnostics must never break the check itself.
+    console.error('[performanceCheck] could not record blocked reason:', err);
+  }
+}
+
 async function moveToPromotor(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
   const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
     method: 'POST',
@@ -85,6 +106,18 @@ async function resolvePromotorExitosoStageId(
   return live || cached;
 }
 
+/** Why a check ended without a deal count. */
+export type SkipReason =
+  | 'corte_invalido'
+  | 'candidato_no_encontrado'
+  | 'sin_hubspot'
+  | 'sin_fecha'
+  | 'error_hubspot';
+
+export type CheckResult =
+  | { status: 'evaluado'; dealCount: number }
+  | { status: 'omitido'; reason: SkipReason };
+
 /**
  * Evaluates one due check: counts the promoter's deals in their closed window,
  * stores the count, and at day 30 settles the verdict (Promotor Exitoso in
@@ -92,9 +125,14 @@ async function resolvePromotorExitosoStageId(
  *
  * Exported so the on-demand run and the daily scheduler share one implementation
  * — two copies of this would drift, and the verdict must not depend on who
- * triggered it.
+ * triggered it. Returns what actually happened rather than just completing: a
+ * check that ends early (no HubSpot owner, no start date) leaves the promoter
+ * without a verdict, and a caller reporting to an operator must not count that
+ * as evaluated.
  */
-export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocumentSnapshot): Promise<void> {
+export async function processPendingCheck(
+  checkDoc: FirebaseFirestore.QueryDocumentSnapshot,
+): Promise<CheckResult> {
   const check = checkDoc.data();
   const candidateId = check.candidateId as string;
   const appUrl = APP_URL.value();
@@ -104,7 +142,7 @@ export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocum
   if (!isValidDaysMark(check.daysMark)) {
     console.error(`[performanceCheck] check ${checkDoc.id} has invalid daysMark "${String(check.daysMark)}" — marking processed`);
     await checkDoc.ref.update({ processed: true, processedAt: FieldValue.serverTimestamp(), invalidDaysMark: true });
-    return;
+    return { status: 'omitido', reason: 'corte_invalido' };
   }
   const daysMark = check.daysMark;
 
@@ -112,7 +150,7 @@ export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocum
   if (!candidateSnap.exists) {
     console.warn(`[performanceCheck] Candidate ${candidateId} not found — marking processed`);
     await checkDoc.ref.update({ processed: true, processedAt: FieldValue.serverTimestamp() });
-    return;
+    return { status: 'omitido', reason: 'candidato_no_encontrado' };
   }
 
   const c = candidateSnap.data()!;
@@ -132,14 +170,19 @@ export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocum
   }
   if (!hubspotOwnerId) {
     console.warn(`[performanceCheck] ${candidateId} has no hubspotOwnerId — skipping (retried daily)`);
-    return;
+    // Record why, so the dashboard reports what actually blocked the check
+    // instead of inferring it: a corporateEmail that is not a HubSpot owner
+    // looks recoverable from Firestore alone, and it is not.
+    await recordBlocked(candidateSnap.ref, 'sin_hubspot');
+    return { status: 'omitido', reason: 'sin_hubspot' };
   }
 
   const startDate = parseCandidateStartDate(c);
   if (!startDate) {
     console.warn(`[performanceCheck] ${candidateId} has no parseable viterbitStartDate ("${c.viterbitStartDate}") — marking processed`);
     await checkDoc.ref.update({ processed: true, processedAt: FieldValue.serverTimestamp() });
-    return;
+    await recordBlocked(candidateSnap.ref, 'sin_fecha');
+    return { status: 'omitido', reason: 'sin_fecha' };
   }
 
   // Closed window: a check processed late (queued while HubSpot was down, or
@@ -152,7 +195,8 @@ export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocum
     dealCount = await countDealsByOwner(hubspotOwnerId, fromMs, toMs);
   } catch (err) {
     console.error(`[performanceCheck] HubSpot error for ${candidateId}:`, err);
-    return;
+    await recordBlocked(candidateSnap.ref, 'error_hubspot');
+    return { status: 'omitido', reason: 'error_hubspot' };
   }
 
   const company = (c.viterbitCompany as string) || '';
@@ -169,6 +213,9 @@ export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocum
     candidateSnap.ref.update({
       [alreadyCheckedField]: FieldValue.serverTimestamp(),
       [dealCountField]: dealCount,
+      // Whatever blocked an earlier attempt is resolved: the count went through.
+      performanceBlockedReason: FieldValue.delete(),
+      performanceBlockedAt: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     }),
   ]);
@@ -230,6 +277,7 @@ export async function processPendingCheck(checkDoc: FirebaseFirestore.QueryDocum
   }
 
   console.log(`[performanceCheck] ${daysMark}d check for ${candidateName}: ${dealCount}/${monthlyTarget} deals`);
+  return { status: 'evaluado', dealCount };
 }
 
 /**
