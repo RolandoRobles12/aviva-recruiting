@@ -7,6 +7,7 @@ import {
   type PromotorOutcome,
 } from '../../utils/reporting';
 import {
+  OUTCOME_CHART_HINTS,
   OUTCOME_CHART_LABELS,
   OUTCOME_COLORS,
   type StackedBar,
@@ -43,7 +44,11 @@ export function OutcomeLegend({ outcomes = OUTCOME_ORDER }: { outcomes?: Promoto
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
       {outcomes.map((outcome) => (
-        <span key={outcome} className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+        <span
+          key={outcome}
+          className="inline-flex items-center gap-1.5 text-xs text-gray-500"
+          title={OUTCOME_CHART_HINTS[outcome]}
+        >
           <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: OUTCOME_COLORS[outcome] }} />
           {OUTCOME_CHART_LABELS[outcome]}
         </span>
@@ -136,7 +141,7 @@ export function OutcomeDonut({ counts }: { counts: OutcomeCounts }) {
 
       <ul className="space-y-1.5 min-w-0">
         {OUTCOME_ORDER.map((outcome) => (
-          <li key={outcome} className="flex items-start gap-2 text-xs">
+          <li key={outcome} className="flex items-start gap-2 text-xs" title={OUTCOME_CHART_HINTS[outcome]}>
             <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-0.5" style={{ backgroundColor: OUTCOME_COLORS[outcome] }} />
             <span className="text-gray-600 leading-snug">{OUTCOME_CHART_LABELS[outcome]}</span>
             <span className="text-gray-900 font-semibold tabular-nums ml-auto pl-2">{counts[outcome]}</span>

@@ -101,14 +101,19 @@ export function dealAverage(candidate: Candidate): DealAverage | null {
 
 // ─── Promotor exitoso ─────────────────────────────────────────────────────────
 
-/** 'pendiente' = still inside the 30-day window, or not yet evaluated. */
-export type PromotorOutcome = 'si' | 'no' | 'pendiente' | 'baja';
+/**
+ * 'pendiente' = still inside the 30-day window, or not yet evaluated.
+ * 'descalificado' = taken out of the process after signing. Deliberately not
+ * called "baja": the status says they were disqualified, which does not
+ * establish that they left the company.
+ */
+export type PromotorOutcome = 'si' | 'no' | 'pendiente' | 'descalificado';
 
 export const OUTCOME_LABELS: Record<PromotorOutcome, string> = {
   si: 'Sí',
   no: 'No',
   pendiente: 'Pendiente',
-  baja: 'Baja',
+  descalificado: 'Descalificado',
 };
 
 /**
@@ -118,7 +123,7 @@ export const OUTCOME_LABELS: Record<PromotorOutcome, string> = {
 export function promotorOutcome(candidate: Candidate): PromotorOutcome {
   if (candidate.status === 'promotor_exitoso') return 'si';
   if (candidate.status === 'bajo_desempeno') return 'no';
-  if (candidate.status === 'disqualified') return 'baja';
+  if (candidate.status === 'disqualified') return 'descalificado';
   return 'pendiente';
 }
 
@@ -297,7 +302,8 @@ export function toReportRow(candidate: Candidate, now = new Date()): ReportRow {
 /**
  * The promoters the report covers: everyone who joined, plus the ones
  * disqualified after signing — they worked, and dropping them would flatter the
- * success rate.
+ * success rate. Being disqualified is a decision recorded in the process, not a
+ * statement that the person left the company.
  */
 export function buildReportRows(candidates: Candidate[], now = new Date()): ReportRow[] {
   return candidates
@@ -367,12 +373,12 @@ export function filterBySlice(rows: ReportRow[], filters: SliceFilters): ReportR
 // ─── Agregados para el dashboard ──────────────────────────────────────────────
 
 /** Reading order of the outcomes: settled verdicts first, then who is still open. */
-export const OUTCOME_ORDER: PromotorOutcome[] = ['si', 'no', 'baja', 'pendiente'];
+export const OUTCOME_ORDER: PromotorOutcome[] = ['si', 'no', 'descalificado', 'pendiente'];
 
 export interface OutcomeCounts {
   si: number;
   no: number;
-  baja: number;
+  descalificado: number;
   pendiente: number;
   total: number;
   /** Promoters with a settled 30-day verdict (sí + no) — the success-rate denominator. */
@@ -382,7 +388,7 @@ export interface OutcomeCounts {
 }
 
 export function countOutcomes(rows: ReportRow[]): OutcomeCounts {
-  const counts = { si: 0, no: 0, baja: 0, pendiente: 0 };
+  const counts = { si: 0, no: 0, descalificado: 0, pendiente: 0 };
   for (const row of rows) counts[row.outcome]++;
 
   const evaluados = counts.si + counts.no;
@@ -535,7 +541,7 @@ export type SortKey = 'startDate' | 'name' | 'plaza' | 'vertical' | 'dealAverage
 export type SortDirection = 'asc' | 'desc';
 
 /** Settled outcomes rank above the open ones, best first. */
-const OUTCOME_RANK: Record<PromotorOutcome, number> = { si: 4, no: 3, baja: 2, pendiente: 1 };
+const OUTCOME_RANK: Record<PromotorOutcome, number> = { si: 4, no: 3, descalificado: 2, pendiente: 1 };
 
 /** The comparable value of a row for each column; null means "no dato". */
 function sortValue(row: ReportRow, key: SortKey): number | string | null {

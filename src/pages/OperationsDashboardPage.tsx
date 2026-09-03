@@ -13,7 +13,13 @@ import {
   OutcomeStackedBars,
   SuccessRateBars,
 } from '../components/dashboard/OperationsCharts';
-import { OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
+import { OUTCOME_CHART_HINTS, OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
+import {
+  DATE_PRESETS,
+  detectDateRangePreset,
+  resolveDateRange,
+  type DateRangePreset,
+} from '../utils/dateRanges';
 import { useCandidates } from '../hooks/useCandidates';
 import {
   OUTCOME_LABELS,
@@ -50,7 +56,7 @@ const OUTCOME_STYLES: Record<PromotorOutcome, string> = {
   si:        'bg-green-50 text-green-700',
   no:        'bg-red-50 text-red-700',
   pendiente: 'bg-gray-100 text-gray-600',
-  baja:      'bg-amber-50 text-amber-700',
+  descalificado: 'bg-amber-50 text-amber-700',
 };
 
 const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
@@ -59,7 +65,7 @@ const OUTCOME_FILTERS: { value: OutcomeFilter; label: string }[] = [
   { value: 'no', label: 'Bajo Desempeño' },
   { value: 'pendiente', label: 'Pendientes' },
   { value: 'atrasado', label: 'Sin evaluar y ya vencidos' },
-  { value: 'baja', label: 'Bajas' },
+  { value: 'descalificado', label: 'Descalificados' },
 ];
 
 const PAGE_SIZES = [25, 50, 100];
@@ -151,6 +157,17 @@ export function OperationsDashboardPage() {
     setPage(1);
   };
 
+  // Derived, never stored: the dropdown always names whatever the two inputs
+  // hold, so typing a range by hand cannot leave it showing a stale preset.
+  const rangePreset = detectDateRangePreset({ from, to });
+
+  const applyPreset = (preset: DateRangePreset) => {
+    const range = resolveDateRange(preset);
+    setFrom(range.from);
+    setTo(range.to);
+    setPage(1);
+  };
+
   /** Every filter change sends the reader back to the first page of the new slice. */
   const withReset = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
@@ -166,8 +183,8 @@ export function OperationsDashboardPage() {
             <div>
               <h2 className="text-base font-semibold text-gray-900">Dashboard de operación</h2>
               <p className="text-xs text-gray-400">
-                Promotores que ya ingresaron. El promedio de solicitudes diarias se calcula sobre la
-                ventana medida en HubSpot (30 días desde el ingreso; 15 si aún no hay corte de 30).
+                Promotores que ya ingresaron. Las solicitudes diarias son su promedio durante los
+                30 días posteriores a su fecha de ingreso.
               </p>
             </div>
             <button
@@ -208,12 +225,37 @@ export function OperationsDashboardPage() {
           >
             {OUTCOME_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500">
-            Ingreso
-            <input type="date" value={from} onChange={(e) => withReset(setFrom)(e.target.value)} className="input-field text-sm w-auto" />
-            <span>a</span>
-            <input type="date" value={to} onChange={(e) => withReset(setTo)(e.target.value)} className="input-field text-sm w-auto" />
-          </label>
+          <div className="flex items-center gap-2">
+            <select
+              value={rangePreset}
+              onChange={(e) => applyPreset(e.target.value as DateRangePreset)}
+              className="input-field text-sm w-auto"
+              aria-label="Rango de fechas de ingreso"
+            >
+              {DATE_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>{preset.label}</option>
+              ))}
+              {rangePreset === 'personalizado' && <option value="personalizado">Rango personalizado</option>}
+            </select>
+            <label className="flex items-center gap-1.5 text-xs text-gray-500">
+              Ingreso
+              <input
+                type="date"
+                value={from}
+                max={to || undefined}
+                onChange={(e) => withReset(setFrom)(e.target.value)}
+                className="input-field text-sm w-auto"
+              />
+              <span>a</span>
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(e) => withReset(setTo)(e.target.value)}
+                className="input-field text-sm w-auto"
+              />
+            </label>
+          </div>
         </div>
 
         {/* Dashboard */}
@@ -404,7 +446,7 @@ export function OperationsDashboardPage() {
                         <td className="px-4 py-2.5">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${OUTCOME_STYLES[r.outcome]}`}
-                            title={r.pendingIssue ? PENDING_ISSUE_HINTS[r.pendingIssue] : undefined}
+                            title={r.pendingIssue ? PENDING_ISSUE_HINTS[r.pendingIssue] : OUTCOME_CHART_HINTS[r.outcome]}
                           >
                             {r.pendingIssue ? (
                               <AlertTriangle size={11} className="text-amber-600 shrink-0" />
