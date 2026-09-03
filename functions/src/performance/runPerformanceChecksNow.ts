@@ -7,6 +7,7 @@ import {
   sweepEvaluatedCandidates,
   type SkipReason,
 } from './performanceCheck';
+import { recoverPendingHubspotOwners } from './recoverHubspotOwners';
 import { scheduleMissingChecks } from './scheduleChecks';
 
 /**
@@ -20,7 +21,8 @@ const MAX_CHECKS_PER_RUN = 150;
 
 /** How each dead end reads in the operator's summary. */
 const SKIP_LABELS: Record<SkipReason, string> = {
-  sin_hubspot:             'sin usuario de HubSpot con qué contar',
+  sin_correo:              'sin correo corporativo provisionado',
+  sin_owner:               'con correo corporativo pero sin owner en HubSpot (cuenta sin activar)',
   error_hubspot:           'con error de HubSpot',
   sin_fecha:               'sin fecha de ingreso',
   candidato_no_encontrado: 'de candidatos ya borrados',
@@ -30,6 +32,8 @@ const SKIP_LABELS: Record<SkipReason, string> = {
 interface RunSummary {
   scheduled: number;
   isoFilled: number;
+  /** Promoters whose HubSpot owner id was found now that they activated. */
+  ownersRecovered: number;
   /** Checks that actually produced a deal count — not merely processed. */
   evaluated: number;
   /** Checks that ended without a count, by reason. */
@@ -62,7 +66,17 @@ export const runPerformanceChecksNow = onCall(
     //    come back due immediately, which is what step 2 then evaluates.
     const schedule = await scheduleMissingChecks();
 
-    // 2. Evaluate everything that is due right now.
+    // 2. Pick up whoever activated their HubSpot account since the last run —
+    //    without their owner id there is nobody to attribute solicitudes to, so
+    //    this has to happen before the checks, not after.
+    let ownersRecovered = 0;
+    try {
+      ownersRecovered = (await recoverPendingHubspotOwners()).recovered;
+    } catch (err) {
+      console.error('[runPerformanceChecksNow] recoverPendingHubspotOwners failed:', err);
+    }
+
+    // 3. Evaluate everything that is due right now.
     const due = await db
       .collection('pending_performance_checks')
       .where('processAfter', '<=', Timestamp.now())
@@ -90,7 +104,7 @@ export const runPerformanceChecksNow = onCall(
       }
     }
 
-    // 3. Settle whatever the evaluation left half-done — the same two sweeps the
+    // 4. Settle whatever the evaluation left half-done — the same two sweeps the
     //    daily job runs, so a lost status write or a failed Viterbit move does
     //    not wait until tomorrow either.
     try {
@@ -110,6 +124,9 @@ export const runPerformanceChecksNow = onCall(
       `${schedule.created} corte(s) programados`,
       `${evaluated} evaluado(s) ahora`,
     ];
+    if (ownersRecovered > 0) {
+      parts.push(`${ownersRecovered} cuenta(s) de HubSpot ya activadas y vinculadas`);
+    }
     for (const [reason, total] of Object.entries(skipped) as [SkipReason, number][]) {
       parts.push(`${total} ${SKIP_LABELS[reason]}`);
     }
@@ -123,6 +140,7 @@ export const runPerformanceChecksNow = onCall(
     return {
       scheduled: schedule.created,
       isoFilled: schedule.isoFilled,
+      ownersRecovered,
       evaluated,
       skipped,
       failed,
