@@ -193,6 +193,11 @@ export interface Candidate {
   // HubSpot
   hubspotOwnerId?: string;
   // 15/30-day performance checks
+  /** Why the last check could not produce a count — written by the check itself */
+  performanceBlockedReason?: 'sin_hubspot' | 'error_hubspot' | 'sin_fecha' | string;
+  performanceBlockedAt?: Timestamp;
+  /** A Viterbit move to Promotor Exitoso queued after a failed attempt */
+  promotorMovePending?: boolean;
   performance15DayCheckedAt?: Timestamp;
   performance15DayDeals?: number;
   performance30DayCheckedAt?: Timestamp;

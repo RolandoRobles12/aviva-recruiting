@@ -82,6 +82,7 @@ export const runPerformanceChecksNow = httpsCallable<
     scheduled: number;
     isoFilled: number;
     evaluated: number;
+    skipped: Record<string, number>;
     failed: number;
     remaining: number;
     sinFechaDeIngreso: string[];

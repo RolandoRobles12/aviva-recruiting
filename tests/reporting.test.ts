@@ -246,6 +246,24 @@ describe('pendingIssue', () => {
     expect(issueOf({})).toBe('sin_fecha');
   });
 
+  it('believes what the check recorded over what the fields suggest', () => {
+    // Tiene correo corporativo, pero ese correo no es owner en HubSpot: el corte
+    // ya lo intentó y lo dejó anotado. Volver a correrlo no lo resuelve.
+    expect(issueOf({
+      viterbitStartDateIso: '2026-06-01',
+      corporateEmail: 'karina.collazo@avivacredito.com',
+      performanceBlockedReason: 'sin_hubspot',
+    })).toBe('sin_hubspot');
+  });
+
+  it('separates a verdict that never landed from a count that never happened', () => {
+    // Sus solicitudes sí se contaron; lo que falló fue aplicar la etapa.
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01', performance30DayDeals: 12 }))
+      .toBe('veredicto_no_aplicado');
+    expect(issueOf({ viterbitStartDateIso: '2026-06-01', promotorMovePending: true }))
+      .toBe('veredicto_no_aplicado');
+  });
+
   it('does not blame HubSpot when the daily check can still recover the owner id', () => {
     // El corte diario resuelve el hubspotOwnerId desde el correo corporativo,
     // así que lo que falta aquí es el conteo, no las cuentas.
@@ -439,6 +457,6 @@ describe('rowsToCsv', () => {
       new Date(2026, 8, 2),
     );
     expect(rowsToCsv(rows).split('\r\n')[1])
-      .toContain('"Pendiente — sin cuentas corporativas provisionadas"');
+      .toContain('"Pendiente — sin usuario de HubSpot con qué contar"');
   });
 });

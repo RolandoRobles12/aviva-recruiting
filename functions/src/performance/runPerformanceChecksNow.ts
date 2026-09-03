@@ -5,6 +5,7 @@ import {
   processPendingCheck,
   retryPendingPromotorMoves,
   sweepEvaluatedCandidates,
+  type SkipReason,
 } from './performanceCheck';
 import { scheduleMissingChecks } from './scheduleChecks';
 
@@ -17,10 +18,22 @@ import { scheduleMissingChecks } from './scheduleChecks';
  */
 const MAX_CHECKS_PER_RUN = 150;
 
+/** How each dead end reads in the operator's summary. */
+const SKIP_LABELS: Record<SkipReason, string> = {
+  sin_hubspot:             'sin usuario de HubSpot con qué contar',
+  error_hubspot:           'con error de HubSpot',
+  sin_fecha:               'sin fecha de ingreso',
+  candidato_no_encontrado: 'de candidatos ya borrados',
+  corte_invalido:          'con el corte mal formado',
+};
+
 interface RunSummary {
   scheduled: number;
   isoFilled: number;
+  /** Checks that actually produced a deal count — not merely processed. */
   evaluated: number;
+  /** Checks that ended without a count, by reason. */
+  skipped: Partial<Record<SkipReason, number>>;
   failed: number;
   remaining: number;
   sinFechaDeIngreso: string[];
@@ -58,10 +71,22 @@ export const runPerformanceChecksNow = onCall(
 
     const batch = due.docs.slice(0, MAX_CHECKS_PER_RUN);
     const results = await Promise.allSettled(batch.map((doc) => processPendingCheck(doc)));
-    const failed = results.filter((r) => r.status === 'rejected').length;
+
+    // A check that ends early leaves the promoter with no verdict, so it must
+    // not be reported as evaluated: the operator would go looking for a result
+    // that never landed.
+    let evaluated = 0;
+    let failed = 0;
+    const skipped: Partial<Record<SkipReason, number>> = {};
     for (const result of results) {
       if (result.status === 'rejected') {
+        failed++;
         console.error('[runPerformanceChecksNow] check failed:', result.reason);
+      } else if (result.value.status === 'evaluado') {
+        evaluated++;
+      } else {
+        const reason = result.value.reason;
+        skipped[reason] = (skipped[reason] ?? 0) + 1;
       }
     }
 
@@ -79,13 +104,15 @@ export const runPerformanceChecksNow = onCall(
       console.error('[runPerformanceChecksNow] retryPendingPromotorMoves failed:', err);
     }
 
-    const evaluated = batch.length - failed;
     const remaining = due.size - batch.length;
 
     const parts = [
       `${schedule.created} corte(s) programados`,
       `${evaluated} evaluado(s) ahora`,
     ];
+    for (const [reason, total] of Object.entries(skipped) as [SkipReason, number][]) {
+      parts.push(`${total} ${SKIP_LABELS[reason]}`);
+    }
     if (failed > 0) parts.push(`${failed} con error (se reintentan en el corte diario)`);
     if (remaining > 0) parts.push(`${remaining} pendientes: vuelve a ejecutar`);
     if (schedule.isoFilled > 0) parts.push(`${schedule.isoFilled} fecha(s) de ingreso normalizadas`);
@@ -97,6 +124,7 @@ export const runPerformanceChecksNow = onCall(
       scheduled: schedule.created,
       isoFilled: schedule.isoFilled,
       evaluated,
+      skipped,
       failed,
       remaining,
       sinFechaDeIngreso: schedule.unparseable,
