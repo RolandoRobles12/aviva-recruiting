@@ -1,3 +1,5 @@
+import { eachDayOfInterval, endOfMonth as endOfMonthFns, endOfWeek, startOfMonth as startOfMonthFns, startOfWeek } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { formatIsoDate } from './reporting';
 
 /**
@@ -78,4 +80,64 @@ export function detectDateRangePreset(range: DateRange, today = new Date()): Dat
   }
 
   return 'personalizado';
+}
+
+// ─── Calendario ───────────────────────────────────────────────────────────────
+
+/** Parses the "YYYY-MM-DD" the inputs and the filter speak; null when empty or malformed. */
+export function parseIsoDate(iso: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * The weeks a month calendar draws, padded with the neighbouring days so every
+ * row is a full week. Days outside the month are kept (not nulled) so the grid
+ * can dim them and still let a click land on them.
+ */
+export function monthMatrix(month: Date): Date[][] {
+  const days = eachDayOfInterval({
+    start: startOfWeek(startOfMonthFns(month), { locale: es }),
+    end: endOfWeek(endOfMonthFns(month), { locale: es }),
+  });
+
+  const weeks: Date[][] = [];
+  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+  return weeks;
+}
+
+/** True when `day` falls inside [from, to], with either end open. */
+export function isWithinRange(day: Date, from: Date | null, to: Date | null): boolean {
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return Boolean(from || to);
+}
+
+const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+const shortDate = (date: Date) => `${date.getDate()} ${MONTH_ABBR[date.getMonth()]} ${date.getFullYear()}`;
+
+/**
+ * What the picker's button reads: the name of the preset when the range is one,
+ * and the span itself otherwise — collapsed when both ends share a month, so a
+ * single month reads "1 – 31 jul 2026" instead of repeating itself.
+ */
+export function formatRangeLabel(range: DateRange, today = new Date()): string {
+  const preset = detectDateRangePreset(range, today);
+  if (preset !== 'personalizado') {
+    return DATE_PRESETS.find((p) => p.value === preset)?.label ?? 'Todo el histórico';
+  }
+
+  const from = parseIsoDate(range.from);
+  const to = parseIsoDate(range.to);
+  if (from && !to) return `Desde ${shortDate(from)}`;
+  if (!from && to) return `Hasta ${shortDate(to)}`;
+  if (!from || !to) return 'Todo el histórico';
+
+  if (from.getFullYear() === to.getFullYear() && from.getMonth() === to.getMonth()) {
+    return `${from.getDate()} – ${shortDate(to)}`;
+  }
+  return `${shortDate(from)} – ${shortDate(to)}`;
 }

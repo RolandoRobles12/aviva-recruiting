@@ -14,12 +14,7 @@ import {
   SuccessRateBars,
 } from '../components/dashboard/OperationsCharts';
 import { OUTCOME_CHART_HINTS, OUTCOME_COLORS, cohortBars, groupBars } from '../utils/outcomeStyles';
-import {
-  DATE_PRESETS,
-  detectDateRangePreset,
-  resolveDateRange,
-  type DateRangePreset,
-} from '../utils/dateRanges';
+import { DateRangePicker } from '../components/dashboard/DateRangePicker';
 import { useCandidates } from '../hooks/useCandidates';
 import {
   OUTCOME_LABELS,
@@ -157,17 +152,6 @@ export function OperationsDashboardPage() {
     setPage(1);
   };
 
-  // Derived, never stored: the dropdown always names whatever the two inputs
-  // hold, so typing a range by hand cannot leave it showing a stale preset.
-  const rangePreset = detectDateRangePreset({ from, to });
-
-  const applyPreset = (preset: DateRangePreset) => {
-    const range = resolveDateRange(preset);
-    setFrom(range.from);
-    setTo(range.to);
-    setPage(1);
-  };
-
   /** Every filter change sends the reader back to the first page of the new slice. */
   const withReset = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
@@ -225,37 +209,10 @@ export function OperationsDashboardPage() {
           >
             {OUTCOME_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
-          <div className="flex items-center gap-2">
-            <select
-              value={rangePreset}
-              onChange={(e) => applyPreset(e.target.value as DateRangePreset)}
-              className="input-field text-sm w-auto"
-              aria-label="Rango de fechas de ingreso"
-            >
-              {DATE_PRESETS.map((preset) => (
-                <option key={preset.value} value={preset.value}>{preset.label}</option>
-              ))}
-              {rangePreset === 'personalizado' && <option value="personalizado">Rango personalizado</option>}
-            </select>
-            <label className="flex items-center gap-1.5 text-xs text-gray-500">
-              Ingreso
-              <input
-                type="date"
-                value={from}
-                max={to || undefined}
-                onChange={(e) => withReset(setFrom)(e.target.value)}
-                className="input-field text-sm w-auto"
-              />
-              <span>a</span>
-              <input
-                type="date"
-                value={to}
-                min={from || undefined}
-                onChange={(e) => withReset(setTo)(e.target.value)}
-                className="input-field text-sm w-auto"
-              />
-            </label>
-          </div>
+          <DateRangePicker
+            value={{ from, to }}
+            onChange={(range) => { setFrom(range.from); setTo(range.to); setPage(1); }}
+          />
         </div>
 
         {/* Dashboard */}
