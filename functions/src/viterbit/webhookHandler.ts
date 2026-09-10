@@ -16,6 +16,7 @@ import { readScreeningFields } from '../utils/viterbitFields';
 import { fetchCandidateRaw } from './candidateScreening';
 import { extractJobPlaza } from './jobPlaza';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
+import { resolveOfferTemplate } from '../offer/templateResolver';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -405,38 +406,6 @@ async function fetchViterbitCandidate(
 }
 
 
-/** Find the best-matching offer template.
- *  Priority: 1. exact profile name match, 2. positionKeywords, 3. first template. */
-async function findOfferTemplate(
-  position: string,
-  profile?: string,
-): Promise<{ id: string; data: Record<string, unknown> } | null> {
-  const snap = await db.collection('offer_templates').get();
-  if (snap.empty) return null;
-
-  // 1. Profile-name match (primary — most precise)
-  if (profile) {
-    for (const doc of snap.docs) {
-      const data = doc.data();
-      const profileNames = (data.profileNames as string[]) ?? [];
-      if (profileNames.includes(profile)) return { id: doc.id, data };
-    }
-  }
-
-  // 2. positionKeywords fallback (legacy / non-Viterbit)
-  const posLower = position.toLowerCase();
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    const keywords = (data.positionKeywords as string[]) ?? [];
-    if (keywords.some((kw) => posLower.includes(kw.toLowerCase()))) {
-      return { id: doc.id, data };
-    }
-  }
-
-  // 3. First template
-  return { id: snap.docs[0].id, data: snap.docs[0].data() };
-}
-
 // ─── Stage handlers ────────────────────────────────────────────────────────────
 
 /**
@@ -558,7 +527,10 @@ export async function handleAprobado(
   }
 
   // Find best offer template — profile-name match takes priority
-  const templateMatch = await findOfferTemplate(jobTitle, viterbitDepartmentProfile || undefined);
+  const templateMatch = await resolveOfferTemplate({
+    position: jobTitle,
+    profile: viterbitDepartmentProfile || undefined,
+  });
 
   // Create offer token (configurable expiry)
   const linkDurations = await getLinkDuration();

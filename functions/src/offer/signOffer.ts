@@ -12,6 +12,7 @@ import { getRecruiterEmail } from '../utils/recruiters';
 import { getLinkDuration } from '../utils/linkDuration';
 import { htmlToPdf } from '../contract/htmlToPdf';
 import { getLogoUrl } from '../utils/branding';
+import { resolveOfferTemplate } from './templateResolver';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -204,21 +205,29 @@ const DEFAULT_OFFER_BODY_HTML = `<p>Bienvenido/a <strong>{{name}}</strong>,</p>
 
 // ─── Fetch offer body HTML from Firestore, falling back to the default ────────
 
-async function fetchOfferBodyHtml(candidateData: Record<string, unknown>): Promise<string> {
-  const templateId = candidateData.offerTemplateId as string | undefined;
-  if (templateId) {
-    const tSnap = await db.collection('offer_templates').doc(templateId).get();
-    if (tSnap.exists) {
-      const html = (tSnap.data() as Record<string, unknown>).bodyHtml as string | undefined;
-      if (html) return html;
-    }
+// Resolved on every render (not read from the candidate's stored template id)
+// so template edits and profile assignments take effect on offers that were
+// already sent.
+async function fetchOfferBody(
+  candidateData: Record<string, unknown>,
+): Promise<{ html: string; templateId: string | null }> {
+  const match = await resolveOfferTemplate({
+    position: (candidateData.position as string) || undefined,
+    profile:
+      (candidateData.viterbitDepartmentProfile as string) ||
+      (candidateData.profile as string) ||
+      undefined,
+    storedTemplateId: (candidateData.offerTemplateId as string) || undefined,
+  });
+
+  const html = match ? ((match.data.bodyHtml as string) || '') : '';
+  if (match && html) {
+    console.log(`[offer] template ${match.id} (${match.matchedBy}) — "${match.data.name ?? ''}"`);
+    return { html, templateId: match.id };
   }
-  const allSnap = await db.collection('offer_templates').limit(1).get();
-  if (!allSnap.empty) {
-    const html = (allSnap.docs[0].data() as Record<string, unknown>).bodyHtml as string | undefined;
-    if (html) return html;
-  }
-  return DEFAULT_OFFER_BODY_HTML;
+
+  console.warn('[offer] no usable offer_templates doc — using built-in default body');
+  return { html: DEFAULT_OFFER_BODY_HTML, templateId: null };
 }
 
 // ─── Cloud Function ────────────────────────────────────────────────────────────
@@ -316,8 +325,8 @@ export const signOffer = onRequest(
       vars.firmaEmpleado = `<img src="${signatureBase64}" alt="Firma" style="max-width:200px;max-height:70px;display:block;margin:4px 0;">`;
 
       // Fetch body content from Firestore offer_templates (falls back to hardcoded default)
-      const rawBodyHtml = await withTimeout(fetchOfferBodyHtml(candidate), 8_000, 'fetch offer template');
-      vars.bodyContent = interpolate(rawBodyHtml, vars);
+      const offerBody = await withTimeout(fetchOfferBody(candidate), 8_000, 'fetch offer template');
+      vars.bodyContent = interpolate(offerBody.html, vars);
 
       // ── Generate PDF ──────────────────────────────────────────────────────────
       console.log('[signOffer] Starting PDF generation...');
@@ -440,6 +449,8 @@ export const signOffer = onRequest(
       await withTimeout(
         candidateDoc.ref.update({
           status: nextStatus,
+          // Pin the template that was actually signed, for the record.
+          ...(offerBody.templateId ? { offerTemplateId: offerBody.templateId } : {}),
           offerSignedAt: now,
           offerSignatureUrl: sigUrl,
           offerPdfUrl: pdfUrl,
@@ -607,7 +618,7 @@ export const getOffer = onRequest(
         date: format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es }),
       };
 
-      const rawBodyHtml = await fetchOfferBodyHtml(candidate);
+      const { html: rawBodyHtml } = await fetchOfferBody(candidate);
       const renderedHtml = interpolate(rawBodyHtml, vars);
       const logoUrl = await getLogoUrl();
 
