@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
-import { createHubSpotUser } from './hubspotService';
+import { createHubSpotUser, type RoleAssignment } from './hubspotService';
 import { inviteSlackDual } from './slackService';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -145,6 +145,10 @@ export const provisionAccountsManual = onCall(
 
     const hubspotOk = hubspotResult.status === 'fulfilled';
     const hubspotOwnerId = hubspotResult.status === 'fulfilled' ? (hubspotResult.value.ownerId ?? null) : null;
+    // Whether the account got the role that decides what it can see in HubSpot.
+    const hubspotRoleStatus: RoleAssignment | null =
+      hubspotResult.status === 'fulfilled' ? hubspotResult.value.roleStatus : null;
+    const hubspotRoleId = hubspotResult.status === 'fulfilled' ? hubspotResult.value.roleId : '';
     const slackValue = slackResult.status === 'fulfilled' ? slackResult.value : null;
     const slackPrimaryOk = slackValue?.primary.ok ?? false;
     const slackGuestOk = slackValue?.guest.ok ?? false;
@@ -169,6 +173,7 @@ export const provisionAccountsManual = onCall(
       firestoreUpdate.corporateEmail = corporateEmail;
       firestoreUpdate.status = 'induction';
       if (hubspotOwnerId) firestoreUpdate.hubspotOwnerId = hubspotOwnerId;
+      if (hubspotRoleId) firestoreUpdate.hubspotRoleId = hubspotRoleId;
     }
     await docRef.update(firestoreUpdate);
 
@@ -182,6 +187,7 @@ export const provisionAccountsManual = onCall(
     return {
       success: true,
       hubspotCreated: hubspotOk,
+      hubspotRoleStatus,
       slackPrimaryInvited: slackPrimaryOk,
       slackGuestInvited: slackGuestOk,
       corporateEmail,

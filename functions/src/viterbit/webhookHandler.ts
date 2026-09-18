@@ -11,12 +11,17 @@ import { getLogoUrl } from '../utils/branding';
 import { getLinkDuration } from '../utils/linkDuration';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 import { getAllowedHiringProfiles } from '../utils/hiringProfiles';
-import { toIsoDateString } from '../utils/startDate';
-import { readScreeningFields } from '../utils/viterbitFields';
-import { fetchCandidateRaw } from './candidateScreening';
-import { extractJobPlaza } from './jobPlaza';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 import { resolveOfferTemplate } from '../offer/templateResolver';
+import {
+  fetchCandidateInfo,
+  fetchCandidatureInfo,
+  fetchJobInfo,
+  fetchUserFullName,
+  moveToStage,
+} from './viterbitApi';
+import { splitFullName, syncCandidateFromViterbit } from './syncCandidate';
+import { releaseHeldOffer } from './releaseHeldOffer';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
@@ -35,8 +40,6 @@ const STAGE_CORREOS      = defineString('STAGE_CORREOS',      { default: 'Correo
 const STAGE_INDUCCION    = defineString('STAGE_INDUCCION',    { default: 'Onboarding' });
 const STAGE_ONBOARDING_INICIADO = defineString('STAGE_ONBOARDING_INICIADO', { default: 'Onboarding Iniciado' });
 const STAGE_PROMOTOR_EXITOSO    = defineString('STAGE_PROMOTOR_EXITOSO',    { default: 'Promotor Exitoso' });
-
-const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,301 +112,8 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
 }
 
 // ─── Viterbit API helpers ──────────────────────────────────────────────────────
-
-interface ViterbitStage {
-  id: string;
-  name: string;
-}
-
-interface ViterbitCandidate {
-  name: string;
-  email: string;
-  phone?: string;
-  reference?: string;
-  contrasena?: string;
-  buro: string;
-  psicometriaIntegridad: string;
-}
-
-interface ViterbitJobInfo {
-  title: string;
-  stages: ViterbitStage[];
-  hiringManagerId: string;
-  company: string;
-  departmentProfile: string;
-  /** Store name — the job's external_id, verbatim ("MEX0147 Oxkutzcab BA"). */
-  plaza: string;
-  /** City of the store, from the job's address. */
-  city: string;
-}
-
-interface ViterbitCandidatureInfo {
-  stageId: string;
-  stageName: string;
-  salary: string;
-  startDate: string;
-  jobId: string;
-}
-
-/**
- * Fetch job info from Viterbit API.
- *
- * Real Viterbit /jobs/:id response shape:
- *   title: string
- *   salary_min: { amount: number, currency: string }
- *   salary_max: { amount: number, currency: string }
- *   department_profile_id: string
- *   location_id: string
- *   external_id: string
- *   stages: ViterbitStage[]  (when ?includes[]=stages)
- */
-async function fetchViterbitJob(jobId: string, apiKey: string): Promise<ViterbitJobInfo> {
-  const empty: ViterbitJobInfo = {
-    title: '', stages: [], hiringManagerId: '', company: '', departmentProfile: '',
-    plaza: '', city: '',
-  };
-  try {
-    const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
-      { headers: { 'X-API-Key': apiKey } },
-    );
-    if (!resp.ok) return empty;
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-
-    // Viterbit returns custom fields under custom_field_values (requires includes[]=custom_field_values)
-    const custom = (data.custom_field_values as Record<string, unknown>)
-      ?? (data.custom_fields as Record<string, unknown>)
-      ?? {};
-    const getCustom = (key: string): string => {
-      const val = custom[key];
-      if (val && typeof val === 'object' && 'value' in val) return String((val as Record<string, unknown>).value ?? '');
-      return (val as string) ?? (data[key] as string) ?? '';
-    };
-
-    // department_profile comes as object when includes[]=department_profile is used
-    const deptProfileRaw = data.department_profile;
-    const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
-      ? deptProfileRaw as Record<string, unknown>
-      : undefined;
-    let departmentProfile =
-      (deptProfileObj?.name as string) ||
-      (deptProfileObj?.title as string) ||
-      getCustom('job_department_profile') ||
-      getCustom('department_profile') ||
-      '';
-
-    // Two-step fallback: includes[]=department_profile often returns null.
-    // Use department_id + department_profile_id to fetch the profile list and resolve the name.
-    if (!departmentProfile) {
-      const deptId = (data.department_id as string) || '';
-      const profileId = (data.department_profile_id as string) || '';
-      console.log('[viterbit] fetchViterbitJob profile fallback: deptId=', deptId, 'profileId=', profileId);
-      if (deptId && profileId) {
-        try {
-          const profResp = await fetch(
-            `${VITERBIT_API_BASE}/departments/${deptId}/profiles`,
-            { headers: { 'X-API-Key': apiKey } },
-          );
-          if (profResp.ok) {
-            const profJson = (await profResp.json()) as Record<string, unknown>;
-            const profiles =
-              (profJson.data as Array<Record<string, unknown>>) ??
-              (Array.isArray(profJson) ? profJson as Array<Record<string, unknown>> : []);
-            const matched = profiles.find(
-              (p) => String(p.id) === String(profileId),
-            );
-            if (matched) {
-              departmentProfile = (matched.name as string) || (matched.title as string) || '';
-              console.log('[viterbit] fetchViterbitJob resolved profile via dept endpoint:', departmentProfile);
-            } else {
-              console.log('[viterbit] fetchViterbitJob dept profiles:', JSON.stringify(profiles.map((p) => ({ id: p.id, name: p.name }))));
-            }
-          } else {
-            console.error('[viterbit] fetchViterbitJob dept profiles HTTP', profResp.status);
-          }
-        } catch (profErr) {
-          console.error('[viterbit] fetchViterbitJob dept profiles error:', profErr);
-        }
-      }
-    }
-
-    const title = (data.title as string) || (data.name as string) || '';
-    console.log('[viterbit] fetchViterbitJob keys:', Object.keys(data).join(', '));
-    console.log('[viterbit] fetchViterbitJob title:', JSON.stringify(title), '| department_profile:', JSON.stringify(deptProfileRaw), '| resolved:', JSON.stringify(departmentProfile));
-
-    const { plaza, city } = extractJobPlaza(data);
-
-    return {
-      title,
-      stages: (data.stages as ViterbitStage[]) ?? [],
-      hiringManagerId: getCustom('hiring_manager'),
-      company:         getCustom('empresa') || getCustom('custom_job_empresa') || getCustom('company') || 'Aviva',
-      departmentProfile,
-      plaza,
-      city,
-    };
-  } catch (err) {
-    console.error('[viterbit] fetchViterbitJob error:', err);
-    return empty;
-  }
-}
-
-async function moveToStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
-  const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}/stage`, {
-    method: 'POST',
-    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stage_id: stageId }),
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`moveToStage ${stageId} → HTTP ${resp.status}: ${text}`);
-  }
-}
-
-async function fetchViterbitCandidature(
-  candidatureId: string,
-  apiKey: string
-): Promise<ViterbitCandidatureInfo | null> {
-  try {
-    const resp = await fetch(
-      `${VITERBIT_API_BASE}/candidatures/${candidatureId}`,
-      { headers: { 'X-API-Key': apiKey } },
-    );
-    if (!resp.ok) {
-      console.error(`[viterbit] fetchViterbitCandidature ${candidatureId} → HTTP ${resp.status}`);
-      return null;
-    }
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-
-    const currentStage = (data.current_stage as Record<string, unknown>) ?? {};
-    const stageId   = (currentStage.id   as string) ?? '';
-    const stageName = (currentStage.name as string) ?? '';
-    const jobId = (data.job_id as string) ?? '';
-
-    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
-    const salaryAmount = hiredInfo.salary as number | undefined;
-    const currency = (hiredInfo.currency as string) ?? 'MXN';
-    const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
-    const startDate = (hiredInfo.start_at as string) ?? '';
-
-    if (!stageId && !jobId) return null;
-    return { stageId, stageName, salary, startDate, jobId };
-  } catch (err) {
-    console.error('[viterbit] fetchViterbitCandidature error:', err);
-    return null;
-  }
-}
-
-async function fetchViterbitUser(userId: string, apiKey: string): Promise<string> {
-  try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/users/${userId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) return '';
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    return (data.full_name as string) ?? '';
-  } catch (err) {
-    console.error('[viterbit] fetchViterbitUser error:', err);
-    return '';
-  }
-}
-
-async function fetchViterbitCandidate(
-  candidateId: string,
-  apiKey: string
-): Promise<ViterbitCandidate | null> {
-  try {
-    const data = await fetchCandidateRaw(candidateId, apiKey);
-    if (!data) {
-      console.error(`[viterbit] fetchCandidate ${candidateId} → no data`);
-      return null;
-    }
-
-    // Log full response keys and raw name fields to debug Viterbit API shape
-    console.log('[viterbit] fetchCandidate response keys:', Object.keys(data));
-    console.log('[viterbit] fetchCandidate raw name fields:', JSON.stringify({
-      name: data.name,
-      first_name: data.first_name,
-      last_name: data.last_name,
-      surname: data.surname,
-      nombre: data.nombre,
-      apellido: data.apellido,
-      apellidos: data.apellidos,
-      full_name: data.full_name,
-      fullname: data.fullname,
-    }));
-
-    // Try every field name variation Viterbit may use
-    const firstName =
-      (data.first_name as string) ||
-      (data.nombre as string) ||
-      '';
-    const lastName =
-      (data.last_name as string) ||
-      (data.surname as string) ||
-      (data.apellido as string) ||
-      (data.apellidos as string) ||
-      '';
-    const name =
-      (data.full_name as string) ||
-      (data.name as string) ||
-      (data.fullname as string) ||
-      `${firstName} ${lastName}`.trim();
-
-    const email =
-      (data.email as string) ||
-      (data.correo as string) ||
-      '';
-    const phone =
-      (data.phone as string) ||
-      (data.telephone as string) ||
-      (data.mobile as string) ||
-      undefined;
-
-    console.log('[viterbit] fetchCandidate resolved → name:', name, '| email:', email);
-
-    if (!email) return null;
-
-    const reference = (data.reference as string) || undefined;
-
-    // Extract contrasena_correo_corporativo — Viterbit may return custom_field_values as
-    // an array [{field_id, name, value}] or as a record {key: {value} | string}
-    let contrasena: string | undefined;
-    const rawCustom = data.custom_field_values;
-    if (Array.isArray(rawCustom)) {
-      contrasena = (rawCustom as Array<{ field_id?: string; name?: string; value?: string }>).find(
-        f => f.field_id === 'contrasena_correo_corporativo' || f.name === 'contrasena_correo_corporativo',
-      )?.value;
-    } else if (rawCustom && typeof rawCustom === 'object') {
-      const rec = rawCustom as Record<string, unknown>;
-      const val = rec['contrasena_correo_corporativo'];
-      contrasena = (val && typeof val === 'object' && 'value' in val)
-        ? String((val as Record<string, unknown>).value ?? '')
-        : (val as string) || undefined;
-    }
-    contrasena = contrasena || (data.contrasena_correo_corporativo as string) || undefined;
-
-    // Screening results (buró / psicometría de integridad) — the offer letter is
-    // held until both are known, see utils/hiringDetails.
-    const screening = readScreeningFields(data);
-
-    return {
-      name,
-      email,
-      phone,
-      reference,
-      contrasena,
-      buro: screening.buro,
-      psicometriaIntegridad: screening.psicometriaIntegridad,
-    };
-  } catch (err) {
-    console.error('[viterbit] fetchCandidate error:', err);
-    return null;
-  }
-}
+// Job, candidature and candidate reads live in ./viterbitApi so the webhook,
+// the manual refresh and the scheduled sync all parse Viterbit the same way.
 
 
 // ─── Stage handlers ────────────────────────────────────────────────────────────
@@ -438,7 +148,7 @@ export async function handleAprobado(
 
   // Fetch candidature first to resolve jobId if missing from webhook payload
   const candidatureInfo = candidatureId
-    ? await fetchViterbitCandidature(candidatureId, apiKey)
+    ? await fetchCandidatureInfo(candidatureId, apiKey)
     : null;
 
   const resolvedJobId = jobId || candidatureInfo?.jobId || '';
@@ -446,23 +156,20 @@ export async function handleAprobado(
 
   // Fetch candidate and job in parallel with resolved jobId
   const [viterbitCandidate, jobInfo] = await Promise.all([
-    fetchViterbitCandidate(candidateViterbitId, apiKey),
-    fetchViterbitJob(resolvedJobId, apiKey),
+    fetchCandidateInfo(candidateViterbitId, apiKey),
+    fetchJobInfo(resolvedJobId, apiKey),
   ]);
 
   const { title: jobTitle, stages, hiringManagerId,
-    company: viterbitCompany, departmentProfile: viterbitDepartmentProfile,
+    departmentProfile: viterbitDepartmentProfile,
     plaza, city: plazaCity } = jobInfo;
+  // The vacancy names the company; "Aviva" is the house default when it doesn't.
+  const viterbitCompany = jobInfo.company || 'Aviva';
 
-  const viterbitHiringManager = hiringManagerId
-    ? await fetchViterbitUser(hiringManagerId, apiKey)
-    : '';
+  const viterbitHiringManager = await fetchUserFullName(hiringManagerId, apiKey);
   const viterbitSalary = candidatureInfo?.salary ?? '';
-  const rawStartDate   = candidatureInfo?.startDate ?? '';
-  const viterbitStartDate = rawStartDate
-    ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
-    : '';
-  const viterbitStartDateIso = toIsoDateString(rawStartDate);
+  const viterbitStartDate = candidatureInfo?.startDate ?? '';
+  const viterbitStartDateIso = candidatureInfo?.startDateIso ?? '';
 
   // Exact match first — "Onboarding" must not match "Onboarding Iniciado",
   // and "Promotor Exitoso" must not match similarly-named stages.
@@ -497,16 +204,12 @@ export async function handleAprobado(
     return { action: 'error' };
   }
 
-  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference, contrasena: viterbitContrasena } = viterbitCandidate;
-  const nameParts = candidateName.trim().split(/\s+/);
-  const firstName = nameParts[0] ?? candidateName;
-  const lastName = nameParts.slice(1).join(' ') || '';
+  const { fullName: candidateName, email: candidateEmail, reference: viterbitReference, contrasena: viterbitContrasena } = viterbitCandidate;
+  const candidatePhone = viterbitCandidate.phone || undefined;
+  const { firstName, lastName } = splitFullName(candidateName);
 
   // Buró / psicometría de integridad are candidate-level custom fields.
-  const screening = {
-    buro: viterbitCandidate.buro,
-    psicometriaIntegridad: viterbitCandidate.psicometriaIntegridad,
-  };
+  const screening = viterbitCandidate.screening;
 
   console.log('[webhook] handleAprobado candidate resolved → firstName:', firstName, '| lastName:', lastName, '| email:', candidateEmail);
 
@@ -680,8 +383,8 @@ async function handleDocumentos(
 
   // No existing candidate — create one (manual / legacy path)
   const [viterbitCandidate, jobInfo] = await Promise.all([
-    fetchViterbitCandidate(candidateViterbitId, apiKey),
-    fetchViterbitJob(jobId, apiKey),
+    fetchCandidateInfo(candidateViterbitId, apiKey),
+    fetchJobInfo(jobId, apiKey),
   ]);
   const jobTitle = jobInfo.title;
 
@@ -690,10 +393,9 @@ async function handleDocumentos(
     return { action: 'error' };
   }
 
-  const { name: candidateName, email: candidateEmail, phone: candidatePhone, reference: viterbitReference, contrasena: viterbitContrasena } = viterbitCandidate;
-  const nameParts = candidateName.trim().split(/\s+/);
-  const firstName = nameParts[0] ?? candidateName;
-  const lastName = nameParts.slice(1).join(' ') || '';
+  const { fullName: candidateName, email: candidateEmail, reference: viterbitReference, contrasena: viterbitContrasena } = viterbitCandidate;
+  const candidatePhone = viterbitCandidate.phone || undefined;
+  const { firstName, lastName } = splitFullName(candidateName);
 
   const formToken = generateToken();
   const linkDurations = await getLinkDuration();
@@ -767,7 +469,7 @@ async function findCandidateDoc(
     }
   }
 
-  const viterbitCandidate = await fetchViterbitCandidate(candidateViterbitId, apiKey);
+  const viterbitCandidate = await fetchCandidateInfo(candidateViterbitId, apiKey);
   if (viterbitCandidate) {
     const byEmail = await db
       .collection('candidates')
@@ -966,6 +668,87 @@ async function handleStatusSync(
   return { action: newStatus, candidateId: candidateRef.id };
 }
 
+/**
+ * Anything that is not a stage change — a candidate edited, hired_info filled
+ * in, a candidature updated. Viterbit names these events differently across
+ * portals, so they are matched by shape rather than by an exact list.
+ *
+ * These events carry no stage, and the candidate already exists on our side:
+ * the job is simply to re-read Viterbit and write back what changed, which is
+ * what makes an edit made there show up on the dashboard without anyone
+ * touching Firestore by hand.
+ */
+async function handleCandidateUpdated(
+  body: Record<string, unknown>,
+  apiKey: string,
+  logRef: FirebaseFirestore.DocumentReference,
+): Promise<{ action: string; candidateId?: string; changed?: string[]; reason?: string }> {
+  const found = await findCandidateByViterbitIds(collectViterbitIds(body));
+  if (!found) {
+    await logRef.update({ status: 'ignored', reason: 'update event for an unknown candidate' });
+    return { action: 'ignored', reason: 'candidate not tracked' };
+  }
+
+  const { ref, data } = found;
+  const { changed, updates } = await syncCandidateFromViterbit(ref, data, apiKey);
+
+  // A held offer waiting on exactly this data should go out now.
+  const release = await releaseHeldOffer(ref.id, data, updates, 'viterbit_webhook');
+
+  await logRef.update({
+    status: 'processed',
+    candidateId: ref.id,
+    changed,
+    offerAutoSent: release.sent,
+    ...(release.error ? { offerAutoSendError: release.error } : {}),
+  });
+  return { action: changed.length > 0 ? 'synced' : 'unchanged', candidateId: ref.id, changed };
+}
+
+/** Every id in the payload that could identify a candidate we already track. */
+function collectViterbitIds(body: Record<string, unknown>): string[] {
+  const data = (body.data as Record<string, unknown>) ?? (body.payload as Record<string, unknown>) ?? {};
+  const candidates = [
+    data.candidate_id, data.candidature_id, data.id,
+    body.candidate_id, body.candidature_id, body.id,
+  ];
+  return [...new Set(candidates.filter((v): v is string => typeof v === 'string' && v.trim() !== ''))];
+}
+
+/**
+ * Looks an id up against both Viterbit id fields and the document id (the
+ * webhook names candidate documents after the candidature), since an update
+ * event does not say which kind of id it carries.
+ */
+async function findCandidateByViterbitIds(
+  ids: string[],
+): Promise<{ ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData } | null> {
+  if (ids.length === 0) return null;
+
+  for (const field of ['viterbitCandidatureId', 'viterbitCandidateId'] as const) {
+    const snap = await db.collection('candidates').where(field, 'in', ids).limit(1).get();
+    if (!snap.empty) return { ref: snap.docs[0].ref, data: snap.docs[0].data() };
+  }
+
+  for (const id of ids) {
+    const doc = await db.collection('candidates').doc(id).get();
+    if (doc.exists) return { ref: doc.ref, data: doc.data()! };
+  }
+
+  return null;
+}
+
+/**
+ * True for events that report a change to the candidate or the candidature
+ * itself. Stage events are excluded — those have their own handlers, and the
+ * dispatcher below reaches this check first.
+ */
+function isUpdateEvent(event: string): boolean {
+  const name = event.toLowerCase();
+  if (!name || name.includes('stage')) return false;
+  return name.includes('update') || name.includes('changed') || name.includes('hired');
+}
+
 // ─── Cloud Function ────────────────────────────────────────────────────────────
 
 export const viterbitWebhook = onRequest(
@@ -985,6 +768,23 @@ export const viterbitWebhook = onRequest(
         receivedAt: FieldValue.serverTimestamp(),
       });
 
+      const apiKey = VITERBIT_API_KEY.value();
+      if (!apiKey) {
+        await logRef.update({ status: 'error', reason: 'VITERBIT_API_KEY not configured' });
+        res.status(500).json({ ok: false, error: 'Server misconfiguration: missing API key' });
+        return;
+      }
+
+      // Candidate / candidature edits come before the stage pipeline: they carry
+      // no stage, and they only ever touch candidates we already track, so the
+      // department-profile filter below does not apply to them.
+      const eventName = (body.event as string) ?? (body.type as string) ?? '';
+      if (isUpdateEvent(eventName)) {
+        const result = await handleCandidateUpdated(body, apiKey, logRef);
+        res.status(200).json({ ok: true, ...result });
+        return;
+      }
+
       const parsed = parseViterbitPayload(body);
       if (!parsed) {
         await logRef.update({ status: 'ignored', reason: 'could not parse payload' });
@@ -994,20 +794,13 @@ export const viterbitWebhook = onRequest(
 
       const { stageName, stageId, jobId } = parsed;
 
-      const apiKey = VITERBIT_API_KEY.value();
-      if (!apiKey) {
-        await logRef.update({ status: 'error', reason: 'VITERBIT_API_KEY not configured' });
-        res.status(500).json({ ok: false, error: 'Server misconfiguration: missing API key' });
-        return;
-      }
-
       // Filter by allowed department profiles if configured.
       // The list lives in Firestore (settings/hiringProfiles) so it survives
       // deploys; the HIRING_PROFILES param is only the fallback.
       const allowedProfiles = (await getAllowedHiringProfiles(HIRING_PROFILES.value()))
         .map((p) => p.toLowerCase());
       if (allowedProfiles.length > 0) {
-        const jobInfo = await fetchViterbitJob(jobId, apiKey);
+        const jobInfo = await fetchJobInfo(jobId, apiKey);
         const profile = jobInfo.departmentProfile.toLowerCase();
         if (!allowedProfiles.some((allowed) => profile.includes(allowed))) {
           await logRef.update({ status: 'ignored', reason: `profile "${jobInfo.departmentProfile}" not in allowed list` });
@@ -1020,7 +813,7 @@ export const viterbitWebhook = onRequest(
       // Resolve the name by fetching the candidature (recommended flow per Viterbit docs).
       let resolvedStageName = stageName;
       if (!resolvedStageName && parsed.candidatureId) {
-        const resolved = await fetchViterbitCandidature(parsed.candidatureId, apiKey);
+        const resolved = await fetchCandidatureInfo(parsed.candidatureId, apiKey);
         if (resolved?.stageName) {
           resolvedStageName = resolved.stageName;
           console.info(`[webhook] resolved stage name "${resolvedStageName}" from candidature ${parsed.candidatureId}`);

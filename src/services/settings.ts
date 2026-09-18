@@ -105,3 +105,33 @@ export async function getBrandingSettings(): Promise<BrandingSettings> {
 export async function saveBrandingSettings(settings: BrandingSettings): Promise<void> {
   await setDoc(doc(db, 'settings', 'branding'), settings);
 }
+
+// ─── HubSpot Settings ────────────────────────────────────────────────────────
+
+/**
+ * Which HubSpot role new promotor accounts are created with. HubSpot gives a
+ * user created without one its minimum access — "ver solo sus propios contactos
+ * y negocios" — so this is what decides whether they can see everything they
+ * need. Stored in Firestore rather than as a deploy param so it survives
+ * deploys and can be changed from the app.
+ */
+export interface HubspotSettings {
+  roleId: string;
+  /** Team every new user joins; blank leaves HubSpot's own default. */
+  primaryTeamId: string;
+}
+
+export const DEFAULT_HUBSPOT_SETTINGS: HubspotSettings = {
+  roleId: '',
+  primaryTeamId: '',
+};
+
+export async function getHubspotSettings(): Promise<HubspotSettings> {
+  const snap = await getDoc(doc(db, 'settings', 'hubspot'));
+  if (!snap.exists()) return DEFAULT_HUBSPOT_SETTINGS;
+  return { ...DEFAULT_HUBSPOT_SETTINGS, ...(snap.data() as Partial<HubspotSettings>) };
+}
+
+export async function saveHubspotSettings(settings: HubspotSettings): Promise<void> {
+  await setDoc(doc(db, 'settings', 'hubspot'), settings, { merge: true });
+}

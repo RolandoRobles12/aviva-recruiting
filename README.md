@@ -59,6 +59,11 @@ Sistema de reclutamiento y gestión de todo el proceso de ingreso para el equipo
 - Webhook que recibe candidatos y cambios de etapa desde Viterbit
 - Sincronización de datos del candidato y bloqueo de movimientos de etapa cuando hay documentos/contrato pendientes
 - Aprobaciones pendientes procesadas de forma programada
+- **Viterbit manda sobre los datos del candidato y de la contratación**: lo que se edite allá (nombre,
+  correo, teléfono, salario, fecha de inicio, buró, psicometría, puesto, perfil, plaza y ciudad) se
+  refleja en el tablero por tres vías — el webhook de actualización, un barrido automático cada 2 h y
+  el botón **Sincronizar** de la ficha del candidato. Salario y fecha de inicio se leen solo del
+  `hired_info` de la candidatura, nunca del rango de la vacante
 
 ### 6. Seguimiento de desempeño
 
@@ -68,6 +73,10 @@ Sistema de reclutamiento y gestión de todo el proceso de ingreso para el equipo
 ### 7. Provisión de cuentas y otras integraciones
 
 - Creación de cuentas/recursos corporativos (correo, Slack, HubSpot) al confirmarse la contratación
+- Las cuentas de HubSpot se crean con el **rol** configurado en *Configuración → HubSpot*. Sin rol,
+  HubSpot les da su acceso mínimo (ver solo sus propios contactos y negocios), así que ahí se elige
+  el rol que incluye *ver todos los contactos y negocios* y desde ahí se puede aplicar a las cuentas
+  que se crearon antes
 - Integraciones auxiliares con Jira y tickets de correo para seguimiento operativo
 
 ### 8. Roles y permisos
@@ -127,6 +136,10 @@ firebase functions:config:set \
 > con los scopes: Gmail Send, Drive, Spreadsheets.
 >
 > Las integraciones con Viterbit, HubSpot, Jira y Slack usan sus propias variables de configuración/secretos; revisa `functions/src/integrations/` para las que estén habilitadas en tu despliegue.
+>
+> El rol y el equipo de HubSpot se configuran desde la app (*Configuración → HubSpot*, guardados en
+> `settings/hubspot`). Los parámetros `HUBSPOT_ROLE_ID` y `HUBSPOT_PRIMARY_TEAM_ID` solo sirven como
+> valor inicial si ese documento aún no existe.
 
 ### 4. Instalar y correr en desarrollo
 

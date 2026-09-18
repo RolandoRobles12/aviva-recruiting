@@ -3,6 +3,222 @@ import { defineString } from 'firebase-functions/params';
 const HUBSPOT_API_KEY = defineString('HUBSPOT_API_KEY');
 const HUBSPOT_API_BASE = 'https://api.hubapi.com';
 
+/**
+ * Deploy-time fallbacks for the portal settings. What the app actually reads is
+ * `settings/hubspot` in Firestore, written from Configuración → HubSpot, so the
+ * role can be changed without a redeploy — env-var edits made in the Cloud
+ * console are wiped by the next `firebase deploy`.
+ */
+const HUBSPOT_ROLE_ID = defineString('HUBSPOT_ROLE_ID', { default: '' });
+const HUBSPOT_PRIMARY_TEAM_ID = defineString('HUBSPOT_PRIMARY_TEAM_ID', { default: '11727817' });
+
+export interface HubSpotRole {
+  id: string;
+  name: string;
+}
+
+export interface HubSpotPortalSettings {
+  /**
+   * Role stamped on every user we create. HubSpot grants a user created
+   * without one its minimum access — "ver solo sus propios contactos y
+   * negocios" — so leaving this empty is what lands new promotores without the
+   * permissions they need.
+   */
+  roleId: string;
+  primaryTeamId: string;
+}
+
+const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+let settingsCache: { settings: HubSpotPortalSettings; fetchedAt: number } | null = null;
+let verifiedRoleId = '';
+
+/** Drops the cached portal settings so the next read sees a just-saved change. */
+export function clearHubSpotSettingsCache(): void {
+  settingsCache = null;
+  verifiedRoleId = '';
+}
+
+/**
+ * Reads settings/hubspot, falling back to the deploy params. The Admin SDK is
+ * imported lazily so this module stays usable — and testable — without it.
+ */
+export async function getHubSpotPortalSettings(): Promise<HubSpotPortalSettings> {
+  if (settingsCache && Date.now() - settingsCache.fetchedAt < SETTINGS_CACHE_TTL_MS) {
+    return settingsCache.settings;
+  }
+
+  let roleId = '';
+  let primaryTeamId = '';
+  try {
+    const { db } = await import('../utils/admin');
+    const snap = await db.doc('settings/hubspot').get();
+    const data = (snap.exists ? snap.data() : undefined) ?? {};
+    roleId = String(data.roleId ?? '').trim();
+    primaryTeamId = String(data.primaryTeamId ?? '').trim();
+  } catch (err) {
+    console.error('[hubspot] settings/hubspot read failed — using deploy params:', err);
+  }
+
+  const settings: HubSpotPortalSettings = {
+    roleId: roleId || HUBSPOT_ROLE_ID.value().trim(),
+    primaryTeamId: primaryTeamId || HUBSPOT_PRIMARY_TEAM_ID.value().trim(),
+  };
+  settingsCache = { settings, fetchedAt: Date.now() };
+  return settings;
+}
+
+async function fetchRoles(apiKey: string): Promise<HubSpotRole[]> {
+  const resp = await fetch(`${HUBSPOT_API_BASE}/settings/v3/users/roles`, {
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+  });
+  if (!resp.ok) {
+    throw new Error(`HubSpot listRoles failed: HTTP ${resp.status} — ${await resp.text()}`);
+  }
+  const data = (await resp.json()) as { results?: Array<{ id?: string | number; name?: string }> };
+  return (data.results ?? [])
+    .filter((role) => role.id !== undefined && role.id !== null)
+    .map((role) => ({ id: String(role.id), name: String(role.name ?? '') }));
+}
+
+/**
+ * Roles defined in the HubSpot portal. One of them carries "ver todos los
+ * contactos y negocios"; which one is a portal decision, so the app lists them
+ * and the admin picks.
+ */
+export async function listHubSpotRoles(): Promise<HubSpotRole[]> {
+  const apiKey = HUBSPOT_API_KEY.value();
+  if (!apiKey) throw new Error('HubSpot API key not configured.');
+  return fetchRoles(apiKey);
+}
+
+/**
+ * The role to stamp on new users, or '' when none is usable.
+ *
+ * A configured role is checked against the portal once per instance: a stale id
+ * would make HubSpot reject the whole user creation, and a promotor without a
+ * HubSpot account is worse than one with the default permissions. Either way
+ * the reason lands in the logs instead of failing provisioning.
+ */
+async function resolveRoleId(apiKey: string): Promise<string> {
+  const { roleId } = await getHubSpotPortalSettings();
+  if (!roleId) {
+    console.warn(
+      '[hubspot] No role configured (settings/hubspot.roleId / HUBSPOT_ROLE_ID) — the new user keeps ' +
+      'HubSpot\'s default "ver solo sus propios contactos y negocios". Set it in Configuración → HubSpot.',
+    );
+    return '';
+  }
+  if (verifiedRoleId === roleId) return roleId;
+
+  try {
+    const roles = await fetchRoles(apiKey);
+    if (roles.length > 0 && !roles.some((role) => role.id === roleId)) {
+      console.error(
+        `[hubspot] configured roleId ${roleId} is not a role in this portal ` +
+        `(${roles.map((role) => `${role.id}:${role.name}`).join(', ')}) — creating the user without a role`,
+      );
+      return '';
+    }
+  } catch (err) {
+    // A rate-limited or unavailable roles endpoint must not block provisioning.
+    console.warn('[hubspot] could not verify the configured roleId — using it as-is:', err);
+  }
+
+  verifiedRoleId = roleId;
+  return roleId;
+}
+
+interface HubSpotUser {
+  id: string;
+  /** '' when the user carries no role — HubSpot's default minimum access. */
+  roleId: string;
+  superAdmin: boolean;
+}
+
+async function getUserByEmail(email: string, apiKey: string): Promise<HubSpotUser | null> {
+  const resp = await fetch(
+    `${HUBSPOT_API_BASE}/settings/v3/users/${encodeURIComponent(email)}?idProperty=EMAIL`,
+    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' } },
+  );
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    console.error(`[hubspot] getUser ${email} → HTTP ${resp.status} — ${await resp.text()}`);
+    return null;
+  }
+  const data = (await resp.json()) as {
+    id?: string | number;
+    roleId?: string | number | null;
+    roleIds?: Array<string | number>;
+    superAdmin?: boolean;
+  };
+  const roleId = data.roleId ?? data.roleIds?.[0];
+  return {
+    id: data.id === undefined || data.id === null ? '' : String(data.id),
+    roleId: roleId === undefined || roleId === null ? '' : String(roleId),
+    superAdmin: data.superAdmin === true,
+  };
+}
+
+async function assignRole(userId: string, roleId: string, apiKey: string): Promise<void> {
+  const resp = await fetch(`${HUBSPOT_API_BASE}/settings/v3/users/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roleId }),
+  });
+  if (!resp.ok) {
+    throw new Error(`HubSpot assignRole failed: HTTP ${resp.status} — ${await resp.text()}`);
+  }
+}
+
+export type RoleAssignment =
+  | 'assigned'            // the configured role was applied
+  | 'would_assign'        // dry run: the user has no role and would get one
+  | 'already_set'         // the user already carries a role — left untouched
+  | 'not_configured'      // no role configured for this portal
+  | 'user_not_found'
+  | 'skipped_super_admin'
+  | 'error';
+
+export interface EnsureRoleResult {
+  status: RoleAssignment;
+  roleId: string;
+  error?: string;
+}
+
+/**
+ * Gives an existing HubSpot user the configured role when they carry none.
+ *
+ * A user who already has a role — or a super admin, who has none by design — is
+ * never touched, so healing the accounts created before the role was configured
+ * can't quietly downgrade anyone.
+ */
+export async function ensureHubSpotUserRole(
+  email: string,
+  options: { dryRun?: boolean } = {},
+): Promise<EnsureRoleResult> {
+  const apiKey = HUBSPOT_API_KEY.value();
+  if (!apiKey) throw new Error('HubSpot API key not configured.');
+
+  const roleId = await resolveRoleId(apiKey);
+  if (!roleId) return { status: 'not_configured', roleId: '' };
+
+  try {
+    const user = await getUserByEmail(email, apiKey);
+    if (!user || !user.id) return { status: 'user_not_found', roleId };
+    if (user.superAdmin) return { status: 'skipped_super_admin', roleId };
+    if (user.roleId) return { status: 'already_set', roleId: user.roleId };
+    if (options.dryRun) return { status: 'would_assign', roleId };
+
+    await assignRole(user.id, roleId, apiKey);
+    console.info(`[hubspot] assigned role ${roleId} to ${email}`);
+    return { status: 'assigned', roleId };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[hubspot] ensureUserRole ${email} failed:`, message);
+    return { status: 'error', roleId, error: message };
+  }
+}
+
 async function getOwnerIdByEmail(email: string, apiKey: string): Promise<string | null> {
   try {
     const url = new URL(`${HUBSPOT_API_BASE}/crm/v3/owners`);
@@ -30,24 +246,40 @@ export async function findOwnerIdByEmail(email: string): Promise<string | null> 
   return getOwnerIdByEmail(email, apiKey);
 }
 
+export interface CreateHubSpotUserResult {
+  userId: string;
+  ownerId: string | null;
+  /** Role the user ended up with, '' when the portal has none configured. */
+  roleId: string;
+  roleStatus: RoleAssignment;
+}
+
 /**
  * Create a HubSpot portal user for a new employee.
- * First checks if the user already exists as an owner. If so, returns their
- * existing owner ID without creating a duplicate. On creation, fetches and
- * returns the owner ID for use in CRM record assignment.
+ *
+ * The user is created with the configured role, which is what decides whether
+ * they see every contact and deal or only their own — HubSpot's default for a
+ * roleless user is the latter. First checks if the user already exists as an
+ * owner: if so it returns their existing owner ID without creating a duplicate,
+ * and tops up the role when that older account never got one.
  */
 export async function createHubSpotUser(params: {
   corporateEmail: string;
   firstName: string;
   lastName: string;
-}): Promise<{ userId: string; ownerId: string | null }> {
+}): Promise<CreateHubSpotUserResult> {
   const apiKey = HUBSPOT_API_KEY.value();
   if (!apiKey) throw new Error('HubSpot API key not configured.');
+
+  // Read the settings once, then resolve the role from the cached copy.
+  const { primaryTeamId } = await getHubSpotPortalSettings();
+  const roleId = await resolveRoleId(apiKey);
 
   // Check if user already exists as an owner before creating
   const existingOwnerId = await getOwnerIdByEmail(params.corporateEmail, apiKey);
   if (existingOwnerId) {
-    return { userId: 'existing', ownerId: existingOwnerId };
+    const role = await ensureHubSpotUserRole(params.corporateEmail);
+    return { userId: 'existing', ownerId: existingOwnerId, roleId: role.roleId, roleStatus: role.status };
   }
 
   const resp = await fetch(`${HUBSPOT_API_BASE}/settings/v3/users/`, {
@@ -58,13 +290,15 @@ export async function createHubSpotUser(params: {
       firstName: params.firstName,
       lastName: params.lastName,
       sendWelcomeEmail: true,
-      primaryTeamId: '11727817',
+      ...(primaryTeamId ? { primaryTeamId } : {}),
+      ...(roleId ? { roleId } : {}),
     }),
   });
 
   if (resp.status === 409) {
     const ownerId = await getOwnerIdByEmail(params.corporateEmail, apiKey);
-    return { userId: 'existing', ownerId };
+    const role = await ensureHubSpotUserRole(params.corporateEmail);
+    return { userId: 'existing', ownerId, roleId: role.roleId, roleStatus: role.status };
   }
 
   if (!resp.ok) {
@@ -74,7 +308,12 @@ export async function createHubSpotUser(params: {
 
   const data = (await resp.json()) as { id: string };
   const ownerId = await getOwnerIdByEmail(params.corporateEmail, apiKey);
-  return { userId: data.id, ownerId };
+  return {
+    userId: data.id,
+    ownerId,
+    roleId,
+    roleStatus: roleId ? 'assigned' : 'not_configured',
+  };
 }
 
 /**
