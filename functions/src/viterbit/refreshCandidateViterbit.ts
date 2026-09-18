@@ -1,61 +1,19 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
-import { FieldValue } from 'firebase-admin/firestore';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { db } from '../utils/admin';
-import { toIsoDateString } from '../utils/startDate';
-import { fetchCandidateScreening } from './candidateScreening';
-import { extractJobPlaza } from './jobPlaza';
-import { getMissingHiringDetails, type HiringDetailFields } from '../utils/hiringDetails';
-import { sendOfferEmailCore } from '../offer/sendOfferEmail';
+import { syncCandidateFromViterbit } from './syncCandidate';
+import { releaseHeldOffer } from './releaseHeldOffer';
 
 const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
-const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
-
-async function fetchViterbitUser(userId: string, apiKey: string): Promise<string> {
-  try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/users/${userId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) return '';
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    return (data.full_name as string) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-// Fetches salary and start date from the candidature's hired_info.
-async function fetchCandidatureHiredInfo(
-  candidatureId: string,
-  apiKey: string,
-): Promise<{ salary: string; startDate: string; startDateIso: string }> {
-  try {
-    const resp = await fetch(`${VITERBIT_API_BASE}/candidatures/${candidatureId}`, {
-      headers: { 'X-API-Key': apiKey },
-    });
-    if (!resp.ok) return { salary: '', startDate: '', startDateIso: '' };
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    const hiredInfo = (data.hired_info as Record<string, unknown>) ?? {};
-    const salaryAmount = hiredInfo.salary as number | undefined;
-    const currency = (hiredInfo.currency as string) ?? 'MXN';
-    const salary = salaryAmount ? `$${salaryAmount.toLocaleString('es-MX')} ${currency}` : '';
-    const rawStartDate = (hiredInfo.start_at as string) ?? '';
-    const startDate = rawStartDate
-      ? format(new Date(rawStartDate), "d 'de' MMMM 'de' yyyy", { locale: es })
-      : '';
-    return { salary, startDate, startDateIso: toIsoDateString(rawStartDate) };
-  } catch {
-    return { salary: '', startDate: '', startDateIso: '' };
-  }
-}
 
 /**
- * Re-fetch job and candidature data from Viterbit and update the candidate's
- * salary, startDate, hiringManager, company, departmentProfile, and position fields.
+ * Re-reads Viterbit for one candidate and writes back everything that changed:
+ * nombre, correo, teléfono, salario, fecha de inicio, buró, psicometría,
+ * puesto, hiring manager, empresa, perfil, plaza y ciudad.
+ *
+ * It is the same sync the Viterbit update webhook and the bulk sweep run, so
+ * pressing the button can only bring the record forward to what Viterbit says —
+ * never to a different answer than the webhook would have written.
  */
 export const refreshCandidateViterbit = onCall(
   { region: 'us-central1' },
@@ -69,172 +27,33 @@ export const refreshCandidateViterbit = onCall(
     if (!snap.exists) throw new HttpsError('not-found', 'Candidato no encontrado');
 
     const candidate = snap.data()!;
-    const jobId = candidate.viterbitJobId as string | undefined;
-    if (!jobId) throw new HttpsError('failed-precondition', 'El candidato no tiene viterbitJobId.');
+    if (!candidate.viterbitCandidateId && !candidate.viterbitCandidatureId && !candidate.viterbitJobId) {
+      throw new HttpsError('failed-precondition', 'El candidato no está vinculado a Viterbit.');
+    }
 
-    const candidatureId = candidate.viterbitCandidatureId as string | undefined;
     const apiKey = VITERBIT_API_KEY.value();
+    if (!apiKey) throw new HttpsError('failed-precondition', 'VITERBIT_API_KEY no está configurada.');
 
-    // Fetch job and candidature in parallel
-    const [jobResp, candidatureInfo] = await Promise.all([
-      fetch(
-        `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=stages&includes[]=custom_field_values`,
-        { headers: { 'X-API-Key': apiKey } },
-      ),
-      candidatureId ? fetchCandidatureHiredInfo(candidatureId, apiKey) : Promise.resolve({ salary: '', startDate: '', startDateIso: '' }),
-    ]);
-
-    // Buró / psicometría de integridad live on the candidate, not the candidature.
-    const candidateViterbitId = candidate.viterbitCandidateId as string | undefined;
-    const screening = candidateViterbitId
-      ? await fetchCandidateScreening(candidateViterbitId, apiKey)
-      : { buro: '', psicometriaIntegridad: '' };
-
-    if (!jobResp.ok) {
-      throw new HttpsError('unavailable', `Viterbit API devolvió HTTP ${jobResp.status}`);
-    }
-
-    const json = (await jobResp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-
-    // custom_field_values is a key→{value:...} map
-    const custom = (data.custom_field_values as Record<string, unknown>)
-      ?? (data.custom_fields as Record<string, unknown>)
-      ?? {};
-    const getCustom = (key: string): string => {
-      const val = custom[key];
-      if (val && typeof val === 'object' && 'value' in val) {
-        return String((val as Record<string, unknown>).value ?? '');
-      }
-      return (val as string) ?? (data[key] as string) ?? '';
-    };
-
-    // Salary: candidature hired_info takes priority over job salary range
-    let salary = candidatureInfo.salary;
-    if (!salary) {
-      const salaryMin = data.salary_min as { amount?: number; currency?: string } | undefined;
-      const salaryMax = data.salary_max as { amount?: number; currency?: string } | undefined;
-      if (salaryMin?.amount && salaryMax?.amount) {
-        const currency = salaryMin.currency ?? 'MXN';
-        salary = salaryMin.amount === salaryMax.amount
-          ? `$${salaryMin.amount.toLocaleString('es-MX')} ${currency}`
-          : `$${salaryMin.amount.toLocaleString('es-MX')} - $${salaryMax.amount.toLocaleString('es-MX')} ${currency}`;
-      } else if (salaryMin?.amount) {
-        salary = `$${salaryMin.amount.toLocaleString('es-MX')} ${salaryMin.currency ?? 'MXN'}`;
-      } else if (salaryMax?.amount) {
-        salary = `$${salaryMax.amount.toLocaleString('es-MX')} ${salaryMax.currency ?? 'MXN'}`;
-      }
-    }
-
-    // Start date: candidature hired_info takes priority over custom field
-    const startDate = candidatureInfo.startDate || getCustom('hired_start_date_job') || getCustom('start_date') || '';
-    const startDateIso = candidatureInfo.startDateIso || toIsoDateString(startDate);
-
-    // Department profile
-    const deptProfileRaw = data.department_profile;
-    const deptProfileObj = (deptProfileRaw && typeof deptProfileRaw === 'object')
-      ? deptProfileRaw as Record<string, unknown>
-      : undefined;
-    let departmentProfile =
-      (deptProfileObj?.name as string) ||
-      (deptProfileObj?.title as string) ||
-      getCustom('job_department_profile') ||
-      getCustom('department_profile') ||
-      '';
-
-    if (!departmentProfile) {
-      const deptId = (data.department_id as string) || '';
-      const profileId = (data.department_profile_id as string) || '';
-      if (deptId && profileId) {
-        try {
-          const profResp = await fetch(
-            `${VITERBIT_API_BASE}/departments/${deptId}/profiles`,
-            { headers: { 'X-API-Key': apiKey } },
-          );
-          if (profResp.ok) {
-            const profJson = (await profResp.json()) as Record<string, unknown>;
-            const profiles =
-              (profJson.data as Array<Record<string, unknown>>) ??
-              (Array.isArray(profJson) ? (profJson as Array<Record<string, unknown>>) : []);
-            const matched = profiles.find((p) => String(p.id) === String(profileId));
-            if (matched) departmentProfile = (matched.name as string) || (matched.title as string) || '';
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const title = (data.title as string) || (data.name as string) || '';
-    const hiringManagerId = getCustom('custom_job_hiring_manager') || getCustom('hiring_manager') || '';
-    const hiringManager = hiringManagerId ? await fetchViterbitUser(hiringManagerId, apiKey) : '';
-    const company = getCustom('custom_job_empresa') || getCustom('company') || (data.external_id as string) || '';
-    const { plaza, city: plazaCity } = extractJobPlaza(data);
-
-    const updates: Record<string, unknown> = {
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-
-    if (plaza) updates.plaza = plaza;
-    if (plazaCity) updates.plazaCity = plazaCity;
-
-    if (title) updates.position = title;
-    if (salary) updates.viterbitSalary = salary;
-    if (startDate) updates.viterbitStartDate = startDate;
-    if (startDateIso) updates.viterbitStartDateIso = startDateIso;
-    if (hiringManager) updates.viterbitHiringManager = hiringManager;
-    if (company) updates.viterbitCompany = company;
-    // Only overwrite when Viterbit has a value — never clear what we already know.
-    if (screening.buro) updates.viterbitBuro = screening.buro;
-    if (screening.psicometriaIntegridad) {
-      updates.viterbitPsicometriaIntegridad = screening.psicometriaIntegridad;
-    }
-    if (departmentProfile) {
-      updates.viterbitDepartmentProfile = departmentProfile;
-      updates.profile = departmentProfile;
-    }
-
-    await snap.ref.update(updates);
+    const { changed, updates, snapshot } = await syncCandidateFromViterbit(snap.ref, candidate, apiKey);
 
     // The candidate was parked in offer_held because a hiring detail was
-    // missing. If this refresh just filled in the last one, send the letter
-    // now instead of leaving the recruiter to notice and click "Reenviar
-    // correo de carta oferta" separately — refreshing IS the fix, so it
-    // should finish the job.
-    let offerAutoSent = false;
-    let offerAutoSendError: string | null = null;
-    if (candidate.status === 'offer_held') {
-      const merged: HiringDetailFields = {
-        viterbitSalary: updates.viterbitSalary ?? candidate.viterbitSalary,
-        viterbitStartDate: updates.viterbitStartDate ?? candidate.viterbitStartDate,
-        viterbitBuro: updates.viterbitBuro ?? candidate.viterbitBuro,
-        viterbitPsicometriaIntegridad:
-          updates.viterbitPsicometriaIntegridad ?? candidate.viterbitPsicometriaIntegridad,
-      };
-      if (getMissingHiringDetails(merged).length === 0) {
-        try {
-          await sendOfferEmailCore(
-            candidateId,
-            { ...candidate, ...updates },
-            request.auth.uid,
-          );
-          offerAutoSent = true;
-        } catch (err) {
-          offerAutoSendError = err instanceof Error ? err.message : String(err);
-          console.error(`[refreshCandidateViterbit] auto-send failed for ${candidateId}:`, err);
-        }
-      }
-    }
+    // missing. If this refresh just filled in the last one, send the letter now
+    // instead of leaving the recruiter to notice and press "Reenviar correo de
+    // carta oferta" separately — refreshing IS the fix, so it should finish the
+    // job.
+    const release = await releaseHeldOffer(candidateId, candidate, updates, request.auth.uid);
 
     return {
       success: true,
-      salary: (updates.viterbitSalary as string) || null,
-      startDate: (updates.viterbitStartDate as string) || null,
-      position: (updates.position as string) || null,
-      buro: screening.buro || null,
-      psicometriaIntegridad: screening.psicometriaIntegridad || null,
-      offerAutoSent,
-      offerAutoSendError,
+      /** Fields written by this refresh; empty means Viterbit had nothing new. */
+      changed,
+      salary: snapshot.salary || null,
+      startDate: snapshot.startDate || null,
+      position: snapshot.position || null,
+      buro: snapshot.buro || null,
+      psicometriaIntegridad: snapshot.psicometriaIntegridad || null,
+      offerAutoSent: release.sent,
+      offerAutoSendError: release.error,
     };
   },
 );

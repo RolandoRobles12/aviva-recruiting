@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { Bell, Settings, Link, Clock, Wrench, HelpCircle, Palette } from 'lucide-react';
+import { Bell, Settings, Link, Clock, Wrench, HelpCircle, Palette, Building2 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
 import { LinkDurationTab } from '../components/settings/LinkDurationTab';
 import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { BrandingTab } from '../components/settings/BrandingTab';
+import { HubspotTab } from '../components/settings/HubspotTab';
 import { useSettings } from '../hooks/useSettings';
 import {
   backfillCandidateDocuments,
   backfillCandidatePlaza,
   runPerformanceChecksNow,
   recalculatePerformanceStatuses,
+  syncViterbitCandidatesNow,
 } from '../services/functions';
 import type { PerformanceRecalcChange } from '../services/functions';
 
@@ -27,7 +29,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 const stageLabel = (status: string) => STAGE_LABELS[status] ?? status;
 
-type Tab = 'gmail' | 'reminders' | 'links' | 'questions' | 'branding' | 'admin';
+type Tab = 'gmail' | 'reminders' | 'links' | 'questions' | 'branding' | 'hubspot' | 'admin';
 
 const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
@@ -35,6 +37,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'links', label: 'Duración de enlaces', Icon: Clock },
   { id: 'questions', label: 'Preguntas del formulario', Icon: HelpCircle },
   { id: 'branding', label: 'Marca', Icon: Palette },
+  { id: 'hubspot', label: 'HubSpot', Icon: Building2 },
   { id: 'admin', label: 'Admin', Icon: Wrench },
 ];
 
@@ -45,6 +48,8 @@ function AdminTab() {
   const [plazaResult, setPlazaResult] = useState<string | null>(null);
   const [runningPerf, setRunningPerf] = useState(false);
   const [perfResult, setPerfResult] = useState<string | null>(null);
+  const [runningSync, setRunningSync] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
   const [runningRecalc, setRunningRecalc] = useState<'dry' | 'real' | null>(null);
   const [recalcResult, setRecalcResult] = useState<string | null>(null);
   const [recalcChanges, setRecalcChanges] = useState<PerformanceRecalcChange[]>([]);
@@ -66,6 +71,19 @@ function AdminTab() {
       setSimulated(false);
     } finally {
       setRunningRecalc(null);
+    }
+  };
+
+  const handleViterbitSync = async () => {
+    setRunningSync(true);
+    setSyncResult(null);
+    try {
+      const res = await syncViterbitCandidatesNow({});
+      setSyncResult(res.data.message);
+    } catch (err) {
+      setSyncResult(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setRunningSync(false);
     }
   };
 
@@ -146,6 +164,27 @@ function AdminTab() {
         </button>
         {plazaResult && (
           <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{plazaResult}</p>
+        )}
+      </div>
+      <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+        <div>
+          <p className="text-sm font-medium text-gray-700">Sincronizar con Viterbit ahora</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Vuelve a leer Viterbit para todos los candidatos en proceso y actualiza lo que haya
+            cambiado allá: nombre, correo, teléfono, salario, fecha de inicio, buró, psicometría,
+            puesto, perfil, plaza y ciudad. Úsalo para ponerte al día en bloque; para un solo
+            candidato está el botón Sincronizar de su ficha.
+          </p>
+        </div>
+        <button
+          onClick={handleViterbitSync}
+          disabled={runningSync}
+          className="flex items-center gap-2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-900 transition-colors disabled:opacity-60"
+        >
+          {runningSync ? 'Sincronizando...' : 'Sincronizar ahora'}
+        </button>
+        {syncResult && (
+          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{syncResult}</p>
         )}
       </div>
       <div className="border border-gray-200 rounded-xl p-4 space-y-3">
@@ -316,6 +355,7 @@ export function SettingsPage() {
               )}
               {activeTab === 'questions' && <QuestionsTab />}
               {activeTab === 'branding' && <BrandingTab />}
+              {activeTab === 'hubspot' && <HubspotTab />}
               {activeTab === 'admin' && <AdminTab />}
             </>
           )}

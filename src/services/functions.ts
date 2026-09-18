@@ -22,6 +22,8 @@ export const createCandidateAndInvite = httpsCallable<
 export interface ProvisionResult {
   success: boolean;
   hubspotCreated: boolean;
+  /** How the HubSpot role landed; 'not_configured' means the account got HubSpot's minimum access. */
+  hubspotRoleStatus?: HubspotRoleStatus | null;
   slackPrimaryInvited: boolean;
   slackGuestInvited: boolean;
   corporateEmail?: string;
@@ -135,6 +137,8 @@ export const refreshCandidateViterbit = httpsCallable<
   { candidateId: string },
   {
     success: boolean;
+    /** Fields this sync wrote; empty means Viterbit had nothing new. */
+    changed: string[];
     salary: string | null;
     startDate: string | null;
     position: string | null;
@@ -145,6 +149,63 @@ export const refreshCandidateViterbit = httpsCallable<
     offerAutoSendError: string | null;
   }
 >(functions, 'refreshCandidateViterbit');
+
+/** Re-reads Viterbit for every candidate still in flight, in one pass. */
+export const syncViterbitCandidatesNow = httpsCallable<
+  Record<string, never>,
+  {
+    checked: number;
+    updated: number;
+    offersSent: number;
+    errors: number;
+    pending: number;
+    message: string;
+  }
+>(functions, 'syncViterbitCandidatesNow', MAINTENANCE_TIMEOUT);
+
+export interface HubspotRole {
+  id: string;
+  name: string;
+}
+
+/** Roles defined in the HubSpot portal, plus the one configured for new users. */
+export const listHubspotRoles = httpsCallable<
+  Record<string, never>,
+  { roles: HubspotRole[]; roleId: string; primaryTeamId: string }
+>(functions, 'listHubspotRoles');
+
+export type HubspotRoleStatus =
+  | 'assigned'
+  | 'would_assign'
+  | 'already_set'
+  | 'not_configured'
+  | 'user_not_found'
+  | 'skipped_super_admin'
+  | 'error';
+
+export interface HubspotRoleSyncEntry {
+  candidateId: string;
+  name: string;
+  email: string;
+  status: HubspotRoleStatus;
+  error?: string;
+}
+
+/** Applies the configured role to provisioned HubSpot accounts that have none. */
+export const syncHubspotUserRoles = httpsCallable<
+  { dryRun?: boolean },
+  {
+    dryRun: boolean;
+    roleId: string;
+    checked: number;
+    assigned: number;
+    alreadySet: number;
+    notFound: number;
+    errors: number;
+    details: HubspotRoleSyncEntry[];
+    message: string;
+  }
+>(functions, 'syncHubspotUserRoles', MAINTENANCE_TIMEOUT);
 
 export const createDriveFolderManual = httpsCallable<
   { candidateId: string },

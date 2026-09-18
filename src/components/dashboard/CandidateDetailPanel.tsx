@@ -389,9 +389,12 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 shrink-0">
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <ViterbitSyncButton c={c} />
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100">
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       {/* ── Disqualification modal ─────────────────────────────────────────── */}
@@ -957,6 +960,90 @@ function TabDocs({ c, formUrl, formExpired, copied, onCopy, extendingToken, toke
           )}
         </Section>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Viterbit sync — always available, not only while data is missing
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const VITERBIT_FIELD_LABELS: Record<string, string> = {
+  firstName: 'nombre',
+  lastName: 'apellidos',
+  email: 'correo',
+  phone: 'teléfono',
+  position: 'puesto',
+  profile: 'perfil',
+  plaza: 'plaza',
+  plazaCity: 'ciudad',
+  viterbitSalary: 'salario',
+  viterbitStartDate: 'fecha de inicio',
+  viterbitStartDateIso: 'fecha de inicio',
+  viterbitBuro: 'buró',
+  viterbitPsicometriaIntegridad: 'psicometría de integridad',
+  viterbitHiringManager: 'hiring manager',
+  viterbitCompany: 'empresa',
+  viterbitDepartmentProfile: 'perfil',
+  viterbitReference: 'referencia',
+  viterbitContrasena: 'contraseña del correo',
+};
+
+/**
+ * Pulls whatever changed in Viterbit into this candidate.
+ *
+ * Always available: a value that is present but outdated looks no different
+ * from a correct one, so gating the refresh behind "faltan datos" left editing
+ * Firestore by hand as the only way to correct one.
+ */
+function ViterbitSyncButton({ c }: { c: Candidate }) {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState('');
+  const [error, setError] = useState('');
+
+  const linked = !!(c.viterbitCandidateId || c.viterbitCandidatureId || c.viterbitJobId);
+  if (!linked) return null;
+
+  async function handleSync() {
+    setSyncing(true);
+    setError('');
+    setResult('');
+    try {
+      const res = await refreshCandidateViterbit({ candidateId: c.id });
+      const changed = res.data.changed ?? [];
+      const labels = [...new Set(changed.map((f) => VITERBIT_FIELD_LABELS[f] ?? f))];
+      setResult(
+        res.data.offerAutoSent
+          ? 'Datos completos — carta oferta enviada'
+          : labels.length > 0
+            ? `Actualizado: ${labels.join(', ')}`
+            : 'Sin cambios en Viterbit'
+      );
+      setTimeout(() => setResult(''), 6000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al sincronizar.');
+      setTimeout(() => setError(''), 6000);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {(result || error) && (
+        <span className={`text-[11px] max-w-[220px] truncate ${error ? 'text-red-600' : 'text-gray-500'}`}>
+          {error || result}
+        </span>
+      )}
+      <button
+        onClick={handleSync}
+        disabled={syncing}
+        title="Traer de Viterbit los datos del candidato y de la contratación"
+        className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 hover:border-gray-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
+      >
+        <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+        {syncing ? 'Sincronizando...' : 'Sincronizar'}
+      </button>
     </div>
   );
 }
@@ -1648,6 +1735,15 @@ function TabAccounts({ c, corpEmail, setCorpEmail, provisioning, provisionResult
                 <p className="text-[10px] pl-4 opacity-80">{provisionResult.hubspotError}</p>
               )}
             </div>
+            {provisionResult.hubspotCreated && provisionResult.hubspotRoleStatus === 'not_configured' && (
+              <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg">
+                <AlertTriangle size={11} className="shrink-0 mt-0.5" />
+                <span className="text-[10px]">
+                  La cuenta se creó sin rol, así que solo verá sus propios contactos y negocios.
+                  Elige el rol en Configuración → HubSpot y aplícalo a las cuentas existentes.
+                </span>
+              </div>
+            )}
           </div>
         )}
       </Section>
