@@ -11,9 +11,9 @@ const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
  * nombre, correo, teléfono, salario, fecha de inicio, buró, psicometría,
  * puesto, hiring manager, empresa, perfil, plaza y ciudad.
  *
- * It is the same sync the scheduled sweep and the Viterbit update webhook run,
- * so pressing the button can only bring the record forward to what Viterbit
- * says — never to a different answer than the automatic path would give.
+ * It is the same sync the Viterbit update webhook and the bulk sweep run, so
+ * pressing the button can only bring the record forward to what Viterbit says —
+ * never to a different answer than the webhook would have written.
  */
 export const refreshCandidateViterbit = onCall(
   { region: 'us-central1' },

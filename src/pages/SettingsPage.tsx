@@ -172,7 +172,8 @@ function AdminTab() {
           <p className="text-xs text-gray-400 mt-0.5">
             Vuelve a leer Viterbit para todos los candidatos en proceso y actualiza lo que haya
             cambiado allá: nombre, correo, teléfono, salario, fecha de inicio, buró, psicometría,
-            puesto, perfil, plaza y ciudad. Corre solo, cada 2 horas; este botón es para no esperar.
+            puesto, perfil, plaza y ciudad. Úsalo para ponerte al día en bloque; para un solo
+            candidato está el botón Sincronizar de su ficha.
           </p>
         </div>
         <button

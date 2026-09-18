@@ -1,18 +1,15 @@
 /**
- * Periodic Viterbit → dashboard sync.
+ * Viterbit → dashboard sync for every candidate still in flight, on demand.
  *
- * Viterbit only calls the webhook on stage changes, so an edit to the candidate
- * or to the hiring details (salario, fecha de inicio, buró, psicometría, plaza,
- * puesto) raises no event at all in most portals. This sweep is what makes
- * those edits land without anyone pressing a button: it re-reads Viterbit for
- * every candidate still in flight and writes back the differences.
+ * The per-candidate button covers the everyday case; this is the catch-up for
+ * when several records drifted at once — a batch edited in Viterbit, or a spell
+ * where the update webhook wasn't reaching us.
  *
  * Candidates past induction are left alone — their Viterbit record no longer
  * drives anything in the dashboard, and re-reading them would only spend API
  * quota.
  */
 
-import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { db } from '../utils/admin';
@@ -44,7 +41,7 @@ const BATCH_SIZE = 4;
 /**
  * Stop before the function's own 540s ceiling, so the sweep ends with a report
  * instead of being killed mid-batch. Whatever it didn't reach is picked up by
- * the next run — every write is independent.
+ * running it again — every write is independent.
  */
 const TIME_BUDGET_MS = 8 * 60 * 1000;
 
@@ -53,7 +50,7 @@ export interface SyncSweepResult {
   updated: number;
   offersSent: number;
   errors: number;
-  /** Candidates left for the next run because the time budget ran out. */
+  /** Candidates left over because the time budget ran out; run it again. */
   pending: number;
   message: string;
 }
@@ -85,7 +82,7 @@ async function syncAll(apiKey: string): Promise<SyncSweepResult> {
 
   for (let i = 0; i < docs.length; i += BATCH_SIZE) {
     if (Date.now() - startedAt > TIME_BUDGET_MS) {
-      console.warn(`[syncViterbitCandidates] time budget spent — ${docs.length - processed} candidate(s) left for the next run`);
+      console.warn(`[syncViterbitCandidates] time budget spent — ${docs.length - processed} candidate(s) left over`);
       break;
     }
     const batch = docs.slice(i, i + BATCH_SIZE);
@@ -115,26 +112,13 @@ async function syncAll(apiKey: string): Promise<SyncSweepResult> {
   const message =
     `${processed} candidato(s) revisado(s): ${updated} actualizado(s), ` +
     `${offersSent} carta(s) oferta enviada(s), ${errors} con error` +
-    (pending > 0 ? `, ${pending} pendiente(s) para la siguiente corrida.` : '.');
+    (pending > 0 ? `, ${pending} pendiente(s) — vuelve a ejecutarlo.` : '.');
   console.info(`[syncViterbitCandidates] ${message}`);
 
   return { checked: processed, updated, offersSent, errors, pending, message };
 }
 
-/** Runs every 2 hours, matching the cadence of the corporate-email poll. */
-export const syncViterbitCandidates = onSchedule(
-  {
-    schedule: 'every 2 hours',
-    region: 'us-central1',
-    memory: '256MiB',
-    timeoutSeconds: 540,
-  },
-  async () => {
-    await syncAll(VITERBIT_API_KEY.value());
-  },
-);
-
-/** Same sweep, on demand, from Configuración → Admin. */
+/** Run from Configuración → Admin. */
 export const syncViterbitCandidatesNow = onCall(
   { region: 'us-central1', memory: '256MiB', timeoutSeconds: 540 },
   async (request) => {

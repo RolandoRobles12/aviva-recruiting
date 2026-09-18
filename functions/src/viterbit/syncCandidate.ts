@@ -8,8 +8,8 @@
  * every document generated from it — on the values captured that day.
  *
  * This module re-reads Viterbit and writes back only what actually changed. It
- * is shared by the manual "Sincronizar" button, the Viterbit update webhook and
- * the scheduled sync, so all three agree on what a field means.
+ * is shared by the "Sincronizar" button on a candidate, the Viterbit update
+ * webhook and the bulk sweep, so all three agree on what a field means.
  */
 
 import { FieldValue } from 'firebase-admin/firestore';

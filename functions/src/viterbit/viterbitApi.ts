@@ -1,8 +1,8 @@
 /**
  * One place to read Viterbit.
  *
- * The webhook, the manual refresh and the periodic sync all need the same job /
- * candidature / candidate fields. Each used to fetch and parse them on its own,
+ * The webhook, the per-candidate refresh and the bulk sync all need the same job
+ * / candidature / candidate fields. Each used to fetch and parse them on its own,
  * which is how the copies drifted: the webhook captured a snapshot at creation
  * time and nothing ever read Viterbit again for those fields, so an edit made
  * there after the candidate existed never reached Firestore.

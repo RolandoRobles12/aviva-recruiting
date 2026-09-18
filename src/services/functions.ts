@@ -150,7 +150,7 @@ export const refreshCandidateViterbit = httpsCallable<
   }
 >(functions, 'refreshCandidateViterbit');
 
-/** Re-reads Viterbit for every candidate still in flight (the scheduled sweep, on demand). */
+/** Re-reads Viterbit for every candidate still in flight, in one pass. */
 export const syncViterbitCandidatesNow = httpsCallable<
   Record<string, never>,
   {

@@ -113,7 +113,7 @@ function parseViterbitPayload(body: Record<string, unknown>): ParsedViterbitEven
 
 // ─── Viterbit API helpers ──────────────────────────────────────────────────────
 // Job, candidature and candidate reads live in ./viterbitApi so the webhook,
-// the manual refresh and the scheduled sync all parse Viterbit the same way.
+// the per-candidate refresh and the bulk sync all parse Viterbit the same way.
 
 
 // ─── Stage handlers ────────────────────────────────────────────────────────────

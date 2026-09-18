@@ -61,9 +61,9 @@ Sistema de reclutamiento y gestión de todo el proceso de ingreso para el equipo
 - Aprobaciones pendientes procesadas de forma programada
 - **Viterbit manda sobre los datos del candidato y de la contratación**: lo que se edite allá (nombre,
   correo, teléfono, salario, fecha de inicio, buró, psicometría, puesto, perfil, plaza y ciudad) se
-  refleja en el tablero por tres vías — el webhook de actualización, un barrido automático cada 2 h y
-  el botón **Sincronizar** de la ficha del candidato. Salario y fecha de inicio se leen solo del
-  `hired_info` de la candidatura, nunca del rango de la vacante
+  refleja en el tablero por el webhook de actualización, por el botón **Sincronizar** de la ficha del
+  candidato y, para ponerse al día en bloque, por *Configuración → Admin*. Salario y fecha de inicio
+  se leen solo del `hired_info` de la candidatura, nunca del rango de la vacante
 
 ### 6. Seguimiento de desempeño
 
