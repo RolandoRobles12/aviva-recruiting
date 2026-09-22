@@ -1,23 +1,19 @@
-import { defineString, defineSecret } from 'firebase-functions/params';
+import { defineString } from 'firebase-functions/params';
+import { SLACK_BOT_TOKEN, SLACK_CHAT_BOT_TOKEN, SLACK_GUEST_BOT_TOKEN, optionalSecret } from '../utils/secrets';
 
-// ─── Primary workspace: full member ─────────────────────────────────────────
-const SLACK_BOT_TOKEN = defineString('SLACK_BOT_TOKEN');
+// Tokens (SLACK_BOT_TOKEN for the primary workspace, SLACK_CHAT_BOT_TOKEN for
+// OCR alerts, SLACK_GUEST_BOT_TOKEN for the guest workspace) live in Secret
+// Manager — see utils/secrets.ts.
 
 // ─── Performance check channel ───────────────────────────────────────────────
 /** Channel ID for 15/30-day performance check alerts (e.g. C08XXXXXXXX). */
 const SLACK_PERFORMANCE_CHANNEL_ID = defineString('SLACK_PERFORMANCE_CHANNEL_ID', { default: '' });
 
 // ─── OCR alert bot token + channel ───────────────────────────────────────────
-/**
- * Bot token (xoxb-...) with chat:write scope for posting OCR alerts.
- * Store securely: firebase functions:secrets:set SLACK_CHAT_BOT_TOKEN
- */
-const SLACK_CHAT_BOT_TOKEN = defineSecret('SLACK_CHAT_BOT_TOKEN');
 /** Channel ID (e.g. C08XXXXXXXX) where OCR alerts are posted. */
 const SLACK_OCR_CHANNEL_ID = defineString('SLACK_OCR_CHANNEL_ID', { default: '' });
 
 // ─── Secondary workspace: single-channel guest ─────────────────────────────
-const SLACK_GUEST_BOT_TOKEN = defineString('SLACK_GUEST_BOT_TOKEN', { default: '' });
 const SLACK_GUEST_CHANNEL_ID = defineString('SLACK_GUEST_CHANNEL_ID', { default: '' });
 
 const SLACK_API_BASE = 'https://slack.com/api';
@@ -158,7 +154,7 @@ export async function inviteSlackGuest(params: {
   firstName: string;
   lastName: string;
 }): Promise<SlackInviteResult> {
-  const guestToken = SLACK_GUEST_BOT_TOKEN.value();
+  const guestToken = optionalSecret(SLACK_GUEST_BOT_TOKEN);
   const guestChannelId = SLACK_GUEST_CHANNEL_ID.value();
 
   if (!guestToken) {

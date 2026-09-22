@@ -1,6 +1,5 @@
 import { randomBytes } from 'crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -12,8 +11,8 @@ import { mergeScreeningFields } from '../utils/viterbitFields';
 import { fetchCandidateScreening } from '../viterbit/candidateScreening';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
 import { sendOfferEmailCore } from './sendOfferEmail';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 async function fetchHiredInfo(

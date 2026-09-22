@@ -1,5 +1,4 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { checkTicketResolved } from './jiraService';
@@ -7,8 +6,8 @@ import { createHubSpotUser } from './hubspotService';
 import { inviteSlackDual } from './slackService';
 import { sendEmail } from '../email/gmailClient';
 import { inductionTemplate } from '../email/templates';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 async function moveToViterbitStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {

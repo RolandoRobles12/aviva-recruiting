@@ -22,9 +22,9 @@ import {
 } from './viterbitApi';
 import { splitFullName, syncCandidateFromViterbit } from './syncCandidate';
 import { releaseHeldOffer } from './releaseHeldOffer';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
 // ─── Config params ─────────────────────────────────────────────────────────────
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 // Comma-separated department profile names to process. Leave empty to allow all.
 const HIRING_PROFILES = defineString('HIRING_PROFILES', {

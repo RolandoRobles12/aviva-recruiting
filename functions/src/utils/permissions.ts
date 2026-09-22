@@ -36,3 +36,25 @@ export async function userHasPermission(
 
   return defaultsByRole[role] ?? false;
 }
+
+/** Same defaults as the client's candidates_view_own / candidates_view_all. */
+const VIEW_OWN_DEFAULTS = { reclutador: true, lider: true, nomina: false, legal: false };
+const VIEW_ALL_DEFAULTS = { reclutador: false, lider: true, nomina: true, legal: true };
+
+/**
+ * For callables that act on a candidate from the candidate panel (sync to
+ * Drive, append to Sheets): any staff role that can see candidates. Being
+ * signed in used to be enough, which let any Firebase account trigger writes.
+ */
+export async function requireCandidateAccess(uid: string | undefined): Promise<void> {
+  // Imported lazily so this module stays usable without firebase-functions.
+  const { HttpsError } = await import('firebase-functions/v2/https');
+  if (!uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+  const [own, all] = await Promise.all([
+    userHasPermission(uid, 'candidates_view_own', VIEW_OWN_DEFAULTS),
+    userHasPermission(uid, 'candidates_view_all', VIEW_ALL_DEFAULTS),
+  ]);
+  if (!own && !all) {
+    throw new HttpsError('permission-denied', 'No tienes permiso para trabajar con candidatos.');
+  }
+}

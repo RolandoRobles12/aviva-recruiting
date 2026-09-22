@@ -8,10 +8,13 @@ import { reminderTemplate, offerTemplate } from './templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { DOCUMENT_TYPES_REQUIRED, DOCUMENT_LABELS } from '../utils/documentTypes';
 import { getLogoUrl } from '../utils/branding';
+import { ALL_SECRETS } from '../utils/secrets';
 
 // Runs every day at 9:00 AM Mexico City time
 export const scheduleReminders = functions
   .region('us-central1')
+  // v1 functions do not inherit setGlobalOptions; see utils/secrets.ts.
+  .runWith({ secrets: ALL_SECRETS })
   .pubsub.schedule('0 9 * * *')
   .timeZone('America/Mexico_City')
   .onRun(async () => {

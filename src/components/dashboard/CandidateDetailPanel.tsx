@@ -210,6 +210,9 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const [driveSyncWarning, setDriveSyncWarning] = useState('');
   const [appendingSheets, setAppendingSheets] = useState(false);
   const [sheetsAppended, setSheetsAppended] = useState(false);
+  // Per-destination outcome: several spreadsheets can be configured, and a
+  // failure in one used to vanish into the console.
+  const [sheetsMessages, setSheetsMessages] = useState<{ text: string; tone: 'ok' | 'warn' | 'error' }[]>([]);
 
   // Reset tab/notes when candidate changes
   useEffect(() => {
@@ -337,13 +340,19 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
     try {
       const res = await createDriveFolderManual({ candidateId: c.id });
       setDriveFolderUrl(res.data.folderUrl);
+      const warnings: string[] = [];
       if (res.data.failed?.length) {
-        setDriveSyncWarning(
+        warnings.push(
           `No se pudieron subir: ${res.data.failed.join(', ')}. Vuelve a intentar para completar el expediente.`
         );
       }
+      if (res.data.otherErrors?.length) {
+        warnings.push(`Otras carpetas con error: ${res.data.otherErrors.join('; ')}`);
+      }
+      setDriveSyncWarning(warnings.join(' '));
     } catch (err: unknown) {
       console.error('[createDriveFolder]', err);
+      setDriveSyncWarning(err instanceof Error ? err.message : 'No se pudo sincronizar con Drive.');
     } finally {
       setCreatingDriveFolder(false);
     }
@@ -352,11 +361,26 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
   const handleAppendSheets = async () => {
     setAppendingSheets(true);
     setSheetsAppended(false);
+    setSheetsMessages([]);
     try {
-      await appendSheetsRowManual({ candidateId: c.id });
+      const res = await appendSheetsRowManual({ candidateId: c.id });
       setSheetsAppended(true);
+      setSheetsMessages(
+        (res.data.results ?? [])
+          .filter((r) => r.status !== 'omitida')
+          .map((r) =>
+            r.status === 'agregada'
+              ? { text: `${r.label}: fila agregada`, tone: 'ok' as const }
+              : r.status === 'ya_existia'
+                ? { text: `${r.label}: ya estaba en la hoja, no se duplicó`, tone: 'warn' as const }
+                : { text: `${r.label}: ${r.message ?? 'error'}`, tone: 'error' as const }
+          )
+      );
     } catch (err: unknown) {
       console.error('[appendSheets]', err);
+      setSheetsMessages([
+        { text: err instanceof Error ? err.message : 'No se pudo agregar a Sheets.', tone: 'error' },
+      ]);
     } finally {
       setAppendingSheets(false);
     }
@@ -674,8 +698,22 @@ export function CandidateDetailPanel({ candidate: c, onClose }: Props) {
               ) : (
                 <TableProperties size={12} />
               )}
-              {appendingSheets ? 'Agregando...' : sheetsAppended ? 'Fila agregada ✓' : 'Agregar a Sheets'}
+              {appendingSheets ? 'Agregando...' : sheetsAppended ? 'Listo ✓' : 'Agregar a Sheets'}
             </button>
+            {sheetsMessages.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {sheetsMessages.map((m, i) => (
+                  <li
+                    key={i}
+                    className={`text-[11px] ${
+                      m.tone === 'ok' ? 'text-emerald-700' : m.tone === 'warn' ? 'text-amber-700' : 'text-red-700'
+                    }`}
+                  >
+                    {m.text}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Quick actions */}

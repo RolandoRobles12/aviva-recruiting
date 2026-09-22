@@ -1,10 +1,9 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { createHubSpotUser } from './hubspotService';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 interface ViterbitEmailResult {

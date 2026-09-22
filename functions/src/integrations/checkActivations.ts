@@ -1,12 +1,10 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineString, defineSecret } from 'firebase-functions/params';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as adminSdk from 'firebase-admin';
 import { db } from '../utils/admin';
 import { parseCandidateStartDate } from '../utils/startDate';
+import { CHECKINS_SERVICE_ACCOUNT, VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
-const CHECKINS_SERVICE_ACCOUNT = defineSecret('CHECKINS_SERVICE_ACCOUNT');
 
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 // Legacy fallback: Viterbit stage ids are per job, so a global id only works
@@ -76,7 +74,6 @@ export const checkActivations = onSchedule(
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 300,
-    secrets: [CHECKINS_SERVICE_ACCOUNT],
   },
   async () => {
     const apiKey = VITERBIT_API_KEY.value();

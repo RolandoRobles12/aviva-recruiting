@@ -27,3 +27,7 @@ functions/.env.*
 *.njsproj
 *.sln
 *.sw?
+
+# Firebase secrets for the local emulator
+functions/.secret.local
+.secret.local

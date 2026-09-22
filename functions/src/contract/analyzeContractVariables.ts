@@ -1,10 +1,9 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
 import { getStorage } from 'firebase-admin/storage';
 import { PDFDocument } from 'pdf-lib';
 import Anthropic from '@anthropic-ai/sdk';
+import { ANTHROPIC_API_KEY } from '../utils/secrets';
 
-const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
 
 export interface DetectedPlaceholder {
   occurrence: number;

@@ -184,6 +184,8 @@ export interface Candidate {
   jiraTicketId?: string;
   // Google Drive
   driveFolderId?: string;
+  /** Carpeta del candidato en cada destino de Drive configurado (id de destino → carpeta). */
+  driveFolders?: Record<string, string>;
   driveSyncStatus?: {
     syncedAt: Timestamp;
     uploaded: string[];

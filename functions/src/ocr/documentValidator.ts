@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { defineString } from 'firebase-functions/params';
+import { ANTHROPIC_API_KEY } from '../utils/secrets';
 
-const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
 
 let client: Anthropic | null = null;
 

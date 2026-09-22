@@ -8,6 +8,7 @@ import { offerTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
 import { getLogoUrl } from '../utils/branding';
 import { getMissingHiringDetails, formatMissingHiringDetails } from '../utils/hiringDetails';
+import { ALL_SECRETS } from '../utils/secrets';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 
@@ -20,6 +21,8 @@ const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
  */
 export const onCandidateCreated = functions
   .region('us-central1')
+  // v1 functions do not inherit setGlobalOptions; see utils/secrets.ts.
+  .runWith({ secrets: ALL_SECRETS })
   .firestore.document('candidates/{candidateId}')
   .onCreate(async (snap, context) => {
     const candidate = snap.data();

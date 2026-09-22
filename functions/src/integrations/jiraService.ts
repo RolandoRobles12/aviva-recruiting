@@ -1,8 +1,8 @@
 import { defineString } from 'firebase-functions/params';
+import { JIRA_API_TOKEN } from '../utils/secrets';
 
 const JIRA_BASE_URL = defineString('JIRA_BASE_URL');       // e.g. https://aviva.atlassian.net
 const JIRA_USER_EMAIL = defineString('JIRA_USER_EMAIL');   // e.g. admin@avivacredito.com
-const JIRA_API_TOKEN = defineString('JIRA_API_TOKEN');
 const JIRA_PROJECT_KEY = defineString('JIRA_PROJECT_KEY'); // e.g. IT
 
 function getAuthHeader(): string {

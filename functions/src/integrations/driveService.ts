@@ -1,14 +1,12 @@
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 
-const EXPEDIENTES_FOLDER_ID = '1wVBfz7_Mx10bOcmpnkVTaeQBFRNVLwkp';
-
 /** Escape a string for use inside single quotes in a Drive query. */
 function escapeDriveQuery(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-function getDriveClient(serviceAccount: object) {
+export function getDriveClient(serviceAccount: object) {
   const auth = new google.auth.GoogleAuth({
     credentials: serviceAccount,
     scopes: ['https://www.googleapis.com/auth/drive'],
@@ -17,11 +15,13 @@ function getDriveClient(serviceAccount: object) {
 }
 
 /**
- * Creates a candidate folder in Drive under the Expedientes folder.
+ * Creates (or finds) the candidate's folder inside `parentFolderId` — one of
+ * the Drive destinations configured in settings/google_workspace.
  * Name format: "FIRSTNAME LASTNAME_viterbitCandidatureId"
- * Returns the created folder ID. Throws on error so the caller gets the real message.
+ * Returns the folder ID. Throws on error so the caller gets the real message.
  */
 export async function createCandidateDriveFolder(
+  parentFolderId: string,
   firstName: string,
   lastName: string,
   viterbitCandidateId: string,
@@ -32,7 +32,7 @@ export async function createCandidateDriveFolder(
 
   // Check if folder already exists to avoid duplicates
   const existing = await drive.files.list({
-    q: `name='${escapeDriveQuery(folderName)}' and '${EXPEDIENTES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    q: `name='${escapeDriveQuery(folderName)}' and '${escapeDriveQuery(parentFolderId)}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id,name)',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
@@ -47,7 +47,7 @@ export async function createCandidateDriveFolder(
     requestBody: {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: [EXPEDIENTES_FOLDER_ID],
+      parents: [parentFolderId],
     },
     fields: 'id',
     supportsAllDrives: true,

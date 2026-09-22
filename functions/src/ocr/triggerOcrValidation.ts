@@ -1,5 +1,5 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
-import { defineString, defineSecret } from 'firebase-functions/params';
+import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { updateCandidateDocument, updateCandidateCompletion, getCandidateById } from '../utils/candidates';
@@ -9,7 +9,6 @@ import { ALL_DOCUMENT_TYPES, DOCUMENT_LABELS } from '../utils/documentTypes';
 import { notifyFieldsUnreadable, notifyCurpMismatch } from '../integrations/slackService';
 
 const APP_URL             = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
-const SLACK_CHAT_BOT_TOKEN = defineSecret('SLACK_CHAT_BOT_TOKEN');
 
 /**
  * Download a file from Cloud Storage and return its buffer and media type.
@@ -48,7 +47,6 @@ export const onDocumentUploaded = onObjectFinalized(
     region: 'us-central1',
     memory: '512MiB',
     timeoutSeconds: 120,
-    secrets: [SLACK_CHAT_BOT_TOKEN],
   },
   async (event) => {
     const object = event.data;

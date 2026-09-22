@@ -1,15 +1,14 @@
 import { google } from 'googleapis';
 import { defineString } from 'firebase-functions/params';
 import { db } from '../utils/admin';
+import { GMAIL_OAUTH_CLIENT_SECRET, GMAIL_SA_PRIVATE_KEY, optionalSecret } from '../utils/secrets';
 
 // OAuth 2.0 client credentials (same ones used for the consent flow)
 const GMAIL_OAUTH_CLIENT_ID = defineString('GMAIL_OAUTH_CLIENT_ID');
-const GMAIL_OAUTH_CLIENT_SECRET = defineString('GMAIL_OAUTH_CLIENT_SECRET');
 
 // Legacy Service Account credentials — used as fallback when a recruiter
 // has not connected their Gmail via OAuth yet.
 const GMAIL_SA_CLIENT_EMAIL = defineString('GMAIL_SA_CLIENT_EMAIL', { default: '' });
-const GMAIL_SA_PRIVATE_KEY = defineString('GMAIL_SA_PRIVATE_KEY', { default: '' });
 const GMAIL_DEFAULT_SENDER = defineString('GMAIL_DEFAULT_SENDER', { default: '' });
 
 /**
@@ -59,7 +58,7 @@ async function getOAuthGmailClient(recruiterUid: string) {
  */
 function getServiceAccountGmailClient(senderEmail: string) {
   const saEmail = GMAIL_SA_CLIENT_EMAIL.value();
-  const saKey = GMAIL_SA_PRIVATE_KEY.value();
+  const saKey = optionalSecret(GMAIL_SA_PRIVATE_KEY);
   if (!saEmail || !saKey) return null;
 
   const auth = new google.auth.JWT({

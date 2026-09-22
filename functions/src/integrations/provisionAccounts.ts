@@ -1,11 +1,10 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { createHubSpotUser, type RoleAssignment } from './hubspotService';
 import { inviteSlackDual } from './slackService';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 async function moveToViterbitStage(candidatureId: string, stageId: string, apiKey: string): Promise<void> {
