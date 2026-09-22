@@ -210,14 +210,6 @@ export function TakePsychometricTestPage() {
             <li>Tus respuestas se guardan solas: si se corta tu conexión, puedes volver a entrar con el mismo enlace.</li>
             <li>No podrás regresar a una pregunta ya respondida.</li>
             <li>Responde con honestidad — no hay respuestas correctas o incorrectas.</li>
-            {/* Telling candidates up front is both fairer and a condition for
-                asking at all: these items touch data the law treats as
-                sensitive, and consent has to cover them explicitly. */}
-            <li>
-              Algunas preguntas tratan sobre cómo manejas el enojo y los conflictos, y sobre el consumo de
-              alcohol u otras sustancias en relación con el trabajo.
-            </li>
-          </ul>
 
           {/* An explicit honesty warning measurably reduces answer inflation in
               selection settings, and it is fair to tell candidates that response
