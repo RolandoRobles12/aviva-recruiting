@@ -14,12 +14,14 @@ import { AlertOctagon, ChevronRight, Lock, ShieldCheck } from 'lucide-react';
 import {
   PSYCHOMETRIC_RISK_LABELS,
   PSYCHOMETRIC_RISK_SCALES,
+  type PsychometricRiskCutoffs,
   type PsychometricRiskLevel,
   type PsychometricRiskResult,
   type PsychometricRiskScale,
   type PsychometricValidity,
 } from '../../types';
 import type { AnsweredQuestion, AnswerTone } from '../../lib/psychometricAnswers';
+import { resolveOverallRisk, resolveRisk } from '../../lib/psychometricRisk';
 
 const RISK_LEVEL_META: Record<
   PsychometricRiskLevel,
@@ -34,6 +36,39 @@ const RISK_LEVEL_META: Record<
   },
   alto: { label: 'Riesgo alto', chip: 'bg-red-50 text-red-700', dot: 'bg-red-500', bar: 'bg-red-500' },
 };
+
+const LEVEL_WORD: Record<PsychometricRiskLevel, string> = { bajo: 'bajo', moderado: 'moderado', alto: 'alto' };
+
+/**
+ * Score bar with the two cutoffs drawn on it, coloured by what the *score*
+ * says. When admitted behaviours raise the level above that, the bar stays in
+ * the score's colour and the text says why the final level is higher — a red
+ * bar at 30 under a "moderado desde 40" cutoff looked like a wiring bug.
+ */
+function ScoreBar({
+  score,
+  scoreLevel,
+  cutoffs,
+}: {
+  score: number;
+  scoreLevel: PsychometricRiskLevel;
+  cutoffs: PsychometricRiskCutoffs;
+}) {
+  const meta = RISK_LEVEL_META[scoreLevel];
+  return (
+    <div className="relative w-full h-2 bg-gray-100 rounded-full">
+      <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${Math.max(score, 2)}%` }} />
+      {[cutoffs.moderateMin, cutoffs.highMin].map((cut, index) => (
+        <span
+          key={index}
+          className="absolute -top-0.5 h-3 w-px bg-gray-400"
+          style={{ left: `${Math.min(Math.max(cut, 0), 100)}%` }}
+          title={index === 0 ? `Moderado desde ${cut}` : `Alto desde ${cut}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 const RISK_INTERPRETATION: Record<PsychometricRiskScale, Record<PsychometricRiskLevel, string>> = {
   riesgo_violencia: {
@@ -112,11 +147,13 @@ function RiskScaleCard({
   risk,
   items,
   validity,
+  cutoffs,
 }: {
   scale: PsychometricRiskScale;
   risk: PsychometricRiskResult | undefined;
   items: AnsweredQuestion[] | null;
   validity: PsychometricValidity;
+  cutoffs: PsychometricRiskCutoffs;
 }) {
   const [showItems, setShowItems] = useState(false);
   const label = PSYCHOMETRIC_RISK_LABELS[scale];
@@ -151,10 +188,13 @@ function RiskScaleCard({
     );
   }
 
-  const meta = RISK_LEVEL_META[risk.level];
+  const resolved = resolveRisk(risk, cutoffs);
+  const level = resolved.level;
+  const meta = RISK_LEVEL_META[level];
   const endorsed = new Set(risk.criticalEndorsed);
   const admitted = (items ?? []).filter((item) => endorsed.has(item.question.id));
-  const needsFollowUp = risk.level !== 'bajo';
+  const needsFollowUp = level !== 'bajo';
+  const admittedCount = risk.criticalEndorsed.length;
   const socialDesirability = validity.flags.includes('posible_deseabilidad_social');
 
   return (
@@ -175,18 +215,29 @@ function RiskScaleCard({
         </div>
       </div>
 
-      {risk.hasData ? (
-        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${Math.max(risk.normalizedScore, 2)}%` }} />
-        </div>
+      {risk.hasData && resolved.scoreLevel ? (
+        <>
+          <ScoreBar score={risk.normalizedScore} scoreLevel={resolved.scoreLevel} cutoffs={cutoffs} />
+          <p className="text-xs text-gray-400">
+            Por puntaje: <span className="font-medium">{LEVEL_WORD[resolved.scoreLevel]}</span> (moderado desde{' '}
+            {cutoffs.moderateMin}, alto desde {cutoffs.highMin}).
+            {resolved.raisedByCriticals && (
+              <span className="text-red-700 font-medium">
+                {' '}
+                Sube a {LEVEL_WORD[level]} porque admitió{' '}
+                {admittedCount === 1 ? 'una conducta concreta' : `${admittedCount} conductas concretas`}.
+              </span>
+            )}
+          </p>
+        </>
       ) : (
         <p className="text-xs text-gray-400">
-          Solo respondió {risk.itemsAnswered} de {risk.itemsApplied} preguntas: no alcanza para un puntaje, pero las
-          conductas admitidas sí se reportan.
+          Solo respondió {risk.itemsAnswered} de {risk.itemsApplied} preguntas: no alcanza para un puntaje. El nivel{' '}
+          {LEVEL_WORD[level]} viene de las conductas que admitió.
         </p>
       )}
 
-      <p className="text-xs text-gray-500">{RISK_INTERPRETATION[scale][risk.level]}</p>
+      <p className="text-xs text-gray-500">{RISK_INTERPRETATION[scale][level]}</p>
 
       {risk.criticalEndorsed.length > 0 && (
         <div className="rounded-md bg-red-50 border border-red-100 px-2.5 py-2 space-y-1">
@@ -207,7 +258,7 @@ function RiskScaleCard({
         </div>
       )}
 
-      {risk.level === 'bajo' && socialDesirability && (
+      {level === 'bajo' && socialDesirability && (
         <p className="text-xs text-amber-700">
           Contestó buscando dar buena impresión: un riesgo bajo aquí puede no reflejar la realidad. Vale la pena
           confirmarlo con referencias.
@@ -246,15 +297,17 @@ function RiskScaleCard({
 
 export function RiskPanel({
   risks,
-  overallRisk,
   validity,
   itemsByScale,
+  cutoffs,
 }: {
   risks: Partial<Record<PsychometricRiskScale, PsychometricRiskResult>> | undefined;
-  overallRisk: PsychometricRiskLevel | null | undefined;
   validity: PsychometricValidity;
   itemsByScale: Record<PsychometricRiskScale, AnsweredQuestion[]> | null;
+  /** Current config cutoffs: levels are resolved against these, not the stored ones. */
+  cutoffs: PsychometricRiskCutoffs;
 }) {
+  const overallRisk = resolveOverallRisk(risks, cutoffs);
   const alert = overallRisk === 'alto' || overallRisk === 'moderado';
   const unreliable = validity.verdict === 'no_confiable';
 
@@ -296,6 +349,7 @@ export function RiskPanel({
               risk={risks[scale]}
               items={itemsByScale?.[scale] ?? null}
               validity={validity}
+              cutoffs={cutoffs}
             />
           ))}
         </>

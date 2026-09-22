@@ -14,15 +14,18 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { Modal } from '../ui/Modal';
 import { ResultView } from './ResultView';
-import { PSYCHOMETRIC_RISK_LABELS, PSYCHOMETRIC_RISK_SCALES } from '../../types';
+import { PSYCHOMETRIC_RISK_LABELS } from '../../types';
 import type {
   PsychometricResult,
+  PsychometricRiskCutoffs,
   PsychometricSession,
   PsychometricSessionStatus,
   PsychometricValidityVerdict,
 } from '../../types';
 import { createPsychometricSession, getAllPsychometricSessions } from '../../services/psychometricSessions';
 import { adaptPsychometricResult } from '../../lib/psychometricResult';
+import { DEFAULT_RISK_CUTOFFS, resolveOverallRisk, scalesAtLevel } from '../../lib/psychometricRisk';
+import { getPsychometricConfig } from '../../services/psychometricQuestions';
 
 // Distinct colors per status (not the shared badge-* classes, which reuse the
 // same green for "review" and "valid" — that read as a false semáforo here).
@@ -57,10 +60,15 @@ const BAND_TEXT: Record<string, string> = {
  * Risk is the other thing a recruiter must not miss from the list: a moderate
  * or high level shows as its own chip, naming which risk, next to the verdict.
  */
-function riskChip(result: PsychometricResult | null): { label: string; title: string; className: string } | null {
-  if (!result?.risks || (result.overallRisk !== 'alto' && result.overallRisk !== 'moderado')) return null;
-  const level = result.overallRisk;
-  const scales = PSYCHOMETRIC_RISK_SCALES.filter((scale) => result.risks?.[scale]?.level === level);
+function riskChip(
+  result: PsychometricResult | null,
+  cutoffs: PsychometricRiskCutoffs
+): { label: string; title: string; className: string } | null {
+  // Resolved against the current cutoffs, like the result panel, so the chip,
+  // the filter and the detail always agree with the bank configuration.
+  const level = resolveOverallRisk(result?.risks, cutoffs);
+  if (level !== 'alto' && level !== 'moderado') return null;
+  const scales = scalesAtLevel(result?.risks, level, cutoffs);
   const short = scales.map((scale) => (scale === 'riesgo_violencia' ? 'violencia' : 'consumo')).join(' y ');
   return {
     label: `Riesgo ${level}: ${short}`,
@@ -80,8 +88,8 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'con_riesgo', label: 'Con riesgo' },
 ];
 
-function hasRiskAlert(session: PsychometricSession): boolean {
-  return riskChip(adaptPsychometricResult(session.result)) !== null;
+function hasRiskAlert(session: PsychometricSession, cutoffs: PsychometricRiskCutoffs): boolean {
+  return riskChip(adaptPsychometricResult(session.result), cutoffs) !== null;
 }
 
 const PAGE_SIZE = 25;
@@ -116,10 +124,22 @@ export function SessionsTab() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [regenerating, setRegenerating] = useState<string | null>(null);
 
+  const [riskCutoffs, setRiskCutoffs] = useState<PsychometricRiskCutoffs>(DEFAULT_RISK_CUTOFFS);
+
   const refresh = () => {
     setLoading(true);
-    getAllPsychometricSessions()
-      .then(setSessions)
+    // The config is read with the sessions so the risk chips are computed with
+    // the cutoffs actually configured, never with the defaults first.
+    Promise.all([
+      getAllPsychometricSessions(),
+      getPsychometricConfig()
+        .then((cfg) => cfg.riskCutoffs)
+        .catch(() => DEFAULT_RISK_CUTOFFS),
+    ])
+      .then(([loaded, cutoffs]) => {
+        setRiskCutoffs(cutoffs);
+        setSessions(loaded);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -174,16 +194,16 @@ export function SessionsTab() {
     };
     for (const session of sessions) {
       base[session.status] += 1;
-      if (hasRiskAlert(session)) base.con_riesgo += 1;
+      if (hasRiskAlert(session, riskCutoffs)) base.con_riesgo += 1;
     }
     return base;
-  }, [sessions]);
+  }, [sessions, riskCutoffs]);
 
   const filtered = useMemo(() => {
     const term = normalize(search.trim());
     return sessions.filter((session) => {
       if (filter === 'con_riesgo') {
-        if (!hasRiskAlert(session)) return false;
+        if (!hasRiskAlert(session, riskCutoffs)) return false;
       } else if (filter !== 'todas' && session.status !== filter) {
         return false;
       }
@@ -192,7 +212,7 @@ export function SessionsTab() {
         normalize(session.candidateName).includes(term) || normalize(session.candidateEmail).includes(term)
       );
     });
-  }, [sessions, search, filter]);
+  }, [sessions, search, filter, riskCutoffs]);
 
   const shown = filtered.slice(0, visibleCount);
 
@@ -276,7 +296,7 @@ export function SessionsTab() {
             const result = adaptPsychometricResult(session.result);
             const verdict = result ? VERDICT_META[result.validity.verdict] : null;
             const VerdictIcon = verdict?.icon;
-            const risk = riskChip(result);
+            const risk = riskChip(result, riskCutoffs);
             const createdAt = formatDate(session.createdAt);
             const completedAt = formatDate(session.completedAt);
             const canOpen = session.status === 'completed' && !!result;

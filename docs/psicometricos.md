@@ -191,8 +191,16 @@ historial médico**.
   efectos es información en sí misma, aunque el resto de las respuestas salga
   bajo. Si la escala quedó sin datos suficientes, la conducta admitida se sigue
   reportando.
-- El reporte dice **por qué** el nivel es el que es (puntaje, reactivos
-  críticos o ambos) y lista textualmente las conductas admitidas.
+- El reporte dice **por qué** el nivel es el que es: la barra muestra el
+  puntaje con las marcas de los dos cortes y su color es el nivel *por
+  puntaje*; si las conductas admitidas lo suben, lo dice explícitamente ("Sube
+  a alto porque admitió 2 conductas concretas").
+- **El nivel se resuelve con los cortes vigentes**, no con los del día en que
+  se envió la prueba. El resultado guarda el puntaje y las conductas admitidas;
+  el nivel es su interpretación. Así, cambiar "Riesgo moderado/alto desde" en
+  la configuración se refleja de inmediato en el panel, en el distintivo de la
+  lista y en el filtro "Con riesgo" (`src/lib/psychometricRisk.ts`, con la misma
+  regla que `riskLevelFor` en el servidor; un test verifica que coincidan).
 
 ### Cómo se leen
 
