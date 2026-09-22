@@ -11,23 +11,34 @@
 //     reported as "sin datos" instead of silently becoming a 0 that reads as
 //     "bajo" — the previous behaviour, which penalised candidates whose test was
 //     cut short by the timer.
+//
+// Risk scales (violencia, adicciones) are scored the same way but reported
+// apart from the profile: they never enter the composite. Their level combines
+// an absolute cutoff on the score with the critical items the candidate
+// endorsed — see riskLevelFor.
 
 import {
   LIKERT_MAX,
   LIKERT_MIN,
   PSYCHOMETRIC_RESULT_VERSION,
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_SCORED_SCALES,
   PSYCHOMETRIC_TRAITS,
+  isRiskScale,
   type PsychometricAnswer,
   type PsychometricNormKey,
   type PsychometricNorms,
   type PsychometricQuestion,
   type PsychometricResult,
+  type PsychometricRiskCutoffs,
+  type PsychometricRiskLevel,
+  type PsychometricRiskResult,
+  type PsychometricRiskScale,
   type PsychometricScaleResult,
   type PsychometricScoredScale,
   type PsychometricTestConfig,
 } from './types';
-import { resolveBand } from './norms';
+import { distributionFrom, percentileFor, resolveBand } from './norms';
 import { assessValidity } from './validity';
 
 /** Hard cap on the request body, independent of the session's question count. */
@@ -127,6 +138,133 @@ interface ScaleAccumulator {
 
 function emptyAccumulator(): ScaleAccumulator {
   return { applied: 0, answered: 0, sum: 0, maxSum: 0 };
+}
+
+/** A Likert answer at 4 or 5 in the risk direction counts as endorsing the item. */
+export const CRITICAL_ENDORSEMENT_MIN = 4;
+
+/** Norm sample size from which a risk percentile is shown at all. */
+const RISK_PERCENTILE_MIN_N = 30;
+
+const RISK_LEVEL_RANK: Record<PsychometricRiskLevel, number> = { bajo: 0, moderado: 1, alto: 2 };
+
+function maxLevel(a: PsychometricRiskLevel, b: PsychometricRiskLevel): PsychometricRiskLevel {
+  return RISK_LEVEL_RANK[a] >= RISK_LEVEL_RANK[b] ? a : b;
+}
+
+/**
+ * Level for one risk scale. The score sets a floor through absolute cutoffs; a
+ * critical item raises it, because admitting to a fight or to showing up drunk
+ * is information in itself, whatever the rest of the answers say:
+ *   - one critical item endorsed → at least "moderado"
+ *   - two or more → "alto"
+ * Without data but with a critical item endorsed, the item still speaks: an
+ * alert is never dropped just because the scale fell short of the minimum.
+ */
+export function riskLevelFor(
+  normalizedScore: number,
+  hasData: boolean,
+  criticalEndorsed: number,
+  cutoffs: PsychometricRiskCutoffs
+): { level: PsychometricRiskLevel; levelReason: PsychometricRiskResult['levelReason'] } {
+  let byScore: PsychometricRiskLevel = 'bajo';
+  if (hasData) {
+    if (normalizedScore >= cutoffs.highMin) byScore = 'alto';
+    else if (normalizedScore >= cutoffs.moderateMin) byScore = 'moderado';
+  }
+
+  const byCritical: PsychometricRiskLevel =
+    criticalEndorsed >= 2 ? 'alto' : criticalEndorsed === 1 ? 'moderado' : 'bajo';
+
+  const level = maxLevel(byScore, byCritical);
+  const scoreCounts = byScore !== 'bajo';
+  const criticalCounts = byCritical !== 'bajo';
+  const levelReason =
+    scoreCounts && criticalCounts
+      ? 'puntaje_y_criticos'
+      : criticalCounts
+        ? 'reactivos_criticos'
+        : scoreCounts
+          ? 'puntaje'
+          : 'sin_riesgo';
+  return { level, levelReason };
+}
+
+interface RiskAccumulator extends ScaleAccumulator {
+  criticalEndorsed: string[];
+}
+
+function scoreRisks(
+  questions: PsychometricQuestion[],
+  answerById: Map<string, PsychometricAnswer>,
+  config: PsychometricTestConfig,
+  norms: PsychometricNorms | undefined
+): Record<PsychometricRiskScale, PsychometricRiskResult> {
+  const accumulators = new Map<PsychometricRiskScale, RiskAccumulator>(
+    PSYCHOMETRIC_RISK_SCALES.map((scale) => [scale, { ...emptyAccumulator(), criticalEndorsed: [] }])
+  );
+
+  for (const question of questions) {
+    if (question.type !== 'likert' || !isRiskScale(question.scale)) continue;
+    const acc = accumulators.get(question.scale)!;
+    acc.applied += 1;
+    const answer = answerById.get(question.id);
+    if (!answer) continue;
+    const scored = scoredLikert(answer.value, question.reverseScored);
+    acc.answered += 1;
+    acc.sum += scored;
+    if (question.critical && scored >= CRITICAL_ENDORSEMENT_MIN) acc.criticalEndorsed.push(question.id);
+  }
+
+  const risks = {} as Record<PsychometricRiskScale, PsychometricRiskResult>;
+  for (const scale of PSYCHOMETRIC_RISK_SCALES) {
+    const acc = accumulators.get(scale)!;
+    const hasData = hasEnoughData(acc.answered, acc.applied, config.minItemsPerScale);
+    const rawAverage = acc.answered > 0 ? acc.sum / acc.answered : 0;
+    const normalizedScore = hasData
+      ? Math.round(((rawAverage - LIKERT_MIN) / (LIKERT_MAX - LIKERT_MIN)) * 100)
+      : 0;
+    const { level, levelReason } = riskLevelFor(
+      normalizedScore,
+      hasData,
+      acc.criticalEndorsed.length,
+      config.riskCutoffs
+    );
+
+    // The percentile is context ("more than 9 out of 10 candidates"), never the
+    // basis of the level — see PsychometricRiskCutoffs.
+    const dist = hasData && config.useLocalNorms ? distributionFrom(norms?.scales[scale]) : null;
+    const percentile =
+      dist && dist.n >= RISK_PERCENTILE_MIN_N && dist.sd > 0 ? percentileFor(normalizedScore, dist) : undefined;
+
+    risks[scale] = {
+      scale,
+      hasData,
+      itemsApplied: acc.applied,
+      itemsAnswered: acc.answered,
+      rawAverage: Math.round(rawAverage * 100) / 100,
+      normalizedScore,
+      ...(percentile === undefined ? {} : { percentile }),
+      level,
+      criticalEndorsed: acc.criticalEndorsed,
+      levelReason,
+    };
+  }
+  return risks;
+}
+
+/** Highest level across the risk scales that were actually measured. */
+export function overallRiskOf(
+  risks: Record<PsychometricRiskScale, PsychometricRiskResult>
+): PsychometricRiskLevel | null {
+  let overall: PsychometricRiskLevel | null = null;
+  for (const scale of PSYCHOMETRIC_RISK_SCALES) {
+    const risk = risks[scale];
+    if (!risk || risk.itemsApplied === 0) continue;
+    if (!risk.hasData && risk.criticalEndorsed.length === 0) continue;
+    overall = overall === null ? risk.level : maxLevel(overall, risk.level);
+  }
+  return overall;
 }
 
 export interface ScoreSessionInput {
@@ -246,11 +384,14 @@ export function scoreSession(input: ScoreSessionInput): ScoreSessionOutput {
     : { band: 'medio' as const, bandSource: 'absoluta' as const, normSampleSize: 0 };
 
   const validity = assessValidity(questions, answers);
+  const risks = scoreRisks(questions, answerById, config, input.norms);
 
   return {
     result: {
       version: PSYCHOMETRIC_RESULT_VERSION,
       scales,
+      risks,
+      overallRisk: overallRiskOf(risks),
       compositeScore,
       ...(compositeResolved.percentile === undefined
         ? {}
@@ -281,6 +422,11 @@ export function normObservationsFrom(
   for (const scale of PSYCHOMETRIC_SCORED_SCALES) {
     if (result.scales[scale]?.hasData) {
       observations.push({ key: scale, value: result.scales[scale].normalizedScore });
+    }
+  }
+  for (const scale of PSYCHOMETRIC_RISK_SCALES) {
+    if (result.risks?.[scale]?.hasData) {
+      observations.push({ key: scale, value: result.risks[scale].normalizedScore });
     }
   }
   if (result.compositeHasData) {

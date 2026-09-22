@@ -6,6 +6,7 @@ import {
   validateBank,
 } from '../src/lib/bankValidation';
 import {
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_TRAITS,
   type PsychometricQuestion,
   type PsychometricTestConfig,
@@ -23,8 +24,16 @@ function config(overrides: Partial<PsychometricTestConfig> = {}): PsychometricTe
     },
     bandCutoffs: { lowMax: 55, highMin: 75 },
     percentileCutoffs: { lowMaxPercentile: 25, highMinPercentile: 75 },
+    riskCutoffs: { moderateMin: 30, highMin: 50 },
     timeLimitMinutes: 35,
-    questionCounts: { likertPerTrait: 8, sjt: 8, deseabilidadSocial: 4, infrecuencia: 3, atencion: 2 },
+    questionCounts: {
+      likertPerTrait: 8,
+      likertPerRisk: 10,
+      sjt: 8,
+      deseabilidadSocial: 4,
+      infrecuencia: 3,
+      atencion: 2,
+    },
     minItemsPerScale: 4,
     useLocalNorms: true,
     ...overrides,
@@ -42,6 +51,20 @@ function healthyBank(itemsPerTrait = 20, sjtCount = 8): PsychometricQuestion[] {
         scale: trait,
         text: `Reactivo ${i} de ${trait}`,
         reverseScored: i % 2 === 1,
+        enabled: true,
+        order: questions.length,
+      });
+    }
+  }
+  for (const scale of PSYCHOMETRIC_RISK_SCALES) {
+    for (let i = 0; i < 14; i++) {
+      questions.push({
+        id: `${scale}_${i}`,
+        type: 'likert',
+        scale,
+        text: `Reactivo ${i} de ${scale}`,
+        reverseScored: i >= 7,
+        ...(i < 3 ? { critical: true } : {}),
         enabled: true,
         order: questions.length,
       });
@@ -96,6 +119,48 @@ function healthyBank(itemsPerTrait = 20, sjtCount = 8): PsychometricQuestion[] {
   }
   return questions;
 }
+
+describe('validateBank · escalas de riesgo', () => {
+  const withoutRisk = () =>
+    healthyBank().filter((q) => !(q.type === 'likert' && (PSYCHOMETRIC_RISK_SCALES as string[]).includes(q.scale)));
+
+  it('only warns, never blocks, when the bank has no risk items yet', () => {
+    // Banks seeded before the risk scales existed must keep working: the test
+    // simply does not report risk until the admin adds them.
+    const issues = validateBank(withoutRisk(), config());
+    expect(issues.filter((i) => i.level === 'error')).toEqual([]);
+    const riskWarnings = issues.filter((i) => i.anchor?.kind === 'section' && i.message.includes('no reportará'));
+    expect(riskWarnings).toHaveLength(PSYCHOMETRIC_RISK_SCALES.length);
+  });
+
+  it('warns when a risk scale has no critical item', () => {
+    const bank = healthyBank().map((q) =>
+      q.type === 'likert' && q.scale === 'riesgo_violencia' ? { ...q, critical: false } : q
+    );
+    const issues = validateBank(bank, config());
+    expect(issues.some((i) => i.message.includes('no tiene preguntas críticas'))).toBe(true);
+    expect(issues.find((i) => i.message.includes('no tiene preguntas críticas'))?.anchor).toEqual({
+      kind: 'section',
+      section: 'riesgo_violencia',
+    });
+  });
+
+  it('reports inverted risk cutoffs and fixes them in one click', () => {
+    const base = config({ riskCutoffs: { moderateMin: 60, highMin: 40 } });
+    const issue = validateBank(healthyBank(), base).find((i) => i.anchor?.kind === 'config' && i.anchor.field === 'riskCutoffs');
+    expect(issue?.level).toBe('error');
+    const fixed = applyBankFix(issue!.fix!.id, base);
+    expect(fixed.riskCutoffs).toEqual({ moderateMin: 40, highMin: 60 });
+    expect(validateBank(healthyBank(), fixed).filter((i) => i.level === 'error')).toEqual([]);
+  });
+
+  it('blocks a risk cap below the reporting minimum', () => {
+    const base = config({ questionCounts: { ...config().questionCounts, likertPerRisk: 2 } });
+    const issue = validateBank(healthyBank(), base).find((i) => i.fix?.id === 'aplicar_minimo_por_riesgo');
+    expect(issue?.level).toBe('error');
+    expect(applyBankFix(issue!.fix!.id, base).questionCounts.likertPerRisk).toBe(base.minItemsPerScale);
+  });
+});
 
 describe('validateBank', () => {
   it('accepts a healthy bank with a matching config', () => {

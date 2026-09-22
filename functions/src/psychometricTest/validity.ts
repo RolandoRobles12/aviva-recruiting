@@ -24,6 +24,7 @@
 // 5-point correlation) being able to invalidate a session on its own.
 
 import {
+  PSYCHOMETRIC_CONTENT_SCALES,
   PSYCHOMETRIC_TRAITS,
   type PsychometricAnswer,
   type PsychometricQuestion,
@@ -286,10 +287,13 @@ function computeEvenOddConsistency(
 }
 
 /**
- * Mean absolute gap, across traits, between the reverse-corrected mean of the
- * positively worded items and that of the reverse-worded ones. Both are on the
- * same 1-5 "more of the trait" scale, so an honest respondent keeps them close;
- * someone agreeing with everything pushes them apart by construction.
+ * Mean absolute gap, across content scales, between the reverse-corrected mean
+ * of the positively worded items and that of the reverse-worded ones. Both are
+ * on the same 1-5 "more of the scale" direction, so an honest respondent keeps
+ * them close; someone agreeing with everything pushes them apart by
+ * construction. Risk scales take part too: they are keyed in both directions
+ * just like the traits, and agreeing with "me he peleado a golpes" and with "los
+ * conflictos se resuelven hablando" is exactly the contradiction this catches.
  */
 function computeKeyingInconsistency(
   questions: PsychometricQuestion[],
@@ -297,12 +301,12 @@ function computeKeyingInconsistency(
 ): number | null {
   const gaps: number[] = [];
 
-  for (const trait of PSYCHOMETRIC_TRAITS) {
+  for (const scale of PSYCHOMETRIC_CONTENT_SCALES) {
     const positive: number[] = [];
     const reversed: number[] = [];
 
     for (const q of questions) {
-      if (q.type !== 'likert' || q.scale !== trait) continue;
+      if (q.type !== 'likert' || q.scale !== scale) continue;
       const answer = answerById.get(q.id);
       if (!answer) continue;
       const scored = scoredLikert(answer.value, q.reverseScored);

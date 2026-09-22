@@ -12,6 +12,7 @@
 // Kept free of any Firebase import so it can be tested directly.
 
 import {
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_SCALE_LABELS,
   PSYCHOMETRIC_TRAITS,
   type PsychometricLikertQuestion,
@@ -22,6 +23,7 @@ import {
 /** Fields of the configuration panel an issue can point at. */
 export type BankConfigField =
   | 'likertPerTrait'
+  | 'likertPerRisk'
   | 'sjt'
   | 'deseabilidadSocial'
   | 'infrecuencia'
@@ -29,6 +31,7 @@ export type BankConfigField =
   | 'minItemsPerScale'
   | 'bandCutoffs'
   | 'percentileCutoffs'
+  | 'riskCutoffs'
   | 'weights';
 
 export type BankIssueAnchor =
@@ -43,7 +46,9 @@ export type BankIssueFixId =
   | 'aplicar_minimo_sjt'
   | 'aplicar_recomendado_sjt'
   | 'ordenar_cortes_absolutos'
-  | 'ordenar_percentiles';
+  | 'ordenar_percentiles'
+  | 'aplicar_minimo_por_riesgo'
+  | 'ordenar_cortes_riesgo';
 
 /**
  * Questions per trait below which a scale's score gets noticeably noisy. Eight
@@ -93,6 +98,16 @@ export function applyBankFix(
       return {
         ...config,
         bandCutoffs: { lowMax: config.bandCutoffs.highMin, highMin: config.bandCutoffs.lowMax },
+      };
+    case 'aplicar_minimo_por_riesgo':
+      return {
+        ...config,
+        questionCounts: { ...config.questionCounts, likertPerRisk: config.minItemsPerScale },
+      };
+    case 'ordenar_cortes_riesgo':
+      return {
+        ...config,
+        riskCutoffs: { moderateMin: config.riskCutoffs.highMin, highMin: config.riskCutoffs.moderateMin },
       };
     case 'ordenar_percentiles':
       return {
@@ -227,6 +242,54 @@ export function validateBank(
     }
   }
 
+  // ── Risk scales ──
+  // Optional as a whole: a bank without risk items simply reports no risk, and
+  // that is said once per scale as a warning. Once a scale has items, the same
+  // rules as the traits apply, plus having at least one critical item.
+  if (counts.likertPerRisk > 0 && counts.likertPerRisk < config.minItemsPerScale) {
+    issues.push({
+      level: 'error',
+      message: `Cada candidato responde ${counts.likertPerRisk} preguntas por escala de riesgo, y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje.`,
+      anchor: { kind: 'config', field: 'likertPerRisk' },
+      fix: { id: 'aplicar_minimo_por_riesgo', label: `Aplicar ${config.minItemsPerScale} por escala` },
+    });
+  }
+  for (const scale of PSYCHOMETRIC_RISK_SCALES) {
+    const items = likert.filter((question) => question.scale === scale);
+    const anchor: BankIssueAnchor = { kind: 'section', section: scale };
+
+    if (items.length === 0) {
+      issues.push({
+        level: 'warning',
+        message: `${label(scale)} no tiene preguntas activas: la prueba no reportará este riesgo. "Completar con el banco base" las agrega sin tocar lo demás.`,
+        anchor,
+      });
+      continue;
+    }
+    if (items.length < config.minItemsPerScale) {
+      issues.push({
+        level: 'error',
+        message: `${label(scale)} tiene ${items.length} preguntas activas y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje.`,
+        anchor,
+      });
+    }
+    const reversed = items.filter((question) => question.reverseScored).length;
+    if (reversed === 0 || reversed === items.length) {
+      issues.push({
+        level: 'warning',
+        message: `${label(scale)}: todas las preguntas están redactadas en el mismo sentido. Conviene mezclar afirmaciones de riesgo con afirmaciones protectoras (marcadas como "invertidas").`,
+        anchor,
+      });
+    }
+    if (!items.some((question) => question.critical)) {
+      issues.push({
+        level: 'warning',
+        message: `${label(scale)} no tiene preguntas críticas: solo se podrá alertar por el puntaje, no por conductas concretas que el candidato admita.`,
+        anchor,
+      });
+    }
+  }
+
   // ── SJT scenarios ──
   // Mirrors the trait logic above: a cap-side issue (the session applies too
   // few) is distinct from a pool-side issue (the bank itself is short), and
@@ -307,6 +370,14 @@ export function validateBank(
       message: `El percentil de "bajo" (${config.percentileCutoffs.lowMaxPercentile}) debe ser menor que el de "alto" (${config.percentileCutoffs.highMinPercentile}).`,
       anchor: { kind: 'config', field: 'percentileCutoffs' },
       fix: { id: 'ordenar_percentiles', label: 'Invertir los percentiles' },
+    });
+  }
+  if (config.riskCutoffs.moderateMin >= config.riskCutoffs.highMin) {
+    issues.push({
+      level: 'error',
+      message: `El corte de riesgo "moderado" (${config.riskCutoffs.moderateMin}) debe ser menor que el de riesgo "alto" (${config.riskCutoffs.highMin}).`,
+      anchor: { kind: 'config', field: 'riskCutoffs' },
+      fix: { id: 'ordenar_cortes_riesgo', label: 'Invertir los cortes de riesgo' },
     });
   }
   if (Object.values(config.weights).reduce((sum, weight) => sum + weight, 0) <= 0) {

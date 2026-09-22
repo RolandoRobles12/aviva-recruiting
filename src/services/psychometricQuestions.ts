@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
   PSYCHOMETRIC_LIKERT_SCALES,
+  isRiskScale,
   type PsychometricLikertScale,
   type PsychometricQuestion,
   type PsychometricTestConfig,
@@ -26,9 +27,11 @@ const DEFAULT_PSYCHOMETRIC_CONFIG: PsychometricTestConfig = {
   },
   bandCutoffs: { lowMax: 55, highMin: 75 },
   percentileCutoffs: { lowMaxPercentile: 25, highMinPercentile: 75 },
+  riskCutoffs: { moderateMin: 30, highMin: 50 },
   timeLimitMinutes: 35,
   questionCounts: {
     likertPerTrait: 8,
+    likertPerRisk: 10,
     sjt: 8,
     deseabilidadSocial: 4,
     infrecuencia: 3,
@@ -88,14 +91,17 @@ function normalizeQuestion(raw: unknown, index: number): PsychometricQuestion | 
     (typeof question.trait === 'string' && question.trait) ||
     '';
 
+  const scale = (VALID_LIKERT_SCALES.has(scaleCandidate)
+    ? scaleCandidate
+    : 'responsabilidad') as PsychometricLikertScale;
+
   return {
     id,
     type: 'likert',
-    scale: (VALID_LIKERT_SCALES.has(scaleCandidate)
-      ? scaleCandidate
-      : 'responsabilidad') as PsychometricLikertScale,
+    scale,
     text,
     reverseScored: question.reverseScored === true,
+    ...(question.critical === true && isRiskScale(scale) ? { critical: true } : {}),
     enabled,
     order,
   };
@@ -124,6 +130,9 @@ export async function savePsychometricQuestions(questions: PsychometricQuestion[
           scale: question.scale,
           text: question.text,
           reverseScored: question.reverseScored,
+          // Only risk items can be critical; moving an item to another scale
+          // drops the mark instead of leaving a stale alert behind.
+          ...(question.critical && isRiskScale(question.scale) ? { critical: true } : {}),
           enabled: question.enabled,
           order: index,
         };
@@ -153,6 +162,7 @@ export async function getPsychometricConfig(): Promise<PsychometricTestConfig> {
       ...DEFAULT_PSYCHOMETRIC_CONFIG.percentileCutoffs,
       ...(data.percentileCutoffs ?? {}),
     },
+    riskCutoffs: { ...DEFAULT_PSYCHOMETRIC_CONFIG.riskCutoffs, ...(data.riskCutoffs ?? {}) },
     questionCounts: {
       ...DEFAULT_PSYCHOMETRIC_CONFIG.questionCounts,
       ...(data.questionCounts ?? {}),

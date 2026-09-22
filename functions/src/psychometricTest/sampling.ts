@@ -14,8 +14,15 @@
 //    internal consistency for the wrong reason
 //  - attention checks are spread across the test instead of landing wherever the
 //    shuffle puts them
+//  - risk items are mixed into the same block as the traits. Grouped together,
+//    a run of questions about fights and alcohol reads as "this is the part
+//    they are screening me on" and invites the most guarded answers of the test
+//  - critical risk items are always applied. They are the few items whose
+//    endorsement is reported on its own, so leaving one out at random would
+//    make the same candidate's alert depend on the draw
 
 import {
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_TRAITS,
   PSYCHOMETRIC_VALIDITY_SCALES,
   type PsychometricAttentionQuestion,
@@ -43,19 +50,40 @@ export function sampleN<T>(items: T[], count: number): T[] {
 }
 
 /**
- * Draws `count` items from one trait keeping the positive/reverse split as even
- * as possible, backfilling from the other side when the bank is lopsided.
+ * Takes `want` items from one keying side, starting with the ones that must be
+ * applied and filling the rest at random.
  */
-function sampleBalanced(items: PsychometricLikertQuestion[], count: number): PsychometricLikertQuestion[] {
+function takeSide(items: PsychometricLikertQuestion[], want: number): PsychometricLikertQuestion[] {
+  const required = items.filter((q) => q.critical);
+  const optional = items.filter((q) => !q.critical);
+  // sampleN treats 0 as "take everything", so an exhausted quota has to be
+  // handled here rather than passed through.
+  const taken = want > 0 ? sampleN(required, Math.min(want, required.length)) : [];
+  const remaining = Math.min(want - taken.length, optional.length);
+  return remaining > 0 ? [...taken, ...sampleN(optional, remaining)] : taken;
+}
+
+/**
+ * Draws `count` items from one scale keeping the positive/reverse split as even
+ * as possible, backfilling from the other side when the bank is lopsided.
+ * Critical items are taken first within their side, and a cap too small to fit
+ * all of them is widened rather than dropping one.
+ */
+export function sampleBalanced(
+  items: PsychometricLikertQuestion[],
+  count: number
+): PsychometricLikertQuestion[] {
   const positive = items.filter((q) => !q.reverseScored);
   const reversed = items.filter((q) => q.reverseScored);
+  const criticalCount = items.filter((q) => q.critical).length;
 
-  const want = !count || count <= 0 ? items.length : Math.min(count, items.length);
-  const wantReversed = Math.floor(want / 2);
-  const wantPositive = want - wantReversed;
+  const requested = !count || count <= 0 ? items.length : Math.min(count, items.length);
+  const want = Math.max(requested, criticalCount);
+  const wantReversed = Math.max(Math.floor(want / 2), reversed.filter((q) => q.critical).length);
+  const wantPositive = Math.max(want - wantReversed, positive.filter((q) => q.critical).length);
 
-  const takenPositive = sampleN(positive, Math.min(wantPositive, positive.length));
-  const takenReversed = sampleN(reversed, Math.min(wantReversed, reversed.length));
+  const takenPositive = takeSide(positive, Math.min(wantPositive, positive.length));
+  const takenReversed = takeSide(reversed, Math.min(wantReversed, reversed.length));
 
   const selected = [...takenPositive, ...takenReversed];
   if (selected.length < want) {
@@ -134,6 +162,13 @@ export function assembleTest(
     )
   );
 
+  const riskItems = PSYCHOMETRIC_RISK_SCALES.flatMap((scale) =>
+    sampleBalanced(
+      likert.filter((q) => q.scale === scale),
+      counts.likertPerRisk
+    )
+  );
+
   const styleItems = PSYCHOMETRIC_VALIDITY_SCALES.flatMap((scale) =>
     sampleN(
       likert.filter((q) => q.scale === scale),
@@ -152,7 +187,7 @@ export function assembleTest(
   );
 
   const personalityBlock = insertAttentionChecks(
-    interleaveByScale([...traitItems, ...styleItems]),
+    interleaveByScale([...traitItems, ...riskItems, ...styleItems]),
     attentionChecks
   );
 
@@ -241,6 +276,49 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
     }
   }
 
+  // Risk scales are optional: a bank without them simply does not report risk.
+  // Once a scale has items, though, it has to be scoreable and balanced.
+  if (counts.likertPerRisk > 0 && counts.likertPerRisk < config.minItemsPerScale) {
+    warnings.push({
+      level: 'error',
+      scope: 'configuracion',
+      message: `Cada candidato responde ${counts.likertPerRisk} preguntas por escala de riesgo, y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje.`,
+    });
+  }
+  for (const scale of PSYCHOMETRIC_RISK_SCALES) {
+    const items = likert.filter((q) => q.scale === scale);
+    if (items.length === 0) {
+      warnings.push({
+        level: 'warning',
+        scope: scale,
+        message: 'No tiene preguntas activas: esta prueba no reportará este riesgo. Carga el banco base para agregarlas.',
+      });
+      continue;
+    }
+    if (items.length < config.minItemsPerScale) {
+      warnings.push({
+        level: 'error',
+        scope: scale,
+        message: `Tiene ${items.length} preguntas activas y hacen falta al menos ${config.minItemsPerScale} para poder darle un puntaje.`,
+      });
+    }
+    const reversed = items.filter((q) => q.reverseScored).length;
+    if (reversed === 0 || reversed === items.length) {
+      warnings.push({
+        level: 'warning',
+        scope: scale,
+        message: 'Todas las preguntas están redactadas en el mismo sentido. Conviene tener también afirmaciones protectoras (invertidas).',
+      });
+    }
+    if (!items.some((q) => q.critical)) {
+      warnings.push({
+        level: 'warning',
+        scope: scale,
+        message: 'No tiene reactivos críticos: solo se podrá alertar por el puntaje, no por conductas concretas admitidas.',
+      });
+    }
+  }
+
   const scenarios = enabled.filter((q) => q.type === 'sjt');
   if (scenarios.length === 0) {
     warnings.push({ level: 'error', scope: 'sjt', message: 'No hay escenarios de juicio situacional activos.' });
@@ -306,6 +384,13 @@ export function auditBank(bank: PsychometricQuestion[], config: PsychometricTest
       level: 'error',
       scope: 'bandas',
       message: 'Los percentiles de corte están invertidos.',
+    });
+  }
+  if (config.riskCutoffs.moderateMin >= config.riskCutoffs.highMin) {
+    warnings.push({
+      level: 'error',
+      scope: 'bandas',
+      message: 'El corte de riesgo "moderado" debe ser menor que el de riesgo "alto".',
     });
   }
 

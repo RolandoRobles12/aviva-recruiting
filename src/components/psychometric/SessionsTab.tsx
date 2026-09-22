@@ -9,11 +9,14 @@ import {
   ShieldAlert,
   AlertTriangle,
   ShieldCheck,
+  AlertOctagon,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Modal } from '../ui/Modal';
 import { ResultView } from './ResultView';
+import { PSYCHOMETRIC_RISK_LABELS, PSYCHOMETRIC_RISK_SCALES } from '../../types';
 import type {
+  PsychometricResult,
   PsychometricSession,
   PsychometricSessionStatus,
   PsychometricValidityVerdict,
@@ -50,7 +53,23 @@ const BAND_TEXT: Record<string, string> = {
   alto: 'text-green-600',
 };
 
-type StatusFilter = 'todas' | PsychometricSessionStatus;
+/**
+ * Risk is the other thing a recruiter must not miss from the list: a moderate
+ * or high level shows as its own chip, naming which risk, next to the verdict.
+ */
+function riskChip(result: PsychometricResult | null): { label: string; title: string; className: string } | null {
+  if (!result?.risks || (result.overallRisk !== 'alto' && result.overallRisk !== 'moderado')) return null;
+  const level = result.overallRisk;
+  const scales = PSYCHOMETRIC_RISK_SCALES.filter((scale) => result.risks?.[scale]?.level === level);
+  const short = scales.map((scale) => (scale === 'riesgo_violencia' ? 'violencia' : 'consumo')).join(' y ');
+  return {
+    label: `Riesgo ${level}: ${short}`,
+    title: scales.map((scale) => PSYCHOMETRIC_RISK_LABELS[scale]).join(' · '),
+    className: level === 'alto' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800',
+  };
+}
+
+type StatusFilter = 'todas' | PsychometricSessionStatus | 'con_riesgo';
 
 const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'todas', label: 'Todas' },
@@ -58,7 +77,12 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'in_progress', label: 'En progreso' },
   { key: 'completed', label: 'Completadas' },
   { key: 'expired', label: 'Expiradas' },
+  { key: 'con_riesgo', label: 'Con riesgo' },
 ];
+
+function hasRiskAlert(session: PsychometricSession): boolean {
+  return riskChip(adaptPsychometricResult(session.result)) !== null;
+}
 
 const PAGE_SIZE = 25;
 
@@ -146,15 +170,23 @@ export function SessionsTab() {
       in_progress: 0,
       completed: 0,
       expired: 0,
+      con_riesgo: 0,
     };
-    for (const session of sessions) base[session.status] += 1;
+    for (const session of sessions) {
+      base[session.status] += 1;
+      if (hasRiskAlert(session)) base.con_riesgo += 1;
+    }
     return base;
   }, [sessions]);
 
   const filtered = useMemo(() => {
     const term = normalize(search.trim());
     return sessions.filter((session) => {
-      if (filter !== 'todas' && session.status !== filter) return false;
+      if (filter === 'con_riesgo') {
+        if (!hasRiskAlert(session)) return false;
+      } else if (filter !== 'todas' && session.status !== filter) {
+        return false;
+      }
       if (!term) return true;
       return (
         normalize(session.candidateName).includes(term) || normalize(session.candidateEmail).includes(term)
@@ -244,6 +276,7 @@ export function SessionsTab() {
             const result = adaptPsychometricResult(session.result);
             const verdict = result ? VERDICT_META[result.validity.verdict] : null;
             const VerdictIcon = verdict?.icon;
+            const risk = riskChip(result);
             const createdAt = formatDate(session.createdAt);
             const completedAt = formatDate(session.completedAt);
             const canOpen = session.status === 'completed' && !!result;
@@ -276,6 +309,15 @@ export function SessionsTab() {
                           pc {result.compositePercentile}
                         </span>
                       )}
+                    </span>
+                  )}
+
+                  {risk && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${risk.className}`}
+                      title={risk.title}
+                    >
+                      <AlertOctagon size={11} /> {risk.label}
                     </span>
                   )}
 

@@ -8,14 +8,20 @@ import { DEFAULT_TEST_CONFIG } from './defaultBank';
 import {
   LIKERT_MAX,
   LIKERT_MIN,
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_TRAITS,
   PSYCHOMETRIC_VALIDITY_SCALES,
+  isRiskScale,
   type PsychometricLikertScale,
   type PsychometricQuestion,
   type PsychometricTestConfig,
 } from './types';
 
-const VALID_LIKERT_SCALES = new Set<string>([...PSYCHOMETRIC_TRAITS, ...PSYCHOMETRIC_VALIDITY_SCALES]);
+const VALID_LIKERT_SCALES = new Set<string>([
+  ...PSYCHOMETRIC_TRAITS,
+  ...PSYCHOMETRIC_RISK_SCALES,
+  ...PSYCHOMETRIC_VALIDITY_SCALES,
+]);
 
 function asText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -75,12 +81,17 @@ export function normalizeQuestion(raw: unknown, index: number): PsychometricQues
   const scaleCandidate = asText(question.scale) || asText(question.trait);
   if (!VALID_LIKERT_SCALES.has(scaleCandidate)) return null;
 
+  // `critical` only means something on a risk scale; anywhere else it is
+  // dropped so it cannot surface as an alert on a trait item.
+  const critical = question.critical === true && isRiskScale(scaleCandidate);
+
   return {
     id,
     type: 'likert',
     scale: scaleCandidate as PsychometricLikertScale,
     text,
     reverseScored: question.reverseScored === true,
+    ...(critical ? { critical: true } : {}),
     enabled,
     order,
   };
@@ -108,6 +119,7 @@ export function mergeConfig(stored: Partial<PsychometricTestConfig> | undefined)
     weights: { ...DEFAULT_TEST_CONFIG.weights, ...(stored?.weights ?? {}) },
     bandCutoffs: { ...DEFAULT_TEST_CONFIG.bandCutoffs, ...(stored?.bandCutoffs ?? {}) },
     percentileCutoffs: { ...DEFAULT_TEST_CONFIG.percentileCutoffs, ...(stored?.percentileCutoffs ?? {}) },
+    riskCutoffs: { ...DEFAULT_TEST_CONFIG.riskCutoffs, ...(stored?.riskCutoffs ?? {}) },
     questionCounts: { ...DEFAULT_TEST_CONFIG.questionCounts, ...(stored?.questionCounts ?? {}) },
   };
 }

@@ -255,6 +255,9 @@ export interface PsychometricItemAnalysis {
   itemTotalCorrelation: number | null;
   optionDistribution?: { text: string; score: number; share: number }[];
   passRate?: number;
+  /** Solo ítems de riesgo: proporción que respondió 4-5 en la dirección de riesgo. */
+  endorsementRate?: number;
+  critical?: boolean;
   issues: string[];
 }
 

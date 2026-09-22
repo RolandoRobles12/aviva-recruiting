@@ -5,6 +5,11 @@
 //  - Likert items belong to a *scale*. Five of those scales are scored traits;
 //    two (deseabilidad_social, infrecuencia) exist only to judge whether the
 //    answers can be trusted and never feed the composite score.
+//  - Two more Likert scales measure *risk*, not fit: riesgo_violencia and
+//    riesgo_adicciones. On them a high score is the unwanted outcome, so they are
+//    reported as alerts next to the profile and never averaged into the
+//    composite (a candidate cannot "compensate" a violence risk by being very
+//    extraverted).
 //  - 'attention' items are instructed-response checks ("marca 'En desacuerdo'"),
 //    the single most reliable careless-responding signal available to us.
 //  - Nothing here is hardcoded content: the bank lives in Firestore. The curated
@@ -33,7 +38,32 @@ export const PSYCHOMETRIC_VALIDITY_SCALES: PsychometricValidityScale[] = [
   'infrecuencia',
 ];
 
-export type PsychometricLikertScale = PsychometricTrait | PsychometricValidityScale;
+/**
+ * Risk scales: attitudes toward, and admissions of, work-relevant counterproductive
+ * behaviour. Higher = more risk. Reported as alerts, never in the composite.
+ */
+export type PsychometricRiskScale = 'riesgo_violencia' | 'riesgo_adicciones';
+
+export const PSYCHOMETRIC_RISK_SCALES: PsychometricRiskScale[] = ['riesgo_violencia', 'riesgo_adicciones'];
+
+export function isRiskScale(scale: string): scale is PsychometricRiskScale {
+  return (PSYCHOMETRIC_RISK_SCALES as string[]).includes(scale);
+}
+
+export type PsychometricLikertScale =
+  | PsychometricTrait
+  | PsychometricRiskScale
+  | PsychometricValidityScale;
+
+/**
+ * Likert scales that describe the candidate (as opposed to their response
+ * style). These are the ones whose keying and halves the validity checks can
+ * compare against each other.
+ */
+export const PSYCHOMETRIC_CONTENT_SCALES: (PsychometricTrait | PsychometricRiskScale)[] = [
+  ...PSYCHOMETRIC_TRAITS,
+  ...PSYCHOMETRIC_RISK_SCALES,
+];
 
 /** Scales that appear as a score in the recruiter's report. */
 export type PsychometricScoredScale = PsychometricTrait | 'sjt';
@@ -65,6 +95,12 @@ export interface PsychometricLikertQuestion extends PsychometricQuestionBase {
   trait?: PsychometricTrait;
   /** true when agreeing with the item means a LOW scale score (scored 6 - value) */
   reverseScored: boolean;
+  /**
+   * Risk scales only. A critical item describes a concrete behaviour (not an
+   * opinion) serious enough that endorsing it is reported on its own, whatever
+   * the scale score — and it is always applied when its scale is.
+   */
+  critical?: boolean;
 }
 
 /** Instructed-response check: the text tells the candidate which option to pick. */
@@ -114,16 +150,32 @@ export interface PsychometricPercentileCutoffs {
 export interface PsychometricQuestionCounts {
   /** Likert items per trait per session. 0 = every enabled item. */
   likertPerTrait: number;
+  /** Likert items per risk scale per session. 0 = every enabled item. */
+  likertPerRisk: number;
   sjt: number;
   deseabilidadSocial: number;
   infrecuencia: number;
   atencion: number;
 }
 
+/**
+ * Risk levels are absolute on purpose. Agreeing with "a veces un golpe es la
+ * única forma de que te respeten" means the same thing whatever other candidates
+ * answered, and a percentile would call someone "low risk" just because the
+ * applicant pool that month was worse.
+ */
+export interface PsychometricRiskCutoffs {
+  /** normalizedScore >= moderateMin → "moderado" */
+  moderateMin: number;
+  /** normalizedScore >= highMin → "alto" */
+  highMin: number;
+}
+
 export interface PsychometricTestConfig {
   weights: PsychometricScaleWeights;
   bandCutoffs: PsychometricBandCutoffs;
   percentileCutoffs: PsychometricPercentileCutoffs;
+  riskCutoffs: PsychometricRiskCutoffs;
   timeLimitMinutes: number;
   questionCounts: PsychometricQuestionCounts;
   /** A scale below this many answered items is reported as "sin datos", not as 0. */
@@ -158,6 +210,27 @@ export interface PsychometricScaleResult {
   zScore?: number;
   band: PsychometricBand;
   bandSource: PsychometricNormSource;
+}
+
+export type PsychometricRiskLevel = 'bajo' | 'moderado' | 'alto';
+
+export interface PsychometricRiskResult {
+  scale: PsychometricRiskScale;
+  /** false when fewer than config.minItemsPerScale items were answered. */
+  hasData: boolean;
+  itemsApplied: number;
+  itemsAnswered: number;
+  /** Mean 1-5 in the risk direction (reverse items already flipped). */
+  rawAverage: number;
+  /** 0-100, higher = more risk. */
+  normalizedScore: number;
+  /** Position in the local norm sample, informative only — never sets the level. */
+  percentile?: number;
+  level: PsychometricRiskLevel;
+  /** Ids of critical items the candidate endorsed (4-5 in the risk direction). */
+  criticalEndorsed: string[];
+  /** Why the level is what it is: the score, the critical items, or both. */
+  levelReason: 'puntaje' | 'reactivos_criticos' | 'puntaje_y_criticos' | 'sin_riesgo';
 }
 
 export type PsychometricValidityFlag =
@@ -207,12 +280,16 @@ export interface PsychometricValidity {
   indices: PsychometricValidityIndices;
 }
 
-export const PSYCHOMETRIC_RESULT_VERSION = 2;
+export const PSYCHOMETRIC_RESULT_VERSION = 3;
 
 export interface PsychometricResult {
-  /** 1 = pre-norms/pre-integridad results; 2 = this shape. */
+  /** 1 = pre-norms/pre-integridad; 2 = pre-risk scales; 3 = this shape. */
   version: number;
   scales: Record<PsychometricScoredScale, PsychometricScaleResult>;
+  /** Violence and substance-use risk. Absent on results scored before v3. */
+  risks: Record<PsychometricRiskScale, PsychometricRiskResult>;
+  /** Highest level across the risk scales that have data; null when none has. */
+  overallRisk: PsychometricRiskLevel | null;
   compositeScore: number;
   compositePercentile?: number;
   compositeZScore?: number;
@@ -243,7 +320,7 @@ export interface PsychometricNormStat {
   sumSq: number;
 }
 
-export type PsychometricNormKey = PsychometricScoredScale | 'composite';
+export type PsychometricNormKey = PsychometricScoredScale | PsychometricRiskScale | 'composite';
 
 export interface PsychometricNorms {
   scales: Partial<Record<PsychometricNormKey, PsychometricNormStat>>;

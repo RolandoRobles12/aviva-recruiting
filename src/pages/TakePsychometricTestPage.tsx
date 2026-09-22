@@ -210,6 +210,13 @@ export function TakePsychometricTestPage() {
             <li>Tus respuestas se guardan solas: si se corta tu conexión, puedes volver a entrar con el mismo enlace.</li>
             <li>No podrás regresar a una pregunta ya respondida.</li>
             <li>Responde con honestidad — no hay respuestas correctas o incorrectas.</li>
+            {/* Telling candidates up front is both fairer and a condition for
+                asking at all: these items touch data the law treats as
+                sensitive, and consent has to cover them explicitly. */}
+            <li>
+              Algunas preguntas tratan sobre cómo manejas el enojo y los conflictos, y sobre el consumo de
+              alcohol u otras sustancias en relación con el trabajo.
+            </li>
           </ul>
 
           {/* An explicit honesty warning measurably reduces answer inflation in
@@ -233,8 +240,9 @@ export function TakePsychometricTestPage() {
               className="mt-0.5 rounded"
             />
             <span>
-              Acepto que mis respuestas sean usadas únicamente como parte de mi proceso de reclutamiento
-              en Aviva y no serán compartidas con terceros.
+              Acepto que mis respuestas, incluidas las relativas al manejo de conflictos y al consumo de
+              sustancias, sean usadas únicamente como parte de mi proceso de reclutamiento en Aviva, que se
+              traten de forma confidencial y que no sean compartidas con terceros.
             </span>
           </label>
           {submitError && <p className="text-xs text-red-600">{submitError}</p>}
