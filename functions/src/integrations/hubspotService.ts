@@ -1,6 +1,6 @@
 import { defineString } from 'firebase-functions/params';
+import { HUBSPOT_API_KEY } from '../utils/secrets';
 
-const HUBSPOT_API_KEY = defineString('HUBSPOT_API_KEY');
 const HUBSPOT_API_BASE = 'https://api.hubapi.com';
 
 /**

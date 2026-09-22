@@ -13,9 +13,9 @@
 //     cut short by the timer.
 //
 // Risk scales (violencia, adicciones) are scored the same way but reported
-// apart from the profile: they never enter the composite. Their level combines
-// an absolute cutoff on the score with the critical items the candidate
-// endorsed — see riskLevelFor.
+// apart from the profile: they never enter the composite. Their level comes
+// from an absolute cutoff on the score; the critical items the candidate
+// endorsed are listed alongside, without changing it — see riskLevelFor.
 
 import {
   LIKERT_MAX,
@@ -153,41 +153,24 @@ function maxLevel(a: PsychometricRiskLevel, b: PsychometricRiskLevel): Psychomet
 }
 
 /**
- * Level for one risk scale. The score sets a floor through absolute cutoffs; a
- * critical item raises it, because admitting to a fight or to showing up drunk
- * is information in itself, whatever the rest of the answers say:
- *   - one critical item endorsed → at least "moderado"
- *   - two or more → "alto"
- * Without data but with a critical item endorsed, the item still speaks: an
- * alert is never dropped just because the scale fell short of the minimum.
+ * Level for one risk scale: the score against the absolute cutoffs, and
+ * nothing else. Admitted critical behaviours are reported next to the level
+ * (criticalEndorsed) so the recruiter can confirm them in the interview, but
+ * they do not move it — the level has to be readable straight off the score
+ * and the configured cutoffs. Without enough answers there is no score, so the
+ * level stays "bajo" and hasData says it was not measured.
  */
 export function riskLevelFor(
   normalizedScore: number,
   hasData: boolean,
-  criticalEndorsed: number,
   cutoffs: PsychometricRiskCutoffs
 ): { level: PsychometricRiskLevel; levelReason: PsychometricRiskResult['levelReason'] } {
-  let byScore: PsychometricRiskLevel = 'bajo';
+  let level: PsychometricRiskLevel = 'bajo';
   if (hasData) {
-    if (normalizedScore >= cutoffs.highMin) byScore = 'alto';
-    else if (normalizedScore >= cutoffs.moderateMin) byScore = 'moderado';
+    if (normalizedScore >= cutoffs.highMin) level = 'alto';
+    else if (normalizedScore >= cutoffs.moderateMin) level = 'moderado';
   }
-
-  const byCritical: PsychometricRiskLevel =
-    criticalEndorsed >= 2 ? 'alto' : criticalEndorsed === 1 ? 'moderado' : 'bajo';
-
-  const level = maxLevel(byScore, byCritical);
-  const scoreCounts = byScore !== 'bajo';
-  const criticalCounts = byCritical !== 'bajo';
-  const levelReason =
-    scoreCounts && criticalCounts
-      ? 'puntaje_y_criticos'
-      : criticalCounts
-        ? 'reactivos_criticos'
-        : scoreCounts
-          ? 'puntaje'
-          : 'sin_riesgo';
-  return { level, levelReason };
+  return { level, levelReason: level === 'bajo' ? 'sin_riesgo' : 'puntaje' };
 }
 
 interface RiskAccumulator extends ScaleAccumulator {
@@ -224,12 +207,7 @@ function scoreRisks(
     const normalizedScore = hasData
       ? Math.round(((rawAverage - LIKERT_MIN) / (LIKERT_MAX - LIKERT_MIN)) * 100)
       : 0;
-    const { level, levelReason } = riskLevelFor(
-      normalizedScore,
-      hasData,
-      acc.criticalEndorsed.length,
-      config.riskCutoffs
-    );
+    const { level, levelReason } = riskLevelFor(normalizedScore, hasData, config.riskCutoffs);
 
     // The percentile is context ("more than 9 out of 10 candidates"), never the
     // basis of the level — see PsychometricRiskCutoffs.
@@ -253,15 +231,14 @@ function scoreRisks(
   return risks;
 }
 
-/** Highest level across the risk scales that were actually measured. */
+/** Highest level across the risk scales that have a score. */
 export function overallRiskOf(
   risks: Record<PsychometricRiskScale, PsychometricRiskResult>
 ): PsychometricRiskLevel | null {
   let overall: PsychometricRiskLevel | null = null;
   for (const scale of PSYCHOMETRIC_RISK_SCALES) {
     const risk = risks[scale];
-    if (!risk || risk.itemsApplied === 0) continue;
-    if (!risk.hasData && risk.criticalEndorsed.length === 0) continue;
+    if (!risk || risk.itemsApplied === 0 || !risk.hasData) continue;
     overall = overall === null ? risk.level : maxLevel(overall, risk.level);
   }
   return overall;

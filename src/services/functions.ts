@@ -207,6 +207,17 @@ export const syncHubspotUserRoles = httpsCallable<
   }
 >(functions, 'syncHubspotUserRoles', MAINTENANCE_TIMEOUT);
 
+export interface DriveDestinationResult {
+  id: string;
+  label: string;
+  primary: boolean;
+  folderId?: string;
+  uploaded: string[];
+  failed: string[];
+  skipped: string[];
+  error?: string;
+}
+
 export const createDriveFolderManual = httpsCallable<
   { candidateId: string },
   {
@@ -216,13 +227,99 @@ export const createDriveFolderManual = httpsCallable<
     uploaded: string[];
     failed: string[];
     skipped: string[];
+    destinations: DriveDestinationResult[];
+    /** Non-primary Drives that failed; the primary folder still exists. */
+    otherErrors: string[];
   }
->(functions, 'createDriveFolderManual');
+>(functions, 'createDriveFolderManual', MAINTENANCE_TIMEOUT);
+
+export interface SheetAppendResult {
+  id: string;
+  label: string;
+  status: 'agregada' | 'ya_existia' | 'omitida' | 'error';
+  message?: string;
+}
 
 export const appendSheetsRowManual = httpsCallable<
   { candidateId: string },
-  { success: boolean }
+  { success: boolean; results: SheetAppendResult[] }
 >(functions, 'appendSheetsRowManual');
+
+// ─── Google Workspace destinations (Configuración → Drive y Sheets) ──────────
+
+export interface DriveDestination {
+  id: string;
+  label: string;
+  /** Folder id — or, while editing, a pasted Drive URL (the server parses it). */
+  folderId: string;
+  enabled: boolean;
+  primary: boolean;
+}
+
+export type SheetColumnMode = 'encabezados' | 'posicion';
+
+export interface SheetDestination {
+  id: string;
+  label: string;
+  /** Spreadsheet id — or, while editing, a pasted Sheets URL (gid included). */
+  spreadsheetId: string;
+  sheetGid: number | null;
+  sheetTitle: string;
+  columnMode: SheetColumnMode;
+  maxColumns: number | null;
+  /** Field key → header text, for columns the built-in aliases do not recognise. */
+  headerMap: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface WorkspaceSettings {
+  drives: DriveDestination[];
+  sheets: SheetDestination[];
+}
+
+export interface WorkspaceField {
+  key: string;
+  label: string;
+}
+
+export const getWorkspaceIntegrationSettings = httpsCallable<
+  Record<string, never>,
+  { settings: WorkspaceSettings; serviceAccountEmail: string; fields: WorkspaceField[] }
+>(functions, 'getWorkspaceIntegrationSettings');
+
+export const saveWorkspaceIntegrationSettings = httpsCallable<
+  { settings: WorkspaceSettings },
+  { settings: WorkspaceSettings }
+>(functions, 'saveWorkspaceIntegrationSettings');
+
+export interface DriveCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  folderName?: string;
+  message: string;
+}
+
+export interface SheetCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  spreadsheetTitle?: string;
+  tabTitle?: string;
+  columnMode: SheetColumnMode;
+  headers: string[];
+  matched: { key: string; label: string; headers: string[] }[];
+  unmatched: { key: string; label: string }[];
+  missingRequired: string[];
+  unmappedHeaders: string[];
+  positionMismatches: { column: number; header: string; expected: string }[];
+  message: string;
+}
+
+export const testWorkspaceConnection = httpsCallable<
+  { settings: WorkspaceSettings },
+  { serviceAccountEmail: string; drives: DriveCheck[]; sheets: SheetCheck[] }
+>(functions, 'testWorkspaceConnection', MAINTENANCE_TIMEOUT);
 
 // ─── Psychometric administration ──────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { riskLevelFor } from '../functions/src/psychometricTest/scoring';
-import { resolveOverallRisk, resolveRisk, scalesAtLevel } from '../src/lib/psychometricRisk';
+import { resolveOverallRisk, resolveRiskLevel, scalesAtLevel } from '../src/lib/psychometricRisk';
 import type { PsychometricRiskResult, PsychometricRiskScale } from '../src/types';
 
 function risk(
@@ -16,61 +16,57 @@ function risk(
     itemsAnswered: hasData ? 10 : 2,
     rawAverage: 1 + (normalizedScore / 100) * 4,
     normalizedScore,
-    // Stored level deliberately wrong: the resolver must not rely on it.
-    level: 'bajo',
+    // Stored level deliberately wrong (as on results scored while admitted
+    // behaviours still raised it): the resolver must not rely on it.
+    level: 'alto',
     criticalEndorsed: Array.from({ length: critical }, (_, i) => `${scale}_${i}`),
-    levelReason: 'sin_riesgo',
+    levelReason: 'reactivos_criticos',
   };
 }
 
-describe('resolveRisk', () => {
-  it('agrees with the server rule for every score, critical count and cutoff pair', () => {
+describe('resolveRiskLevel', () => {
+  it('agrees with the server rule for every score and cutoff pair', () => {
     for (const cutoffs of [
       { moderateMin: 30, highMin: 50 },
       { moderateMin: 40, highMin: 60 },
     ]) {
       for (let score = 0; score <= 100; score += 5) {
-        for (const critical of [0, 1, 2, 3]) {
-          for (const hasData of [true, false]) {
-            const server = riskLevelFor(score, hasData, critical, cutoffs).level;
-            expect(resolveRisk(risk('riesgo_adicciones', score, critical, hasData), cutoffs).level).toBe(server);
-          }
-        }
+        expect(resolveRiskLevel(risk('riesgo_adicciones', score), cutoffs)).toBe(
+          riskLevelFor(score, true, cutoffs).level
+        );
       }
     }
   });
 
-  it('explains a level raised by admitted behaviours rather than by the score', () => {
+  it('ignores admitted behaviours: the level comes from the score only', () => {
     // The reported case: score 30 under cutoffs 40/60, two behaviours admitted.
-    const resolved = resolveRisk(risk('riesgo_adicciones', 30, 2), { moderateMin: 40, highMin: 60 });
-    expect(resolved).toEqual({
-      level: 'alto',
-      scoreLevel: 'bajo',
-      criticalLevel: 'alto',
-      raisedByCriticals: true,
-    });
+    expect(resolveRiskLevel(risk('riesgo_adicciones', 30, 2), { moderateMin: 40, highMin: 60 })).toBe('bajo');
   });
 
   it('follows the configured cutoffs, not the level stored at submission', () => {
     const r = risk('riesgo_violencia', 45);
-    expect(resolveRisk(r, { moderateMin: 30, highMin: 40 }).level).toBe('alto');
-    expect(resolveRisk(r, { moderateMin: 50, highMin: 70 }).level).toBe('bajo');
+    expect(resolveRiskLevel(r, { moderateMin: 30, highMin: 40 })).toBe('alto');
+    expect(resolveRiskLevel(r, { moderateMin: 50, highMin: 70 })).toBe('bajo');
+  });
+
+  it('has no level for a scale without a score, admitted behaviours or not', () => {
+    expect(resolveRiskLevel(risk('riesgo_violencia', 0, 2, false), { moderateMin: 30, highMin: 50 })).toBeNull();
   });
 });
 
 describe('resolveOverallRisk', () => {
   const cutoffs = { moderateMin: 40, highMin: 60 };
 
-  it('takes the highest measured level', () => {
-    const risks = { riesgo_violencia: risk('riesgo_violencia', 13), riesgo_adicciones: risk('riesgo_adicciones', 30, 2) };
-    expect(resolveOverallRisk(risks, cutoffs)).toBe('alto');
-    expect(scalesAtLevel(risks, 'alto', cutoffs)).toEqual(['riesgo_adicciones']);
+  it('takes the highest scored level', () => {
+    const risks = { riesgo_violencia: risk('riesgo_violencia', 45), riesgo_adicciones: risk('riesgo_adicciones', 30, 2) };
+    expect(resolveOverallRisk(risks, cutoffs)).toBe('moderado');
+    expect(scalesAtLevel(risks, 'moderado', cutoffs)).toEqual(['riesgo_violencia']);
   });
 
-  it('ignores scales that were not applied or have nothing to go on', () => {
+  it('is null when no scale was scored', () => {
     const risks = {
       riesgo_violencia: { ...risk('riesgo_violencia', 0), itemsApplied: 0, hasData: false },
-      riesgo_adicciones: risk('riesgo_adicciones', 0, 0, false),
+      riesgo_adicciones: risk('riesgo_adicciones', 0, 2, false),
     };
     expect(resolveOverallRisk(risks, cutoffs)).toBeNull();
     expect(resolveOverallRisk(undefined, cutoffs)).toBeNull();

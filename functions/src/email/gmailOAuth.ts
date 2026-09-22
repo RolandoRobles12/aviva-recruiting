@@ -3,9 +3,9 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { google } from 'googleapis';
 import { db, auth } from '../utils/admin';
+import { GMAIL_OAUTH_CLIENT_SECRET } from '../utils/secrets';
 
 const GMAIL_OAUTH_CLIENT_ID = defineString('GMAIL_OAUTH_CLIENT_ID');
-const GMAIL_OAUTH_CLIENT_SECRET = defineString('GMAIL_OAUTH_CLIENT_SECRET');
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
 const FUNCTIONS_URL = defineString('FUNCTIONS_URL', {
   default: 'https://us-central1-aviva-recruiting.cloudfunctions.net',

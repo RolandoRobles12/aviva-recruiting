@@ -112,34 +112,20 @@ Llena el archivo `.env` con las credenciales de tu proyecto Firebase y la URL ba
 ### 3. Configuración de Cloud Functions
 
 ```bash
-# Autenticarse
 firebase login
-
-# Configurar variables de entorno de las Functions
-firebase functions:config:set \
-  gmail.client_id="TU_CLIENT_ID" \
-  gmail.client_secret="TU_CLIENT_SECRET" \
-  gmail.refresh_token="TU_REFRESH_TOKEN" \
-  gmail.user="reclutamiento@aviva.com" \
-  drive.client_id="TU_CLIENT_ID" \
-  drive.client_secret="TU_CLIENT_SECRET" \
-  drive.refresh_token="TU_REFRESH_TOKEN" \
-  drive.parent_folder_id="ID_CARPETA_DRIVE_RAIZ" \
-  sheets.client_id="TU_CLIENT_ID" \
-  sheets.client_secret="TU_CLIENT_SECRET" \
-  sheets.refresh_token="TU_REFRESH_TOKEN" \
-  sheets.spreadsheet_id="ID_GOOGLE_SHEETS" \
-  sheets.sheet_name="Candidatos"
 ```
 
-> Para obtener los tokens OAuth 2.0 de Google, usa el [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
-> con los scopes: Gmail Send, Drive, Spreadsheets.
->
-> Las integraciones con Viterbit, HubSpot, Jira y Slack usan sus propias variables de configuración/secretos; revisa `functions/src/integrations/` para las que estén habilitadas en tu despliegue.
->
-> El rol y el equipo de HubSpot se configuran desde la app (*Configuración → HubSpot*, guardados en
-> `settings/hubspot`). Los parámetros `HUBSPOT_ROLE_ID` y `HUBSPOT_PRIMARY_TEAM_ID` solo sirven como
-> valor inicial si ese documento aún no existe.
+- **Credenciales** (llaves de API, cuentas de servicio, tokens): van en Google Secret
+  Manager. La lista completa, cómo crearlas y cómo usarlas en el emulador está en
+  [`docs/secretos.md`](docs/secretos.md).
+- **Valores que no son secretos** (IDs de canales de Slack, URL de la app, etapas de
+  Viterbit, etc.): en `functions/.env`.
+- **Drive y Google Sheets**: se configuran desde la app (*Configuración → Drive y
+  Sheets*), incluyendo varias carpetas y varias hojas. Ver
+  [`docs/integraciones-google.md`](docs/integraciones-google.md).
+- El rol y el equipo de HubSpot se configuran desde la app (*Configuración → HubSpot*,
+  guardados en `settings/hubspot`). Los parámetros `HUBSPOT_ROLE_ID` y
+  `HUBSPOT_PRIMARY_TEAM_ID` solo sirven como valor inicial si ese documento aún no existe.
 
 ### 4. Instalar y correr en desarrollo
 

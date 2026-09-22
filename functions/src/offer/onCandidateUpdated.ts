@@ -13,6 +13,7 @@ import { updateCandidateCompletion } from '../utils/candidates';
 import { DOCUMENT_TYPES_REQUIRED } from '../utils/documentTypes';
 import { evaluateContractDataReview } from '../contract/contractReview';
 import { notifyContractReviewRequired } from '../integrations/slackService';
+import { ALL_SECRETS } from '../utils/secrets';
 
 const APP_URL = process.env.APP_URL ?? 'https://aviva-recruiting.web.app';
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
@@ -61,6 +62,8 @@ async function findContractTemplate(
  */
 export const onCandidateUpdated = functions
   .region('us-central1')
+  // v1 functions do not inherit setGlobalOptions; see utils/secrets.ts.
+  .runWith({ secrets: ALL_SECRETS })
   .firestore.document('candidates/{candidateId}')
   .onUpdate(async (change, context) => {
     const before = change.before.data();

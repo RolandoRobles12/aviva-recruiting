@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto';
 import { onRequest } from 'firebase-functions/v2/https';
-import { defineString, defineSecret } from 'firebase-functions/params';
 import { FieldValue, Timestamp as FsTimestamp } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { format } from 'date-fns';
@@ -16,15 +15,10 @@ import { getLogoUrl, getCompanySignatureUrl, getLegalRepInitialsUrl } from '../u
 import { sendEmail } from '../email/gmailClient';
 import { signedCopyTemplate } from '../email/templates';
 import { getRecruiterEmail } from '../utils/recruiters';
-import { createCandidateDriveFolder } from '../integrations/driveService';
-import { syncValidDocumentsToDriveFolder } from '../integrations/driveSync';
-import { appendCandidateRow } from '../integrations/sheetsService';
-import { getRecruiterName } from '../utils/recruiters';
+import { appendCandidateToSheets, signedPdfFiles, syncCandidateDrives } from '../integrations/workspaceSync';
 import { parseCandidateStartDate } from '../utils/startDate';
+import { ANTHROPIC_API_KEY, DRIVE_SERVICE_ACCOUNT, VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
-const DRIVE_SERVICE_ACCOUNT = defineSecret('DRIVE_SERVICE_ACCOUNT');
-const ANTHROPIC_API_KEY = defineString('ANTHROPIC_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 // Maps Viterbit ${variable} names (from Word templates) to system variable names.
@@ -205,44 +199,10 @@ async function resolveOnboardingStageId(
   }
 }
 
-// ─── Viterbit job helper for Sheets ─────────────────────────────────────────
-
-async function fetchJobForSheets(
-  jobId: string,
-  apiKey: string,
-): Promise<{ externalId: string | undefined; recruiterName: string }> {
-  try {
-    const resp = await fetch(
-      `${VITERBIT_API_BASE}/jobs/${jobId}?includes[]=custom_field_values`,
-      { headers: { 'X-API-Key': apiKey } },
-    );
-    if (!resp.ok) return { externalId: undefined, recruiterName: '' };
-    const json = (await resp.json()) as Record<string, unknown>;
-    const data = (json.data as Record<string, unknown>) ?? json;
-    const externalId = (data.external_id as string) || undefined;
-    const custom = (data.custom_field_values as Record<string, unknown>) ?? {};
-    const reclutadorId = custom.reclutador as string | undefined;
-    let recruiterName = '';
-    if (reclutadorId) {
-      const uResp = await fetch(`${VITERBIT_API_BASE}/users/${reclutadorId}`, {
-        headers: { 'X-API-Key': apiKey },
-      });
-      if (uResp.ok) {
-        const uJson = (await uResp.json()) as Record<string, unknown>;
-        const uData = (uJson.data as Record<string, unknown>) ?? uJson;
-        recruiterName = (uData.full_name as string) ?? '';
-      }
-    }
-    return { externalId, recruiterName };
-  } catch {
-    return { externalId: undefined, recruiterName: '' };
-  }
-}
-
 // ─── Sign Contract ────────────────────────────────────────────────────────────
 
 export const signContract = onRequest(
-  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300, memory: '1GiB', secrets: [DRIVE_SERVICE_ACCOUNT] },
+  { region: 'us-central1', cors: true, invoker: 'public', timeoutSeconds: 300, memory: '1GiB' },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -555,52 +515,26 @@ export const signContract = onRequest(
       }
     }
 
-    // Create Drive folder → sync docs → append Sheets row. This MUST be awaited
-    // before res.json(): Cloud Functions freezes the instance once the response
-    // is sent, so a fire-and-forget sync gets cut off mid-flight and leaves the
-    // folder with only some of the documents.
+    // Drive folders → sync docs → Sheets rows, for every destination configured
+    // in settings/google_workspace. This MUST be awaited before res.json():
+    // Cloud Functions freezes the instance once the response is sent, so a
+    // fire-and-forget sync gets cut off mid-flight and leaves folders with only
+    // some of the documents.
     const driveCandidateId = (candidate.viterbitCandidateId ?? candidate.viterbitCandidatureId) as string | undefined;
     if (driveCandidateId) {
       const driveServiceAccount = JSON.parse(DRIVE_SERVICE_ACCOUNT.value());
-      const documents = (candidate.documents ?? {}) as Record<string, { status?: string; storagePath?: string }>;
-      const extraFiles: import('../integrations/driveSync').ExtraFile[] = [
-        { name: 'Contrato Firmado.pdf', storagePath: pdfPath },
-        { name: 'Carta Oferta Firmada.pdf', storagePath: `candidates/${candidateId}/carta_oferta_firmada.pdf` },
-      ];
-
       try {
-        const folderId = await createCandidateDriveFolder(
-          candidate.firstName as string,
-          candidate.lastName as string,
-          driveCandidateId,
+        const drives = await syncCandidateDrives(
+          candidateDoc.ref,
+          candidate,
           driveServiceAccount,
+          signedPdfFiles(candidateId, pdfPath),
         );
-        await candidateDoc.ref.update({ driveFolderId: folderId, updatedAt: FieldValue.serverTimestamp() });
-
-        const syncResult = await syncValidDocumentsToDriveFolder(folderId, documents, driveServiceAccount, extraFiles);
-        await candidateDoc.ref.update({
-          driveSyncStatus: {
-            syncedAt: FieldValue.serverTimestamp(),
-            uploaded: syncResult.uploaded,
-            failed: syncResult.failed.map((f) => f.name),
-            skipped: syncResult.skipped,
-          },
-        });
-
-        // Append row to Google Sheets
-        const viterbitJobId = candidate.viterbitJobId as string | undefined;
-        const apiKey = VITERBIT_API_KEY.value();
-        const { externalId, recruiterName: viterbitRecruiter } = viterbitJobId && apiKey
-          ? await fetchJobForSheets(viterbitJobId, apiKey)
-          : { externalId: undefined, recruiterName: '' };
-        const recruiterName = viterbitRecruiter
-          || await getRecruiterName(candidate.createdBy as string).catch(() => '');
-        await appendCandidateRow(
-          { ...candidate, id: candidateId },
-          folderId,
-          recruiterName,
-          externalId,
+        await appendCandidateToSheets(
+          candidateDoc.ref,
+          { ...candidate, driveFolderId: drives.primaryFolderId || candidate.driveFolderId },
           driveServiceAccount,
+          VITERBIT_API_KEY.value(),
         );
       } catch (err: unknown) {
         // Signature already succeeded — Drive/Sheets problems shouldn't 500 the signer.

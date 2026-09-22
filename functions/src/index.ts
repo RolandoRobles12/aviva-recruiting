@@ -1,3 +1,6 @@
+// Must stay first: v2 functions read the global options when they are defined.
+import './globalOptions';
+
 export { sendInvitationEmail } from './email/sendInvitationEmail';
 export { sendReminderEmail } from './email/sendReminderEmail';
 export { sendContractEmail } from './email/sendContractEmail';
@@ -20,6 +23,11 @@ export { provisionAccountsManual } from './integrations/provisionAccounts';
 export { listHubspotRoles, syncHubspotUserRoles } from './integrations/hubspotAdmin';
 export { createDriveFolderManual } from './integrations/createDriveFolderManual';
 export { appendSheetsRowManual } from './integrations/appendSheetsRowManual';
+export {
+  getWorkspaceIntegrationSettings,
+  saveWorkspaceIntegrationSettings,
+  testWorkspaceConnection,
+} from './integrations/workspaceAdmin';
 export { backfillCandidateDocuments } from './utils/backfillDocuments';
 export { deleteCandidateDocument } from './candidates/deleteCandidateDocument';
 export { refreshCandidateViterbit } from './viterbit/refreshCandidateViterbit';

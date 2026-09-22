@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, Settings, Link, Clock, Wrench, HelpCircle, Palette, Building2 } from 'lucide-react';
+import { Bell, Settings, Link, Clock, Wrench, HelpCircle, Palette, Building2, FolderOpen } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { GmailConnectionTab } from '../components/settings/GmailConnectionTab';
@@ -7,6 +7,7 @@ import { LinkDurationTab } from '../components/settings/LinkDurationTab';
 import { QuestionsTab } from '../components/settings/QuestionsTab';
 import { BrandingTab } from '../components/settings/BrandingTab';
 import { HubspotTab } from '../components/settings/HubspotTab';
+import { WorkspaceTab } from '../components/settings/WorkspaceTab';
 import { useSettings } from '../hooks/useSettings';
 import {
   backfillCandidateDocuments,
@@ -29,7 +30,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 const stageLabel = (status: string) => STAGE_LABELS[status] ?? status;
 
-type Tab = 'gmail' | 'reminders' | 'links' | 'questions' | 'branding' | 'hubspot' | 'admin';
+type Tab = 'gmail' | 'reminders' | 'links' | 'questions' | 'branding' | 'hubspot' | 'workspace' | 'admin';
 
 const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'gmail', label: 'Conexión Gmail', Icon: Link },
@@ -38,6 +39,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Link }[] = [
   { id: 'questions', label: 'Preguntas del formulario', Icon: HelpCircle },
   { id: 'branding', label: 'Marca', Icon: Palette },
   { id: 'hubspot', label: 'HubSpot', Icon: Building2 },
+  { id: 'workspace', label: 'Drive y Sheets', Icon: FolderOpen },
   { id: 'admin', label: 'Admin', Icon: Wrench },
 ];
 
@@ -356,6 +358,7 @@ export function SettingsPage() {
               {activeTab === 'questions' && <QuestionsTab />}
               {activeTab === 'branding' && <BrandingTab />}
               {activeTab === 'hubspot' && <HubspotTab />}
+              {activeTab === 'workspace' && <WorkspaceTab />}
               {activeTab === 'admin' && <AdminTab />}
             </>
           )}

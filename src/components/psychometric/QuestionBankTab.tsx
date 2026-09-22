@@ -445,7 +445,7 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
             label="Crítica"
             checked={q.critical === true}
             onChange={(critical) => update(q.id, { critical })}
-            hint="Conducta concreta: si el candidato la admite (4 o 5) se reporta por sí sola y sube el nivel de riesgo. Siempre se aplica."
+            hint="Conducta concreta: si el candidato la admite (4 o 5) se lista aparte en el resultado para confirmarla en entrevista. Cuenta en el puntaje como cualquier otra, pero no cambia el nivel por sí sola. Siempre se aplica."
           />
         )}
         <Toggle label="Activa" checked={q.enabled} onChange={(enabled) => update(q.id, { enabled })} />
@@ -1265,7 +1265,8 @@ function ConfigPanel({
           </div>
           <p className="text-xs text-gray-400">
             Puntaje 0–100 donde 25 equivale a responder "En desacuerdo" en promedio y 50 a "Neutral". Además,
-            admitir una conducta crítica sube el nivel a moderado como mínimo, y dos o más a alto.
+            el nivel depende solo del puntaje: las conductas críticas que el candidato admita se muestran aparte
+            para confirmarlas, sin cambiar el nivel.
           </p>
         </div>
 

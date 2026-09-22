@@ -11,13 +11,12 @@
  */
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
 import { db } from '../utils/admin';
 import { userHasPermission } from '../utils/permissions';
 import { syncCandidateFromViterbit } from './syncCandidate';
 import { releaseHeldOffer } from './releaseHeldOffer';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 
 /** Statuses whose Viterbit record can still change something that matters. */
 export const SYNCABLE_STATUSES = [

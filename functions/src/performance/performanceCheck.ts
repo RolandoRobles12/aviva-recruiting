@@ -12,9 +12,9 @@ import {
   performanceWindow,
   resolveMonthlyTarget,
 } from './targets';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
 const APP_URL = defineString('APP_URL', { default: 'https://aviva-recruiting.web.app' });
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 /**

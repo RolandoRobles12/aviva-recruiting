@@ -1,14 +1,15 @@
 import * as functions from 'firebase-functions/v1';
 import { Timestamp, FieldValue, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
-import { defineString } from 'firebase-functions/params';
 import { db } from '../utils/admin';
 import { handleAprobado, type ParsedViterbitEvent } from './webhookHandler';
+import { ALL_SECRETS, VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 
 // Runs every minute to pick up and process queued Aprobado events after their delay.
 export const processPendingApprovals = functions
   .region('us-central1')
+  // v1 functions do not inherit setGlobalOptions; see utils/secrets.ts.
+  .runWith({ secrets: ALL_SECRETS })
   .pubsub.schedule('every 1 minutes')
   .onRun(async () => {
     const now = Timestamp.now();

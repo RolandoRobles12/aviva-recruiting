@@ -1,14 +1,13 @@
 import { randomBytes } from 'crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/admin';
 import { getLinkDuration } from '../utils/linkDuration';
 import { userHasPermission } from '../utils/permissions';
 import { evaluateContractDataReview } from './contractReview';
 import { sendContractEmailCore } from '../email/sendContractEmail';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 const VITERBIT_API_BASE = 'https://api.viterbit.com/v1';
 
 /**

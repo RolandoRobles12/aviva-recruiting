@@ -184,6 +184,8 @@ export interface Candidate {
   jiraTicketId?: string;
   // Google Drive
   driveFolderId?: string;
+  /** Carpeta del candidato en cada destino de Drive configurado (id de destino → carpeta). */
+  driveFolders?: Record<string, string>;
   driveSyncStatus?: {
     syncedAt: Timestamp;
     uploaded: string[];
@@ -464,6 +466,11 @@ export interface PsychometricRiskResult {
   level: PsychometricRiskLevel;
   /** Ids de los reactivos críticos que el candidato admitió. */
   criticalEndorsed: string[];
+  /**
+   * 'puntaje' when the score reached a cutoff, 'sin_riesgo' otherwise. The two
+   * critical-item values only appear on results scored while admitted
+   * behaviours still raised the level; the level is now score-only.
+   */
   levelReason: 'puntaje' | 'reactivos_criticos' | 'puntaje_y_criticos' | 'sin_riesgo';
 }
 

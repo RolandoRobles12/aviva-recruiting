@@ -1,10 +1,9 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineString } from 'firebase-functions/params';
 import { db } from '../utils/admin';
 import { syncCandidateFromViterbit } from './syncCandidate';
 import { releaseHeldOffer } from './releaseHeldOffer';
+import { VITERBIT_API_KEY } from '../utils/secrets';
 
-const VITERBIT_API_KEY = defineString('VITERBIT_API_KEY');
 
 /**
  * Re-reads Viterbit for one candidate and writes back everything that changed:

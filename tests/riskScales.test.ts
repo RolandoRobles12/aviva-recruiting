@@ -1,7 +1,7 @@
 // Violence and substance-use risk scales: seed content, sampling, scoring,
 // validity and analysis. Kept in one file because the rules only make sense
-// together — e.g. critical items are always sampled *because* they can raise the
-// level on their own.
+// together — e.g. critical items are always sampled *because* they are reported
+// one by one when admitted.
 
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_QUESTION_BANK, DEFAULT_TEST_CONFIG } from '../functions/src/psychometricTest/defaultBank';
@@ -170,22 +170,14 @@ describe('riskLevelFor', () => {
   const cutoffs = { moderateMin: 30, highMin: 50 };
 
   it('maps the score through the absolute cutoffs', () => {
-    expect(riskLevelFor(10, true, 0, cutoffs)).toEqual({ level: 'bajo', levelReason: 'sin_riesgo' });
-    expect(riskLevelFor(30, true, 0, cutoffs)).toEqual({ level: 'moderado', levelReason: 'puntaje' });
-    expect(riskLevelFor(50, true, 0, cutoffs)).toEqual({ level: 'alto', levelReason: 'puntaje' });
+    expect(riskLevelFor(10, true, cutoffs)).toEqual({ level: 'bajo', levelReason: 'sin_riesgo' });
+    expect(riskLevelFor(29, true, cutoffs).level).toBe('bajo');
+    expect(riskLevelFor(30, true, cutoffs)).toEqual({ level: 'moderado', levelReason: 'puntaje' });
+    expect(riskLevelFor(50, true, cutoffs)).toEqual({ level: 'alto', levelReason: 'puntaje' });
   });
 
-  it('raises a low score to moderate on one critical item, and to high on two', () => {
-    expect(riskLevelFor(5, true, 1, cutoffs)).toEqual({ level: 'moderado', levelReason: 'reactivos_criticos' });
-    expect(riskLevelFor(5, true, 2, cutoffs)).toEqual({ level: 'alto', levelReason: 'reactivos_criticos' });
-  });
-
-  it('never lowers a level the score already reached', () => {
-    expect(riskLevelFor(60, true, 1, cutoffs)).toEqual({ level: 'alto', levelReason: 'puntaje_y_criticos' });
-  });
-
-  it('still reports an admitted behaviour when the scale is too short to score', () => {
-    expect(riskLevelFor(0, false, 1, cutoffs).level).toBe('moderado');
+  it('gives no level above "bajo" to a scale that could not be scored', () => {
+    expect(riskLevelFor(0, false, cutoffs).level).toBe('bajo');
   });
 });
 
@@ -222,19 +214,25 @@ describe('scoreSession · risk scales', () => {
     expect(result.overallRisk).toBe('alto');
   });
 
-  it('flags a single admitted behaviour even when everything else is low', () => {
+  it('lists admitted behaviours without letting them change the level', () => {
+    // Two critical items admitted, everything else low risk: the score stays
+    // under the cutoff, so the level is "bajo" — the behaviours are reported
+    // apart for the interview.
     const { result } = scoreSession({
       questions,
       answers: answerAll(questions, {
-        likertValue: (q) => (q.id === 'riesgo_adicciones_0' ? 4 : lowRiskValue(q)),
+        likertValue: (q) =>
+          q.id === 'riesgo_adicciones_0' || q.id === 'riesgo_adicciones_1' ? 4 : lowRiskValue(q),
       }),
       config: config(),
     });
+    expect(result.risks.riesgo_adicciones.normalizedScore).toBeLessThan(config().riskCutoffs.moderateMin);
     expect(result.risks.riesgo_adicciones).toMatchObject({
-      level: 'moderado',
-      levelReason: 'reactivos_criticos',
-      criticalEndorsed: ['riesgo_adicciones_0'],
+      level: 'bajo',
+      levelReason: 'sin_riesgo',
+      criticalEndorsed: ['riesgo_adicciones_0', 'riesgo_adicciones_1'],
     });
+    expect(result.overallRisk).toBe('bajo');
   });
 
   it('keeps risk out of the composite score', () => {
