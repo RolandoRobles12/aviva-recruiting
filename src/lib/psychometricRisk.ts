@@ -1,11 +1,15 @@
 // Risk levels as the recruiter sees them, resolved against the *current* cutoffs.
 //
-// A stored result keeps the score and the critical items the candidate admitted;
-// the level is only an interpretation of those two against the configured
-// cutoffs. Resolving it at read time is what makes the "Riesgo moderado/alto
-// desde" fields in the bank config actually govern what every screen shows —
-// otherwise a result keeps whatever cutoffs were in force the day it was
-// submitted, and the panel, the list chip and the config disagree.
+// A stored result keeps the score; the level is only its interpretation against
+// the configured cutoffs. Resolving it at read time is what makes the "Riesgo
+// moderado/alto desde" fields in the bank config actually govern what every
+// screen shows — otherwise a result keeps whatever cutoffs were in force the day
+// it was submitted, and the panel, the list chip and the config disagree.
+//
+// The level is score-only. Admitted critical behaviours are shown next to it for
+// follow-up, but never move it: whoever reads "riesgo bajo" has to be able to
+// check it against the score and the cutoffs and get the same answer. This also
+// re-reads results stored while admitted behaviours still raised the level.
 //
 // Same rule as riskLevelFor in functions/src/psychometricTest/scoring.ts (the
 // tests check both agree). Kept free of any Firebase import so it can be tested.
@@ -22,49 +26,26 @@ export const DEFAULT_RISK_CUTOFFS: PsychometricRiskCutoffs = { moderateMin: 30, 
 
 const RANK: Record<PsychometricRiskLevel, number> = { bajo: 0, moderado: 1, alto: 2 };
 
-function maxLevel(a: PsychometricRiskLevel, b: PsychometricRiskLevel): PsychometricRiskLevel {
-  return RANK[a] >= RANK[b] ? a : b;
-}
-
 export function levelFromScore(score: number, cutoffs: PsychometricRiskCutoffs): PsychometricRiskLevel {
   if (score >= cutoffs.highMin) return 'alto';
   if (score >= cutoffs.moderateMin) return 'moderado';
   return 'bajo';
 }
 
-export function levelFromCriticals(count: number): PsychometricRiskLevel {
-  return count >= 2 ? 'alto' : count === 1 ? 'moderado' : 'bajo';
+/** A scale that was applied and answered enough to have a score. */
+export function isScored(risk: PsychometricRiskResult | undefined): risk is PsychometricRiskResult {
+  return !!risk && risk.itemsApplied > 0 && risk.hasData;
 }
 
-export interface ResolvedRisk {
-  /** Final level: the higher of the two below. */
-  level: PsychometricRiskLevel;
-  /** What the score alone says; null when there are too few answers to score. */
-  scoreLevel: PsychometricRiskLevel | null;
-  /** What the admitted behaviours alone say. */
-  criticalLevel: PsychometricRiskLevel;
-  /** True when the admitted behaviours, not the score, set the final level. */
-  raisedByCriticals: boolean;
+/** Level of one scale under the given cutoffs; null when it has no score. */
+export function resolveRiskLevel(
+  risk: PsychometricRiskResult | undefined,
+  cutoffs: PsychometricRiskCutoffs
+): PsychometricRiskLevel | null {
+  return isScored(risk) ? levelFromScore(risk.normalizedScore, cutoffs) : null;
 }
 
-export function resolveRisk(risk: PsychometricRiskResult, cutoffs: PsychometricRiskCutoffs): ResolvedRisk {
-  const scoreLevel = risk.hasData ? levelFromScore(risk.normalizedScore, cutoffs) : null;
-  const criticalLevel = levelFromCriticals(risk.criticalEndorsed.length);
-  const level = maxLevel(scoreLevel ?? 'bajo', criticalLevel);
-  return {
-    level,
-    scoreLevel,
-    criticalLevel,
-    raisedByCriticals: RANK[criticalLevel] > RANK[scoreLevel ?? 'bajo'],
-  };
-}
-
-/** A scale that was applied and has either a score or an admitted behaviour. */
-export function isMeasured(risk: PsychometricRiskResult | undefined): risk is PsychometricRiskResult {
-  return !!risk && risk.itemsApplied > 0 && (risk.hasData || risk.criticalEndorsed.length > 0);
-}
-
-/** Highest resolved level across measured scales; null when none was measured. */
+/** Highest level across scored scales; null when none was scored. */
 export function resolveOverallRisk(
   risks: Partial<Record<PsychometricRiskScale, PsychometricRiskResult>> | undefined,
   cutoffs: PsychometricRiskCutoffs
@@ -72,10 +53,9 @@ export function resolveOverallRisk(
   if (!risks) return null;
   let overall: PsychometricRiskLevel | null = null;
   for (const scale of PSYCHOMETRIC_RISK_SCALES) {
-    const risk = risks[scale];
-    if (!isMeasured(risk)) continue;
-    const { level } = resolveRisk(risk, cutoffs);
-    overall = overall === null ? level : maxLevel(overall, level);
+    const level = resolveRiskLevel(risks[scale], cutoffs);
+    if (level === null) continue;
+    if (overall === null || RANK[level] > RANK[overall]) overall = level;
   }
   return overall;
 }
@@ -87,8 +67,5 @@ export function scalesAtLevel(
   cutoffs: PsychometricRiskCutoffs
 ): PsychometricRiskScale[] {
   if (!risks) return [];
-  return PSYCHOMETRIC_RISK_SCALES.filter((scale) => {
-    const risk = risks[scale];
-    return isMeasured(risk) && resolveRisk(risk, cutoffs).level === level;
-  });
+  return PSYCHOMETRIC_RISK_SCALES.filter((scale) => resolveRiskLevel(risks[scale], cutoffs) === level);
 }

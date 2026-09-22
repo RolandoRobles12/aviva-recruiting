@@ -5,9 +5,11 @@
 // two are kept visually separate on purpose: a strong composite must never make
 // a high risk look acceptable, and a risk alert is not a score to average.
 //
-// What the recruiter needs from it, in order: the level, the concrete behaviours
-// the candidate admitted (critical items), whether the answers can be trusted at
-// all, and what to ask in the interview to confirm or rule it out.
+// What the recruiter needs from it, in order: the level (score against the
+// configured cutoffs, nothing else), the concrete behaviours the candidate
+// admitted (critical items, listed apart and without changing the level),
+// whether the answers can be trusted at all, and what to ask in the interview to
+// confirm or rule it out.
 
 import { useState } from 'react';
 import { AlertOctagon, ChevronRight, Lock, ShieldCheck } from 'lucide-react';
@@ -21,7 +23,7 @@ import {
   type PsychometricValidity,
 } from '../../types';
 import type { AnsweredQuestion, AnswerTone } from '../../lib/psychometricAnswers';
-import { resolveOverallRisk, resolveRisk } from '../../lib/psychometricRisk';
+import { resolveOverallRisk, resolveRiskLevel } from '../../lib/psychometricRisk';
 
 const RISK_LEVEL_META: Record<
   PsychometricRiskLevel,
@@ -37,27 +39,19 @@ const RISK_LEVEL_META: Record<
   alto: { label: 'Riesgo alto', chip: 'bg-red-50 text-red-700', dot: 'bg-red-500', bar: 'bg-red-500' },
 };
 
-const LEVEL_WORD: Record<PsychometricRiskLevel, string> = { bajo: 'bajo', moderado: 'moderado', alto: 'alto' };
-
-/**
- * Score bar with the two cutoffs drawn on it, coloured by what the *score*
- * says. When admitted behaviours raise the level above that, the bar stays in
- * the score's colour and the text says why the final level is higher — a red
- * bar at 30 under a "moderado desde 40" cutoff looked like a wiring bug.
- */
+/** Score bar with the two configured cutoffs marked on it. */
 function ScoreBar({
   score,
-  scoreLevel,
+  level,
   cutoffs,
 }: {
   score: number;
-  scoreLevel: PsychometricRiskLevel;
+  level: PsychometricRiskLevel;
   cutoffs: PsychometricRiskCutoffs;
 }) {
-  const meta = RISK_LEVEL_META[scoreLevel];
   return (
     <div className="relative w-full h-2 bg-gray-100 rounded-full">
-      <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${Math.max(score, 2)}%` }} />
+      <div className={`h-full rounded-full ${RISK_LEVEL_META[level].bar}`} style={{ width: `${Math.max(score, 2)}%` }} />
       {[cutoffs.moderateMin, cutoffs.highMin].map((cut, index) => (
         <span
           key={index}
@@ -130,7 +124,7 @@ function ItemList({ items }: { items: AnsweredQuestion[] }) {
               </span>
             )}
             {question.type === 'likert' && question.critical && (
-              <span className="ml-1.5 text-red-500" title="Conducta concreta: admitirla se reporta por sí sola">
+              <span className="ml-1.5 text-red-500" title="Conducta concreta: si la admite se lista aparte para confirmarla">
                 (crítica)
               </span>
             )}
@@ -172,77 +166,62 @@ function RiskScaleCard({
     );
   }
 
-  // Too few answers and nothing admitted: there is no basis for any level, and
-  // showing "riesgo bajo" would read as a clean result.
-  if (!risk.hasData && risk.criticalEndorsed.length === 0) {
-    return (
-      <div className="space-y-1">
-        <div className="flex items-center justify-between text-sm gap-2">
-          <span className="text-gray-700 font-medium">{label}</span>
-          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Sin datos</span>
-        </div>
-        <p className="text-xs text-gray-400">
-          Solo respondió {risk.itemsAnswered} de {risk.itemsApplied} preguntas: insuficiente para evaluar este riesgo.
-        </p>
-      </div>
-    );
-  }
-
-  const resolved = resolveRisk(risk, cutoffs);
-  const level = resolved.level;
-  const meta = RISK_LEVEL_META[level];
+  const level = resolveRiskLevel(risk, cutoffs);
   const endorsed = new Set(risk.criticalEndorsed);
   const admitted = (items ?? []).filter((item) => endorsed.has(item.question.id));
-  const needsFollowUp = level !== 'bajo';
   const admittedCount = risk.criticalEndorsed.length;
+  // Admitted behaviours do not change the level, but they are exactly what an
+  // interview should confirm, so the guidance shows for them too.
+  const needsFollowUp = level === 'moderado' || level === 'alto' || admittedCount > 0;
   const socialDesirability = validity.flags.includes('posible_deseabilidad_social');
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-sm gap-2">
         <span className="text-gray-700 font-medium">{label}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          {risk.hasData && <span className="text-gray-900 font-semibold">{risk.normalizedScore}</span>}
-          {risk.percentile !== undefined && (
-            <span className="text-xs text-gray-400" title="Posición frente a otros candidatos; no define el nivel">
-              pc {risk.percentile}
-            </span>
-          )}
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${meta.chip}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-            {meta.label}
-          </span>
-        </div>
-      </div>
-
-      {risk.hasData && resolved.scoreLevel ? (
-        <>
-          <ScoreBar score={risk.normalizedScore} scoreLevel={resolved.scoreLevel} cutoffs={cutoffs} />
-          <p className="text-xs text-gray-400">
-            Por puntaje: <span className="font-medium">{LEVEL_WORD[resolved.scoreLevel]}</span> (moderado desde{' '}
-            {cutoffs.moderateMin}, alto desde {cutoffs.highMin}).
-            {resolved.raisedByCriticals && (
-              <span className="text-red-700 font-medium">
-                {' '}
-                Sube a {LEVEL_WORD[level]} porque admitió{' '}
-                {admittedCount === 1 ? 'una conducta concreta' : `${admittedCount} conductas concretas`}.
+        {level === null ? (
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Sin datos</span>
+        ) : (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-gray-900 font-semibold">{risk.normalizedScore}</span>
+            {risk.percentile !== undefined && (
+              <span className="text-xs text-gray-400" title="Posición frente a otros candidatos; no define el nivel">
+                pc {risk.percentile}
               </span>
             )}
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${RISK_LEVEL_META[level].chip}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${RISK_LEVEL_META[level].dot}`} />
+              {RISK_LEVEL_META[level].label}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {level === null ? (
+        <p className="text-xs text-gray-400">
+          Solo respondió {risk.itemsAnswered} de {risk.itemsApplied} preguntas: insuficiente para calcular el nivel de
+          este riesgo.
+        </p>
+      ) : (
+        <>
+          <ScoreBar score={risk.normalizedScore} level={level} cutoffs={cutoffs} />
+          <p className="text-xs text-gray-400">
+            Moderado desde {cutoffs.moderateMin}, alto desde {cutoffs.highMin}.
+          </p>
+          <p className="text-xs text-gray-500">
+            {level === 'bajo' && admittedCount > 0
+              ? 'El puntaje de la escala es bajo, pero admitió conductas concretas que conviene confirmar en entrevista.'
+              : RISK_INTERPRETATION[scale][level]}
           </p>
         </>
-      ) : (
-        <p className="text-xs text-gray-400">
-          Solo respondió {risk.itemsAnswered} de {risk.itemsApplied} preguntas: no alcanza para un puntaje. El nivel{' '}
-          {LEVEL_WORD[level]} viene de las conductas que admitió.
-        </p>
       )}
 
-      <p className="text-xs text-gray-500">{RISK_INTERPRETATION[scale][level]}</p>
-
-      {risk.criticalEndorsed.length > 0 && (
+      {admittedCount > 0 && (
         <div className="rounded-md bg-red-50 border border-red-100 px-2.5 py-2 space-y-1">
           <p className="text-xs font-semibold text-red-800">
-            Admitió {risk.criticalEndorsed.length === 1 ? 'una conducta concreta' : `${risk.criticalEndorsed.length} conductas concretas`}:
+            Admitió {admittedCount === 1 ? 'una conducta concreta' : `${admittedCount} conductas concretas`}:
           </p>
           {items === null ? (
             <p className="text-xs text-red-700">Cargando...</p>
@@ -255,6 +234,7 @@ function RiskScaleCard({
               ))}
             </ul>
           )}
+          <p className="text-xs text-red-700/80">No cambian el nivel de riesgo: confírmalas en la entrevista.</p>
         </div>
       )}
 

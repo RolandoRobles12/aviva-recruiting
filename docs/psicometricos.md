@@ -70,8 +70,8 @@ Por qué esas cifras:
 1. Por rasgo y por escala de riesgo, muestrea balanceando ítems normales e
    invertidos. En las escalas de riesgo, **los ítems críticos se aplican
    siempre** (si el número configurado no alcanza para todos, se amplía): son los
-   que pueden subir el nivel por sí solos, y que un candidato quedara sin alerta
-   por el sorteo sería arbitrario.
+   que se reportan uno por uno cuando el candidato los admite, y que eso
+   dependiera del sorteo sería arbitrario.
 2. Muestrea por separado las escalas de validez y los controles de atención, de
    modo que **acortar la prueba nunca quita la capacidad de detectar respuestas
    descuidadas**.
@@ -186,18 +186,20 @@ historial médico**.
   significa lo mismo sin importar cómo contestaron los demás, y un percentil
   llamaría "bajo" a alguien solo porque ese mes los candidatos fueron peores. El
   percentil se muestra como contexto cuando hay muestra, pero no define el nivel.
-- **Reactivos críticos**: responder 4 o 5 a uno sube el nivel a **moderado como
-  mínimo**; a dos o más, a **alto**. Admitir una pelea o haber llegado bajo los
-  efectos es información en sí misma, aunque el resto de las respuestas salga
-  bajo. Si la escala quedó sin datos suficientes, la conducta admitida se sigue
-  reportando.
-- El reporte dice **por qué** el nivel es el que es: la barra muestra el
-  puntaje con las marcas de los dos cortes y su color es el nivel *por
-  puntaje*; si las conductas admitidas lo suben, lo dice explícitamente ("Sube
-  a alto porque admitió 2 conductas concretas").
+- **El nivel depende solo del puntaje.** Los reactivos críticos cuentan en el
+  puntaje como cualquier otro, pero no suben el nivel por sí solos: el nivel se
+  tiene que poder verificar leyendo el puntaje y los cortes configurados.
+- **Conductas admitidas**: si el candidato responde 4 o 5 a un reactivo crítico,
+  el reporte lo lista textualmente en un recuadro aparte ("no cambian el nivel
+  de riesgo: confírmalas en la entrevista") y muestra la guía de entrevista
+  aunque el nivel sea bajo. Si la escala quedó sin datos suficientes, se
+  reporta "Sin datos" y las conductas admitidas se siguen mostrando.
+- La barra muestra el puntaje con las marcas de los dos cortes.
 - **El nivel se resuelve con los cortes vigentes**, no con los del día en que
   se envió la prueba. El resultado guarda el puntaje y las conductas admitidas;
-  el nivel es su interpretación. Así, cambiar "Riesgo moderado/alto desde" en
+  el nivel es su interpretación. (Esto también corrige la lectura de los
+  resultados enviados mientras las conductas admitidas todavía subían el
+  nivel.) Así, cambiar "Riesgo moderado/alto desde" en
   la configuración se refleja de inmediato en el panel, en el distintivo de la
   lista y en el filtro "Con riesgo" (`src/lib/psychometricRisk.ts`, con la misma
   regla que `riskLevelFor` en el servidor; un test verifica que coincidan).

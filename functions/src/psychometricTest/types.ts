@@ -97,8 +97,10 @@ export interface PsychometricLikertQuestion extends PsychometricQuestionBase {
   reverseScored: boolean;
   /**
    * Risk scales only. A critical item describes a concrete behaviour (not an
-   * opinion) serious enough that endorsing it is reported on its own, whatever
-   * the scale score — and it is always applied when its scale is.
+   * opinion) serious enough that endorsing it is listed on its own in the
+   * report, whatever the scale score — and it is always applied when its scale
+   * is. It counts toward the score like any other item; it does not change the
+   * level by itself.
    */
   critical?: boolean;
 }
@@ -227,9 +229,16 @@ export interface PsychometricRiskResult {
   /** Position in the local norm sample, informative only — never sets the level. */
   percentile?: number;
   level: PsychometricRiskLevel;
-  /** Ids of critical items the candidate endorsed (4-5 in the risk direction). */
+  /**
+   * Ids of critical items the candidate endorsed (4-5 in the risk direction).
+   * Reported for follow-up; they do not change the level.
+   */
   criticalEndorsed: string[];
-  /** Why the level is what it is: the score, the critical items, or both. */
+  /**
+   * 'puntaje' when the score reached a cutoff, 'sin_riesgo' otherwise. The two
+   * critical-item values only appear on results scored while admitted
+   * behaviours still raised the level; the level is now score-only.
+   */
   levelReason: 'puntaje' | 'reactivos_criticos' | 'puntaje_y_criticos' | 'sin_riesgo';
 }
 
