@@ -6,6 +6,7 @@ import type {
   PsychometricNormSource,
   PsychometricPercentileCutoffs,
   PsychometricQuestion,
+  PsychometricRiskCutoffs,
   PsychometricRiskScale,
   PsychometricScaleResult,
   PsychometricScoredScale,
@@ -21,6 +22,7 @@ import {
   PSYCHOMETRIC_SCORED_SCALES,
 } from '../../types';
 import { RiskPanel } from './RiskPanel';
+import { DEFAULT_RISK_CUTOFFS } from '../../lib/psychometricRisk';
 import {
   getPsychometricConfig,
   getPsychometricQuestions,
@@ -131,11 +133,13 @@ const COMPOSITE_INTERPRETATION: Record<PsychometricBand, string> = {
 interface Cutoffs {
   bandCutoffs: PsychometricBandCutoffs;
   percentileCutoffs: PsychometricPercentileCutoffs;
+  riskCutoffs: PsychometricRiskCutoffs;
 }
 
 const DEFAULT_CUTOFFS: Cutoffs = {
   bandCutoffs: { lowMax: 55, highMin: 75 },
   percentileCutoffs: { lowMaxPercentile: 25, highMinPercentile: 75 },
+  riskCutoffs: DEFAULT_RISK_CUTOFFS,
 };
 
 function bandRange(band: PsychometricBand, source: PsychometricNormSource, cutoffs: Cutoffs): string {
@@ -400,13 +404,23 @@ function Indicator({ label, value }: { label: string; value: string }) {
 export function ResultView({ session }: { session: PsychometricSession }) {
   const result = adaptPsychometricResult(session.result);
   const [cutoffs, setCutoffs] = useState<Cutoffs>(DEFAULT_CUTOFFS);
+  // Risk levels depend on the configured cutoffs; showing them against the
+  // defaults for a moment would flash a level the config does not produce.
+  const [configReady, setConfigReady] = useState(false);
   const [expanded, setExpanded] = useState<PsychometricScoredScale | null>(null);
   const [bank, setBank] = useState<PsychometricQuestion[] | null>(null);
 
   useEffect(() => {
-    getPsychometricConfig().then((cfg) =>
-      setCutoffs({ bandCutoffs: cfg.bandCutoffs, percentileCutoffs: cfg.percentileCutoffs })
-    );
+    getPsychometricConfig()
+      .then((cfg) =>
+        setCutoffs({
+          bandCutoffs: cfg.bandCutoffs,
+          percentileCutoffs: cfg.percentileCutoffs,
+          riskCutoffs: cfg.riskCutoffs,
+        })
+      )
+      .catch(() => undefined)
+      .finally(() => setConfigReady(true));
   }, []);
 
   // Sessions applied by the current scorer carry their own question snapshot, so
@@ -456,12 +470,16 @@ export function ResultView({ session }: { session: PsychometricSession }) {
       {/* Risk goes right after reliability and before the profile: it is the
           one part of the result that can stop a hire on its own merits, and it
           must not read as a footnote under a good composite. */}
-      <RiskPanel
-        risks={result.risks}
-        overallRisk={result.overallRisk}
-        validity={result.validity}
-        itemsByScale={answersByRisk}
-      />
+      {configReady ? (
+        <RiskPanel
+          risks={result.risks}
+          validity={result.validity}
+          itemsByScale={answersByRisk}
+          cutoffs={cutoffs.riskCutoffs}
+        />
+      ) : (
+        <div className="rounded-lg border border-gray-200 p-3 text-xs text-gray-400">Cargando riesgos...</div>
+      )}
 
       {isLegacyResult(result) && (
         <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 flex gap-2">
