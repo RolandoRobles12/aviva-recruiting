@@ -7,9 +7,11 @@
 // missing ones.
 
 import {
-  PSYCHOMETRIC_TRAITS,
+  PSYCHOMETRIC_CONTENT_SCALES,
+  isRiskScale,
   type PsychometricAnswer,
   type PsychometricQuestion,
+  type PsychometricRiskScale,
   type PsychometricScoredScale,
   type PsychometricSession,
 } from '../types';
@@ -101,12 +103,15 @@ function describe(
   if (!answer) return { question, answerLabel: 'Sin responder', max: 5, tone: 'sin_responder' };
 
   const scored = question.reverseScored ? 6 - answer.value : answer.value;
-  // On the response-style scales a high score is the *bad* outcome: agreeing
-  // with "nunca me he molestado con nadie" is what raises the caution flag.
-  const isStyleScale =
-    question.scale === 'deseabilidad_social' || question.scale === 'infrecuencia';
-  const high = isStyleScale ? 'desfavorable' : 'favorable';
-  const low = isStyleScale ? 'favorable' : 'desfavorable';
+  // On the response-style and risk scales a high score is the *bad* outcome:
+  // agreeing with "nunca me he molestado con nadie" is what raises the caution
+  // flag, and agreeing with "me he peleado a golpes" is what raises the risk.
+  const highIsBad =
+    question.scale === 'deseabilidad_social' ||
+    question.scale === 'infrecuencia' ||
+    isRiskScale(question.scale);
+  const high = highIsBad ? 'desfavorable' : 'favorable';
+  const low = highIsBad ? 'favorable' : 'desfavorable';
 
   return {
     question,
@@ -122,11 +127,11 @@ function answerMap(session: PsychometricSession): Map<string, PsychometricAnswer
   return new Map((session.answers ?? []).map((answer) => [answer.questionId, answer]));
 }
 
-/** Every applied item of one scored scale, with what the candidate answered. */
+/** Every applied item of one scored or risk scale, with what the candidate answered. */
 export function answersForScale(
   session: PsychometricSession,
   bank: PsychometricQuestion[],
-  scale: PsychometricScoredScale
+  scale: PsychometricScoredScale | PsychometricRiskScale
 ): AnsweredQuestion[] {
   const answers = answerMap(session);
   const optionOrders = session.optionOrders ?? {};
@@ -149,13 +154,15 @@ export function controlAnswers(
 ): AnsweredQuestion[] {
   const answers = answerMap(session);
   const optionOrders = session.optionOrders ?? {};
-  const traits = new Set<string>(PSYCHOMETRIC_TRAITS);
+  // Risk items describe the candidate, like the traits: they have their own
+  // panel and must not be mixed in with the response-style controls.
+  const content = new Set<string>(PSYCHOMETRIC_CONTENT_SCALES);
 
   return resolveAppliedQuestions(session, bank)
     .filter(
       (question) =>
         question.type === 'attention' ||
-        (question.type === 'likert' && !traits.has(question.scale))
+        (question.type === 'likert' && !content.has(question.scale))
     )
     .map((question) => describe(question, answers.get(question.id), optionOrders));
 }

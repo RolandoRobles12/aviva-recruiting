@@ -6,6 +6,7 @@ import type {
   PsychometricNormSource,
   PsychometricPercentileCutoffs,
   PsychometricQuestion,
+  PsychometricRiskScale,
   PsychometricScaleResult,
   PsychometricScoredScale,
   PsychometricSession,
@@ -14,7 +15,12 @@ import type {
   PsychometricValidityFlag,
   PsychometricValidityVerdict,
 } from '../../types';
-import { PSYCHOMETRIC_SCALE_LABELS, PSYCHOMETRIC_SCORED_SCALES } from '../../types';
+import {
+  PSYCHOMETRIC_RISK_SCALES,
+  PSYCHOMETRIC_SCALE_LABELS,
+  PSYCHOMETRIC_SCORED_SCALES,
+} from '../../types';
+import { RiskPanel } from './RiskPanel';
 import {
   getPsychometricConfig,
   getPsychometricQuestions,
@@ -423,6 +429,14 @@ export function ResultView({ session }: { session: PsychometricSession }) {
     ) as Record<PsychometricScoredScale, AnsweredQuestion[]>;
   }, [session, bank, ready]);
 
+  const answersByRisk = useMemo(() => {
+    if (!ready) return null;
+    const resolved = bank ?? [];
+    return Object.fromEntries(
+      PSYCHOMETRIC_RISK_SCALES.map((scale) => [scale, answersForScale(session, resolved, scale)])
+    ) as Record<PsychometricRiskScale, AnsweredQuestion[]>;
+  }, [session, bank, ready]);
+
   const controls = useMemo(
     () => (ready ? controlAnswers(session, bank ?? []) : []),
     [session, bank, ready]
@@ -438,6 +452,16 @@ export function ResultView({ session }: { session: PsychometricSession }) {
   return (
     <div className="space-y-5">
       <ValidityPanel validity={result.validity} controls={controls} />
+
+      {/* Risk goes right after reliability and before the profile: it is the
+          one part of the result that can stop a hire on its own merits, and it
+          must not read as a footnote under a good composite. */}
+      <RiskPanel
+        risks={result.risks}
+        overallRisk={result.overallRisk}
+        validity={result.validity}
+        itemsByScale={answersByRisk}
+      />
 
       {isLegacyResult(result) && (
         <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 flex gap-2">

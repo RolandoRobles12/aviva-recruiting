@@ -23,10 +23,12 @@ import type {
 } from '../../types';
 import {
   PSYCHOMETRIC_LIKERT_SCALES,
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_SCALE_LABELS,
   PSYCHOMETRIC_SCORED_SCALES,
   PSYCHOMETRIC_TRAITS,
   PSYCHOMETRIC_VALIDITY_SCALES,
+  isRiskScale,
 } from '../../types';
 import {
   getPsychometricQuestions,
@@ -64,6 +66,10 @@ const SECONDS_PER_SJT_SCENARIO = 45;
 type SectionKey = PsychometricLikertScale | 'atencion' | 'sjt';
 
 const SCALE_HELP: Partial<Record<SectionKey, string>> = {
+  riesgo_violencia:
+    'Justificación de la agresión, control del enojo, intimidación y episodios admitidos. Más alto = más riesgo; no suma al score compuesto, se reporta como alerta aparte. "Invertida" = afirmación protectora.',
+  riesgo_adicciones:
+    'Actitudes permisivas hacia el consumo alrededor del trabajo y consumo que ya lo afectó. Solo conductas relacionadas con el trabajo: nunca diagnósticos ni tratamientos. Más alto = más riesgo; se reporta como alerta aparte.',
   deseabilidad_social:
     'Afirmaciones deseables pero improbables. No suman al perfil: solo alertan de un posible intento de dar buena impresión.',
   infrecuencia:
@@ -367,7 +373,11 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
 
   const countFor = (scale: PsychometricLikertScale) => {
     const items = likertQuestions.filter((q) => q.scale === scale && q.enabled);
-    return { total: items.length, reversed: items.filter((q) => q.reverseScored).length };
+    return {
+      total: items.length,
+      reversed: items.filter((q) => q.reverseScored).length,
+      critical: items.filter((q) => q.critical).length,
+    };
   };
 
   // A search hides everything that does not match, and opens what does — so
@@ -425,11 +435,19 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
           ))}
         </select>
         <Toggle
-          label="Invertida"
+          label={isRiskScale(q.scale) ? 'Protectora (invertida)' : 'Invertida'}
           checked={q.reverseScored}
           onChange={(reverseScored) => update(q.id, { reverseScored })}
-          hint="Estar de acuerdo indica MENOS del rasgo"
+          hint={isRiskScale(q.scale) ? 'Estar de acuerdo indica MENOS riesgo' : 'Estar de acuerdo indica MENOS del rasgo'}
         />
+        {isRiskScale(q.scale) && (
+          <Toggle
+            label="Crítica"
+            checked={q.critical === true}
+            onChange={(critical) => update(q.id, { critical })}
+            hint="Conducta concreta: si el candidato la admite (4 o 5) se reporta por sí sola y sube el nivel de riesgo. Siempre se aplica."
+          />
+        )}
         <Toggle label="Activa" checked={q.enabled} onChange={(enabled) => update(q.id, { enabled })} />
         <DeleteButton
           confirming={confirmDelete === q.id}
@@ -517,13 +535,16 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
           <h3 className="text-sm font-semibold text-gray-900">Cobertura del banco</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {PSYCHOMETRIC_LIKERT_SCALES.map((scale) => {
-              const { total, reversed } = countFor(scale);
+              const { total, reversed, critical } = countFor(scale);
               const isTrait = (PSYCHOMETRIC_TRAITS as string[]).includes(scale);
-              const applied =
-                config && config.questionCounts.likertPerTrait > 0 && isTrait
-                  ? Math.min(config.questionCounts.likertPerTrait, total)
-                  : total;
-              const thin = isTrait && applied < 6;
+              const isRisk = isRiskScale(scale);
+              const cap = isTrait
+                ? config?.questionCounts.likertPerTrait
+                : isRisk
+                  ? config?.questionCounts.likertPerRisk
+                  : 0;
+              const applied = cap && cap > 0 ? Math.min(cap, total) : total;
+              const thin = (isTrait || isRisk) && applied < 6;
               return (
                 <button
                   key={scale}
@@ -538,7 +559,8 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
                 >
                   <p className="text-gray-500">{PSYCHOMETRIC_SCALE_LABELS[scale]}</p>
                   <p className={thin ? 'text-amber-600 font-medium' : 'text-gray-900 font-medium'}>
-                    {total} activos · {reversed} invertidos
+                    {total} activos · {reversed} {isRisk ? 'protectores' : 'invertidos'}
+                    {isRisk ? ` · ${critical} críticos` : ''}
                   </p>
                 </button>
               );
@@ -596,6 +618,7 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
               }}
               counts={{
                 traits: PSYCHOMETRIC_TRAITS.map((t) => countFor(t).total),
+                risks: PSYCHOMETRIC_RISK_SCALES.map((r) => countFor(r).total),
                 sjt: sjtQuestions.filter((q) => q.enabled).length,
                 atencion: attentionQuestions.filter((q) => q.enabled).length,
                 deseabilidad: countFor('deseabilidad_social').total,
@@ -638,7 +661,8 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
           const shown = all.filter(matches);
           if (term && shown.length === 0) return null;
           const isValidityScale = (PSYCHOMETRIC_VALIDITY_SCALES as string[]).includes(scale);
-          const { total, reversed } = countFor(scale);
+          const isRisk = isRiskScale(scale);
+          const { total, reversed, critical } = countFor(scale);
 
           return (
             <Section
@@ -646,7 +670,11 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
               id={`sec-${scale}`}
               title={PSYCHOMETRIC_SCALE_LABELS[scale]}
               subtitle={SCALE_HELP[scale] ?? LIKERT_HELP}
-              summary={`${total} activos · ${reversed} invertidos`}
+              summary={
+                isRisk
+                  ? `${total} activos · ${reversed} protectores · ${critical} críticos`
+                  : `${total} activos · ${reversed} invertidos`
+              }
               badges={sectionIssueCount(scale)}
               open={isOpen(scale)}
               onToggle={() => toggle(scale)}
@@ -666,7 +694,9 @@ export function QuestionBankTab({ focusQuestionId, onFocusHandled }: QuestionBan
                 <p className="text-xs text-gray-400 px-1">
                   {isValidityScale
                     ? 'Sin ítems. Esta escala solo alimenta el veredicto de confiabilidad.'
-                    : 'Sin ítems: este rasgo no se podrá calificar.'}
+                    : isRisk
+                      ? 'Sin ítems: la prueba no reportará este riesgo. Usa "Completar con el banco base" para agregarlos.'
+                      : 'Sin ítems: este rasgo no se podrá calificar.'}
                 </p>
               ) : (
                 shown.map(renderLikertItem)
@@ -1066,7 +1096,14 @@ function ConfigPanel({
 }: {
   config: PsychometricTestConfig;
   setConfig: (config: PsychometricTestConfig) => void;
-  counts: { traits: number[]; sjt: number; atencion: number; deseabilidad: number; infrecuencia: number };
+  counts: {
+    traits: number[];
+    risks: number[];
+    sjt: number;
+    atencion: number;
+    deseabilidad: number;
+    infrecuencia: number;
+  };
   /** Field an issue pointed at — ringed so the message and the input connect. */
   highlightedField?: BankConfigField | null;
 }) {
@@ -1088,12 +1125,17 @@ function ConfigPanel({
     config.questionCounts.likertPerTrait > 0
       ? counts.traits.reduce((sum, available) => sum + Math.min(config.questionCounts.likertPerTrait, available), 0)
       : counts.traits.reduce((sum, available) => sum + available, 0);
+  const riskTotal = counts.risks.reduce(
+    (sum, available) =>
+      sum + (config.questionCounts.likertPerRisk > 0 ? Math.min(config.questionCounts.likertPerRisk, available) : available),
+    0
+  );
   const sjtApplied = Math.min(config.questionCounts.sjt || counts.sjt, counts.sjt);
   const qualityApplied =
     Math.min(config.questionCounts.deseabilidadSocial || counts.deseabilidad, counts.deseabilidad) +
     Math.min(config.questionCounts.infrecuencia || counts.infrecuencia, counts.infrecuencia) +
     Math.min(config.questionCounts.atencion || counts.atencion, counts.atencion);
-  const totalItems = traitTotal + sjtApplied + qualityApplied;
+  const totalItems = traitTotal + riskTotal + sjtApplied + qualityApplied;
 
   // Zipped by index with PSYCHOMETRIC_TRAITS, which is how `counts.traits` was
   // built by the caller — turns "20 / 20 / 20 / 20 / 14" into a labeled list.
@@ -1107,7 +1149,7 @@ function ConfigPanel({
   // test that was just configured. These estimate how long the session really
   // takes so "30 minutos" can be judged instead of guessed.
   const estimatedSeconds =
-    (traitTotal + qualityApplied) * SECONDS_PER_LIKERT_ITEM + sjtApplied * SECONDS_PER_SJT_SCENARIO;
+    (traitTotal + riskTotal + qualityApplied) * SECONDS_PER_LIKERT_ITEM + sjtApplied * SECONDS_PER_SJT_SCENARIO;
   const estimatedMinutes = Math.ceil(estimatedSeconds / 60);
   const secondsPerItem =
     totalItems > 0 && config.timeLimitMinutes > 0
@@ -1160,6 +1202,71 @@ function ConfigPanel({
               />
             )}
           </div>
+        </div>
+
+        {/* Risk: scored, but reported as an alert and kept out of the composite. */}
+        <div className="space-y-2 pt-3 border-t border-gray-100">
+          <div>
+            <p className="text-xs font-medium text-gray-700">Escalas de riesgo (violencia y consumo de sustancias)</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Se reportan como alerta aparte y no suman al score compuesto. Las preguntas críticas se
+              aplican siempre, aunque el número configurado sea menor.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {field(
+              'likertPerRisk',
+              <CountField
+                label="Ítems por escala de riesgo"
+                available={Math.min(...counts.risks)}
+                value={config.questionCounts.likertPerRisk}
+                onChange={(likertPerRisk) => setCounts({ likertPerRisk })}
+                recommended={RECOMMENDED_PER_TRAIT}
+              />
+            )}
+            {field(
+              'riskCutoffs',
+              <div className="flex gap-3 sm:col-span-2">
+                <label className="text-xs text-gray-600 space-y-1">
+                  Riesgo "moderado" desde
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={config.riskCutoffs.moderateMin}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        riskCutoffs: { ...config.riskCutoffs, moderateMin: Number(e.target.value) },
+                      })
+                    }
+                    className="input-field text-xs py-1.5 w-24"
+                  />
+                </label>
+                <label className="text-xs text-gray-600 space-y-1">
+                  Riesgo "alto" desde
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={config.riskCutoffs.highMin}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        riskCutoffs: { ...config.riskCutoffs, highMin: Number(e.target.value) },
+                      })
+                    }
+                    className="input-field text-xs py-1.5 w-24"
+                  />
+                </label>
+              </div>,
+              'sm:col-span-2'
+            )}
+          </div>
+          <p className="text-xs text-gray-400">
+            Puntaje 0–100 donde 25 equivale a responder "En desacuerdo" en promedio y 50 a "Neutral". Además,
+            admitir una conducta crítica sube el nivel a moderado como mínimo, y dos o más a alto.
+          </p>
         </div>
 
         {/* Quality control: never scored, only used to judge whether the rest
@@ -1237,8 +1344,8 @@ function ConfigPanel({
             <strong>{config.timeLimitMinutes} minutos</strong>.
           </p>
           <p className="text-primary-600">
-            {traitTotal} de personalidad · {sjtApplied} de escenarios · {qualityApplied} de control de
-            calidad.
+            {traitTotal} de personalidad · {riskTotal} de riesgo · {sjtApplied} de escenarios ·{' '}
+            {qualityApplied} de control de calidad.
           </p>
         </div>
       </div>

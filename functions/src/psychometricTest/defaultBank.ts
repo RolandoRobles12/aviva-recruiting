@@ -12,6 +12,14 @@
 //    by default, which is the range where a short Likert scale reaches an
 //    internal consistency around .75-.85; the surplus lets sessions vary between
 //    candidates and lets the analysis tab retire items that do not work.
+//  - Two risk scales, riesgo_violencia and riesgo_adicciones, built like overt
+//    integrity-test scales: attitudes that justify the behaviour, the "everyone
+//    does it" rationalisation, and admissions of concrete work-relevant conduct.
+//    Half the items are protective (reverse keyed). Three per scale are marked
+//    `critical`: behaviours, not opinions, that are reported on their own when
+//    endorsed. They stay inside the work context on purpose — how someone
+//    handles anger with a client or shows up to work — and never ask about
+//    diagnoses, treatment or medical history.
 //  - Two response-style scales: deseabilidad_social (desirable but improbable
 //    claims) and infrecuencia (claims nobody can honestly endorse). They never
 //    touch the profile — they only feed the reliability verdict.
@@ -23,7 +31,9 @@
 // Wording rules used throughout: first person, present tense, one idea per item,
 // no double negatives, no assumption of previous experience in the role, and
 // nothing that touches protected characteristics (health, religion, family
-// situation, political views).
+// situation, political views). The substance-use items are the one area close to
+// health data: they ask about conduct that affects work, and the module's docs
+// cover the consent and handling this requires.
 
 import type {
   PsychometricAttentionQuestion,
@@ -34,20 +44,26 @@ import type {
   PsychometricTestConfig,
 } from './types';
 
-/** [texto, invertido] — invertido = estar de acuerdo indica MENOS del rasgo. */
-type LikertSeed = [string, boolean];
+/**
+ * [texto, invertido, crítico] — invertido = estar de acuerdo indica MENOS del
+ * rasgo (o del riesgo); crítico solo aplica a las escalas de riesgo.
+ */
+type LikertSeed = [string, boolean] | [string, boolean, 'critico'];
 
 function likertItems(
   prefix: string,
   scale: PsychometricLikertScale,
   seeds: LikertSeed[]
 ): PsychometricLikertQuestion[] {
-  return seeds.map(([text, reverseScored], index) => ({
+  return seeds.map(([text, reverseScored, critical], index) => ({
     id: `${prefix}_${String(index + 1).padStart(2, '0')}`,
     type: 'likert',
     scale,
     text,
     reverseScored,
+    // Omitted rather than false, so the stored bank stays as it was for every
+    // item that is not critical.
+    ...(critical === 'critico' ? { critical: true } : {}),
     enabled: true,
     order: 0, // reassigned below
   }));
@@ -136,6 +152,49 @@ const INTEGRIDAD: LikertSeed[] = [
   ['Si nadie se va a enterar, romper una regla menor no es problema.', true],
   ['Está bien registrar una visita que no se hizo si el resultado se cumple.', true],
   ['He ajustado el dato de un cliente para que un trámite pudiera avanzar.', true],
+];
+
+// Risk scales. Scored so that higher = more risk: the risk-keyed items count as
+// written, the protective ones (invertido = true) are flipped.
+//
+// Violence: justification of aggression, anger control, intimidation as a tool
+// (directly relevant to cobranza) and admissions of physical aggression or
+// threats.
+const RIESGO_VIOLENCIA: LikertSeed[] = [
+  ['A veces un golpe es la única forma de que alguien entienda.', false],
+  ['Cuando alguien me falta al respeto, tiene que pagar las consecuencias.', false],
+  ['Cuando me enojo, me cuesta controlar lo que digo o hago.', false],
+  ['Presionar o asustar un poco a un cliente atrasado es válido para que pague.', false],
+  ['En los últimos dos años me he peleado a golpes con alguien.', false, 'critico'],
+  ['He amenazado a alguien para que hiciera lo que yo quería.', false, 'critico'],
+  ['Me han tenido que detener para que no agrediera a alguien.', false, 'critico'],
+  ['Cuando alguien me provoca, prefiero retirarme antes que discutir.', true],
+  ['Aunque esté muy enojado, puedo hablar sin levantar la voz.', true],
+  ['Los conflictos se resuelven hablando, no con agresiones.', true],
+  ['Cuando siento que me estoy enojando, me doy un momento antes de responder.', true],
+  ['Trato con respeto a un cliente aunque me deba dinero.', true],
+  ['Evito los pleitos, aunque tenga la razón.', true],
+  ['Si un compañero me ofende, lo hablo con él o con mi supervisor en lugar de desquitarme.', true],
+];
+
+// Substance use: permissive attitudes toward use around work, the "everyone
+// does it" rationalisation, relying on a substance to cope, and admissions of
+// use that already affected work. Nothing about diagnosis or treatment.
+const RIESGO_ADICCIONES: LikertSeed[] = [
+  ['Tomarse unas cervezas a la hora de la comida no afecta el trabajo.', false],
+  ['Consumir alguna droga de vez en cuando no tiene nada de malo si no afecta a nadie.', false],
+  ['Casi todas las personas que conozco toman o consumen algo para aguantar la semana.', false],
+  ['Después de un día pesado, necesito tomar algo para relajarme.', false],
+  ['He llegado a trabajar bajo los efectos del alcohol o de alguna droga.', false, 'critico'],
+  ['He faltado o llegado tarde al trabajo por haber tomado o consumido algo la noche anterior.', false, 'critico'],
+  ['He tenido problemas en un trabajo por tomar o consumir alguna sustancia.', false, 'critico'],
+  ['Cuido no tomar de más cuando al día siguiente tengo que trabajar.', true],
+  ['Atender clientes después de haber tomado es una irresponsabilidad.', true],
+  ['Si notara que un compañero llegó alcoholizado, avisaría a mi supervisor.', true],
+  ['Puedo pasar semanas sin tomar alcohol sin que me cueste trabajo.', true],
+  ['Cuando estoy estresado, lo manejo sin necesidad de alcohol ni de otras sustancias.', true],
+  ['Estar sobrio en horario de trabajo es algo que no se negocia.', true],
+  ['Rechazo una invitación a tomar si al día siguiente tengo que trabajar temprano.', true],
 ];
 
 // Desirable but improbable: agreeing with several of these signals impression
@@ -378,6 +437,8 @@ export const DEFAULT_QUESTION_BANK: PsychometricQuestion[] = [
   ...likertItems('extr', 'extraversion', EXTRAVERSION),
   ...likertItems('amab', 'amabilidad', AMABILIDAD),
   ...likertItems('integ', 'integridad', INTEGRIDAD),
+  ...likertItems('viol', 'riesgo_violencia', RIESGO_VIOLENCIA),
+  ...likertItems('adic', 'riesgo_adicciones', RIESGO_ADICCIONES),
   ...likertItems('desea', 'deseabilidad_social', DESEABILIDAD_SOCIAL),
   ...likertItems('infre', 'infrecuencia', INFRECUENCIA),
   ...ATENCION.map((question) => ({ ...question, order: 0 })),
@@ -385,9 +446,14 @@ export const DEFAULT_QUESTION_BANK: PsychometricQuestion[] = [
 ].map((question, index) => ({ ...question, order: index }));
 
 /**
- * Defaults tuned for the curated bank above: 8 items per trait (40), 8
- * scenarios, 4 social-desirability, 3 infrequency and 2 attention checks = 57
- * items, which candidates finish well inside 35 minutes.
+ * Defaults tuned for the curated bank above: 8 items per trait (40), 10 per risk
+ * scale (20), 8 scenarios, 4 social-desirability, 3 infrequency and 2 attention
+ * checks = 77 items, which candidates finish inside 35 minutes.
+ *
+ * Risk scales apply 10 rather than 8 because their three critical items are
+ * always included: with 8, the balanced split would leave room for a single
+ * attitude item, and attitudes are what catches the candidate who will not
+ * admit to anything concrete.
  *
  * Weights lean on responsabilidad and integridad, the two traits with the
  * clearest link to performance and to counterproductive behaviour in roles that
@@ -407,9 +473,15 @@ export const DEFAULT_TEST_CONFIG: PsychometricTestConfig = {
   // applicants concentrate between 60 and 90.
   bandCutoffs: { lowMax: 55, highMin: 75 },
   percentileCutoffs: { lowMaxPercentile: 25, highMinPercentile: 75 },
+  // On the 0-100 risk score, 25 is "En desacuerdo" on average and 50 is
+  // "Neutral". Honest low-risk candidates sit well under 25; averaging around
+  // neutral on statements like these is already a clear signal. Initial values,
+  // to be recalibrated once hires can be followed up (docs/psicometricos.md §9).
+  riskCutoffs: { moderateMin: 30, highMin: 50 },
   timeLimitMinutes: 35,
   questionCounts: {
     likertPerTrait: 8,
+    likertPerRisk: 10,
     sjt: 8,
     deseabilidadSocial: 4,
     infrecuencia: 3,

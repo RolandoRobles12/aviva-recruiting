@@ -13,8 +13,10 @@
 // resting on 12 overlapping cases is not read as a stable estimate.
 
 import {
+  PSYCHOMETRIC_RISK_SCALES,
   PSYCHOMETRIC_TRAITS,
   PSYCHOMETRIC_VALIDITY_SCALES,
+  isRiskScale,
   type PsychometricAnswer,
   type PsychometricLikertScale,
   type PsychometricQuestion,
@@ -25,6 +27,7 @@ export type AnalysisScaleKey = PsychometricLikertScale | 'sjt';
 
 const ANALYSIS_SCALE_KEYS: AnalysisScaleKey[] = [
   ...PSYCHOMETRIC_TRAITS,
+  ...PSYCHOMETRIC_RISK_SCALES,
   ...PSYCHOMETRIC_VALIDITY_SCALES,
   'sjt',
 ];
@@ -71,6 +74,10 @@ export interface ItemAnalysis {
   optionDistribution?: { text: string; score: number; share: number }[];
   /** Attention checks only: share who answered as instructed. */
   passRate?: number;
+  /** Risk items only: share who answered 4-5 in the risk direction. */
+  endorsementRate?: number;
+  /** Risk items only: whether the item is marked critical. */
+  critical?: boolean;
   issues: string[];
 }
 
@@ -90,6 +97,8 @@ const LOW_DISCRIMINATION = 0.15;
 const LOW_VARIANCE_SD = 0.6;
 const CEILING_MEAN = 4.6;
 const FLOOR_MEAN = 1.4;
+/** Same threshold the scorer uses to call a critical item endorsed. */
+const RISK_ENDORSEMENT_MIN = 4;
 
 // ─── Statistics ───────────────────────────────────────────────────────────────
 
@@ -283,6 +292,11 @@ function analyzeScale(
   if (scale === 'sjt' && alpha !== null) {
     notes.push('En un SJT multidimensional el alfa subestima la calidad; úsalo solo como referencia.');
   }
+  if (isRiskScale(scale) && sessionsWithScale > 0) {
+    notes.push(
+      'Escala de riesgo: es normal que la mayoría puntúe muy bajo. Lo que importa es que los ítems discriminen entre quienes sí admiten riesgo.'
+    );
+  }
 
   return {
     scale,
@@ -351,16 +365,25 @@ function analyzeItem(
   const itemMean = values.length > 0 ? mean(values) : null;
   const itemSd = values.length > 1 ? Math.sqrt(variance(values)) : null;
 
+  // Risk items describe low-base-rate behaviour: most candidates disagree with
+  // "me he peleado a golpes", and that floor is the point, not a flaw. What
+  // matters on them is discrimination and how many candidates endorse them.
+  const riskItem = isRiskScale(scale);
+  const endorsementRate =
+    riskItem && values.length > 0
+      ? round(values.filter((v) => v >= RISK_ENDORSEMENT_MIN).length / values.length)
+      : null;
+
   if (values.length < MIN_N_PER_ITEM) {
     issues.push('Muestra insuficiente para valorar el ítem.');
   } else {
-    if (itemSd !== null && itemSd < LOW_VARIANCE_SD) {
+    if (!riskItem && itemSd !== null && itemSd < LOW_VARIANCE_SD) {
       issues.push('Casi todos responden lo mismo: aporta poca información.');
     }
     if (itemTotalCorrelation !== null && itemTotalCorrelation < LOW_DISCRIMINATION) {
       issues.push('Discriminación baja frente al resto de la escala: considera reformularlo o desactivarlo.');
     }
-    if (question.type === 'likert' && itemMean !== null) {
+    if (question.type === 'likert' && itemMean !== null && !riskItem) {
       if (itemMean > CEILING_MEAN) issues.push('Efecto techo: prácticamente nadie está en desacuerdo.');
       if (itemMean < FLOOR_MEAN) issues.push('Efecto piso: prácticamente nadie está de acuerdo.');
     }
@@ -397,6 +420,8 @@ function analyzeItem(
     type: question.type,
     scale,
     reverseScored: question.type === 'likert' ? question.reverseScored : undefined,
+    ...(endorsementRate !== null ? { endorsementRate } : {}),
+    ...(riskItem && question.type === 'likert' ? { critical: question.critical === true } : {}),
     n: values.length,
     mean: round(itemMean),
     sd: round(itemSd),

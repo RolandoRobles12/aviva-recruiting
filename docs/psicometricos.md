@@ -17,12 +17,18 @@ resultados).
 | Amabilidad / servicio | rasgo | Calidad de atención, cooperación con el equipo |
 | **Integridad / apego a normas** | rasgo | Manejo de efectivo y datos de crédito, apego a procedimiento cuando la meta aprieta |
 | Juicio situacional (SJT) | escenarios | Qué haría en situaciones reales de venta, crédito y cobranza |
+| **Riesgo de violencia / agresividad** | **riesgo** | Trato con clientes molestos y morosos, visitas de cobranza, convivencia en sucursal |
+| **Riesgo de consumo de sustancias** | **riesgo** | Asistencia, puntualidad, seguridad en ruta y trato con clientes |
 | Deseabilidad social | **validez** | Detectar a quien contesta "lo que queremos oír" |
 | Infrecuencia | **validez** | Detectar respuestas al azar o sin leer |
 | Controles de atención | **validez** | Detectar a quien no está leyendo los reactivos |
 
 Las tres últimas **nunca entran al perfil ni al score compuesto**. Solo alimentan
 el veredicto de confiabilidad.
+
+Las dos escalas de **riesgo** tampoco entran al compuesto: se reportan como una
+alerta aparte (ver §5 bis). Un candidato no puede "compensar" un riesgo de
+violencia con una extraversión alta.
 
 Integridad se agregó porque es el rasgo de autorreporte con la relación más clara
 con conductas contraproducentes, y es el más pertinente cuando el puesto maneja
@@ -32,12 +38,13 @@ dinero y datos de crédito de terceros.
 
 ## 2. Tamaño del banco y de la prueba
 
-El banco base trae **14 ítems por rasgo** (mitad invertidos), 6 de deseabilidad
-social, 5 de infrecuencia, 3 controles de atención y 14 escenarios SJT.
+El banco base trae **14 ítems por rasgo** (mitad invertidos), **14 por escala de
+riesgo** (mitad protectores, 3 críticos), 6 de deseabilidad social, 5 de
+infrecuencia, 3 controles de atención y 14 escenarios SJT.
 
-Cada sesión aplica por configuración 8 ítems por rasgo, 8 escenarios, 4 + 3
-ítems de validez y 2 controles: **57 reactivos**, que la mayoría termina en menos
-de 20 minutos (el límite está en 35).
+Cada sesión aplica por configuración 8 ítems por rasgo, 10 por escala de riesgo,
+8 escenarios, 4 + 3 ítems de validez y 2 controles: **77 reactivos**, que la
+mayoría termina en unos 25 minutos (el límite está en 35).
 
 Por qué esas cifras:
 
@@ -60,12 +67,18 @@ Por qué esas cifras:
 
 `sampling.ts` no toma una muestra al azar del banco: la estratifica.
 
-1. Por rasgo, muestrea balanceando ítems normales e invertidos.
+1. Por rasgo y por escala de riesgo, muestrea balanceando ítems normales e
+   invertidos. En las escalas de riesgo, **los ítems críticos se aplican
+   siempre** (si el número configurado no alcanza para todos, se amplía): son los
+   que pueden subir el nivel por sí solos, y que un candidato quedara sin alerta
+   por el sorteo sería arbitrario.
 2. Muestrea por separado las escalas de validez y los controles de atención, de
    modo que **acortar la prueba nunca quita la capacidad de detectar respuestas
    descuidadas**.
 3. Intercala los ítems para que dos preguntas consecutivas rara vez sean del
-   mismo rasgo.
+   mismo rasgo. Los de riesgo se mezclan con los de personalidad: agrupados, una
+   serie de preguntas sobre pleitos y alcohol se lee como "aquí me están
+   filtrando" y provoca las respuestas más cuidadas de toda la prueba.
 4. Distribuye los controles de atención a lo largo de la prueba, nunca al inicio
    ni pegados entre sí.
 5. Aleatoriza el orden de las opciones de cada escenario y **congela** ese orden.
@@ -132,6 +145,102 @@ centro.
 
 ---
 
+## 5 bis. Escalas de riesgo: violencia y consumo de sustancias
+
+Se agregaron porque en entrevistas y referencias aparecían con frecuencia
+riesgos importantes en estos dos temas que la prueba no detectaba: integridad
+mide apego a normas, no agresividad ni consumo.
+
+### Qué miden
+
+Están construidas como las escalas de las pruebas de integridad "abiertas", que
+son las que tienen la mejor evidencia en selección para conductas
+contraproducentes. Cada escala combina cuatro tipos de reactivo (en consumo se
+suma además la normalización: "casi todas las personas que conozco toman o
+consumen algo para aguantar la semana", porque quien consume tiende a creer que
+todos lo hacen):
+
+| Tipo | Ejemplo (violencia) | Ejemplo (consumo) |
+|---|---|---|
+| Justificación | "A veces un golpe es la única forma de que alguien entienda." | "Consumir alguna droga de vez en cuando no tiene nada de malo si no afecta a nadie." |
+| Control / afrontamiento | "Cuando me enojo, me cuesta controlar lo que digo o hago." | "Después de un día pesado, necesito tomar algo para relajarme." |
+| Protector (invertido) | "Cuando alguien me provoca, prefiero retirarme antes que discutir." | "Cuido no tomar de más cuando al día siguiente tengo que trabajar." |
+| **Crítico** (conducta admitida) | "En los últimos dos años me he peleado a golpes con alguien." | "He llegado a trabajar bajo los efectos del alcohol o de alguna droga." |
+
+La mitad de los reactivos son protectores por la misma razón que en los rasgos:
+sin ellos la escala mide la tendencia a decir que sí, y no se puede verificar la
+consistencia.
+
+Los reactivos de consumo se quedan **dentro del contexto laboral** a propósito:
+preguntan por conductas que afectan el trabajo (llegar bajo los efectos, faltar
+por haber consumido) y por actitudes, **nunca por diagnósticos, tratamientos ni
+historial médico**.
+
+### Cómo se califican
+
+- Puntaje 0–100, **más alto = más riesgo** (los protectores se invierten).
+- **Nivel por cortes absolutos**: moderado desde 30, alto desde 50. En esta
+  escala 25 equivale a "En desacuerdo" en promedio y 50 a "Neutral"; quedar en
+  neutral frente a afirmaciones como estas ya es una señal clara. Los cortes son
+  absolutos, no percentiles: estar de acuerdo con "un golpe es la única forma"
+  significa lo mismo sin importar cómo contestaron los demás, y un percentil
+  llamaría "bajo" a alguien solo porque ese mes los candidatos fueron peores. El
+  percentil se muestra como contexto cuando hay muestra, pero no define el nivel.
+- **Reactivos críticos**: responder 4 o 5 a uno sube el nivel a **moderado como
+  mínimo**; a dos o más, a **alto**. Admitir una pelea o haber llegado bajo los
+  efectos es información en sí misma, aunque el resto de las respuestas salga
+  bajo. Si la escala quedó sin datos suficientes, la conducta admitida se sigue
+  reportando.
+- El reporte dice **por qué** el nivel es el que es (puntaje, reactivos
+  críticos o ambos) y lista textualmente las conductas admitidas.
+
+### Cómo se leen
+
+- Van en el resultado **antes que el perfil**, justo después del veredicto de
+  confiabilidad, y en la lista de sesiones aparece un distintivo "Riesgo alto /
+  moderado" con filtro "Con riesgo".
+- Si el resultado es **no confiable**, el nivel no se interpreta; las conductas
+  admitidas sí se exploran en entrevista.
+- Si hay **deseabilidad social alta** y el riesgo sale bajo, el reporte lo
+  advierte: es la escala más fácil de "maquillar". No se corrige el puntaje (ver
+  §6), se verifica con referencias.
+- Con riesgo moderado o alto, el reporte sugiere **preguntas de entrevista
+  conductual** y qué preguntar a las referencias.
+
+### Lo que no es y cómo se debe usar
+
+- **No es un diagnóstico clínico ni sustituye un examen toxicológico.** Mide
+  actitudes y conductas que el propio candidato reporta. Nadie debe ser
+  etiquetado como "adicto" o "violento" a partir de este resultado.
+- **Apoyo a la decisión, no filtro automático.** Un riesgo alto obliga a
+  verificar (entrevista, referencias y, cuando el puesto lo justifique y se
+  cuente con consentimiento, examen toxicológico), no a rechazar sin más. Esto
+  además es lo que mantiene la decisión defendible frente a la normativa de no
+  discriminación.
+- **Datos personales sensibles.** Lo relativo al consumo de sustancias puede
+  considerarse dato de salud bajo la LFPDPPP, que exige aviso de privacidad y
+  consentimiento expreso. La pantalla inicial avisa al candidato que hay
+  preguntas sobre manejo del enojo y consumo, y el consentimiento las menciona
+  explícitamente. **Conviene que Legal revise ese texto y el aviso de
+  privacidad antes de usar la prueba en producción.**
+- **Acceso.** Hoy el resultado lo ve cualquiera con el permiso de sesiones
+  psicométricas. Si se quiere restringir el detalle de riesgo a un grupo más
+  pequeño, hay que moverlo a un documento aparte con sus propias reglas de
+  Firestore: ocultarlo solo en la interfaz no es un control de acceso.
+
+### Cómo activarlo en un banco existente
+
+El banco vive en Firestore. En *Banco de preguntas*, **"Completar con el banco
+base"** agrega los 28 reactivos de riesgo sin tocar los existentes. La
+configuración guardada recibe sola los valores por omisión nuevos (10 por escala,
+cortes 30/50). Mientras el banco no tenga reactivos de riesgo, la prueba sigue
+funcionando y el resultado dice "No evaluado".
+
+Los resultados anteriores (versión 2) no tienen escalas de riesgo y se muestran
+como "aplicada antes de incluir las escalas de riesgo"; no se recalifican.
+
+---
+
 ## 6. Confiabilidad de la respuesta
 
 `validity.ts` calcula varios indicadores independientes y los combina en un
@@ -143,7 +252,7 @@ veredicto explícito por puntos:
 | Patrón repetitivo (racha larga) | Clic en la misma opción | 3 |
 | Baja variación (DE de sus respuestas) | Idem, medido de otra forma | 3 |
 | Respuestas muy rápidas | Contestó más rápido de lo que se lee | 3 |
-| Inconsistencia normal/invertida | Ignora la dirección del enunciado | 3 |
+| Inconsistencia normal/invertida | Ignora la dirección del enunciado (rasgos y escalas de riesgo) | 3 |
 | Escala de infrecuencia alta | Responde al azar | 3 |
 | Inconsistencia par-impar | Las dos mitades no coinciden | 2 |
 | Deseabilidad social alta | Intento de dar buena impresión | 2 |
@@ -211,6 +320,11 @@ reporta:
   clave o la redacción.
 - **Tasa de acierto de los controles de atención**: si falla más del 30 %, el
   problema suele ser la redacción de la instrucción.
+- **Conductas de riesgo admitidas**: qué porcentaje de candidatos respondió "De
+  acuerdo" o más a cada reactivo crítico. Dimensiona el problema en la población
+  de candidatos. En las escalas de riesgo no se reportan efecto piso ni poca
+  variabilidad: que casi todos estén en desacuerdo es lo esperado; lo que
+  importa es que los ítems discriminen.
 - **Estado de la muestra normativa** por escala.
 - **Revisión de configuración**: escalas sin ítems suficientes, escalas sin
   reactivos invertidos, cortes invertidos, pesos en cero.
@@ -231,8 +345,13 @@ las correlaciones y hace parecer malos a ítems que funcionan bien.
   rotación. Con eso se pueden ajustar los pesos con datos propios en lugar de por
   criterio, y justificar cualquier uso del puntaje como filtro.
 - Los reactivos evitan deliberadamente cualquier característica protegida (salud,
-  religión, situación familiar, opiniones políticas). Al agregar reactivos nuevos
-  hay que mantener ese criterio.
+  religión, situación familiar, opiniones políticas). La única excepción cercana
+  son los de consumo de sustancias, acotados a conductas que afectan el trabajo
+  (ver §5 bis). Al agregar reactivos nuevos hay que mantener ese criterio: nada
+  de diagnósticos, tratamientos ni historial médico.
+- Los cortes de riesgo (30/50) son **iniciales**. El estudio de validez de
+  criterio debería incluir incidentes de violencia, ausentismo y bajas por
+  consumo entre los contratados, para recalibrarlos con datos propios.
 - Las bandas son relativas a **la muestra de candidatos de Aviva**, no a una
   norma nacional. Eso es lo correcto para comparar candidatos entre sí, y hay que
   leerlas así.
@@ -244,9 +363,9 @@ las correlaciones y hace parecer malos a ítems que funcionan bien.
 | Archivo | Responsabilidad |
 |---|---|
 | `types.ts` | Modelo de datos canónico (`src/types/index.ts` lo refleja) |
-| `defaultBank.ts` | Banco base curado y configuración por omisión |
+| `defaultBank.ts` | Banco base curado (incluye las escalas de riesgo) y configuración por omisión |
 | `sampling.ts` | Armado de la sesión y auditoría estática del banco |
-| `scoring.ts` | Validación de respuestas, puntajes, compuesto |
+| `scoring.ts` | Validación de respuestas, puntajes, compuesto, nivel de riesgo |
 | `norms.ts` | Percentiles, bandas y muestra normativa |
 | `validity.ts` | Indicadores de confiabilidad y veredicto |
 | `itemAnalysis.ts` | Alfa, discriminación de ítems, distribución SJT |
@@ -254,4 +373,5 @@ las correlaciones y hace parecer malos a ítems que funcionan bien.
 | `sessionData.ts` | Vencimientos, preguntas congeladas, validación de payload |
 | `getTest.ts` / `saveProgress.ts` / `submitTest.ts` | Endpoints públicos |
 | `adminTools.ts` | Callables de administración (seed, análisis, reinicio de normas) |
-| `tests/` | Suite de vitest sobre toda la lógica anterior (`npm test`) |
+| `src/components/psychometric/RiskPanel.tsx` | Panel de riesgos del resultado y guía de entrevista |
+| `tests/` | Suite de vitest sobre toda la lógica anterior (`npm test`); `riskScales.test.ts` cubre las escalas de riesgo |

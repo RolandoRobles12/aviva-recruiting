@@ -18,7 +18,12 @@ import {
   type PsychometricNormSummary,
   type PsychometricScaleAnalysis,
 } from '../../services/functions';
-import { PSYCHOMETRIC_SCALE_LABELS, PSYCHOMETRIC_SCORED_SCALES } from '../../types';
+import {
+  PSYCHOMETRIC_RISK_SCALES,
+  PSYCHOMETRIC_SCALE_LABELS,
+  PSYCHOMETRIC_SCORED_SCALES,
+  isRiskScale,
+} from '../../types';
 
 type Analysis = {
   sessionsAnalyzed: number;
@@ -188,12 +193,19 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
 
   const { analysis, warnings, norms, thresholds } = report;
 
-  // The recruiter's view covers the five traits plus the scenarios; the two
-  // response-style scales only matter to whoever maintains the instrument, so
-  // they live in the technical detail.
-  const reportedScales = analysis.scales.filter((scale) =>
-    (PSYCHOMETRIC_SCORED_SCALES as string[]).includes(scale.scale)
+  // The recruiter's view covers the five traits, the scenarios and the two risk
+  // scales; the response-style scales only matter to whoever maintains the
+  // instrument, so they live in the technical detail.
+  const reportedScales = analysis.scales.filter(
+    (scale) =>
+      (PSYCHOMETRIC_SCORED_SCALES as string[]).includes(scale.scale) || isRiskScale(scale.scale)
   );
+
+  // How often candidates admit each concrete behaviour. It is the number that
+  // says how big the violence / substance problem in the applicant pool is.
+  const criticalItems = analysis.items
+    .filter((item) => item.critical && item.endorsementRate !== undefined)
+    .sort((a, b) => (b.endorsementRate ?? 0) - (a.endorsementRate ?? 0));
 
   // "Muestra insuficiente" is not a problem with the item — it is every item in
   // a young bank, and lumping it in with real issues is what made this section
@@ -372,6 +384,12 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
                     ? `Se necesitan más pruebas aplicadas para evaluarla (van ${scale.n}).`
                     : meta.explanation}
                 </p>
+                {isRiskScale(scale.scale) && quality !== 'sin_datos' && (
+                  <p className="text-xs text-gray-400">
+                    En las escalas de riesgo casi todos responden en desacuerdo, lo que baja esta medida
+                    aunque las preguntas funcionen. Revísala junto con las conductas admitidas.
+                  </p>
+                )}
                 {scale.scale === 'sjt' && quality !== 'sin_datos' && (
                   <p className="text-xs text-gray-400">
                     En los escenarios esta medida suele salir más baja de lo que corresponde, porque cada
@@ -383,6 +401,39 @@ export function InstrumentAnalysisTab({ onEditItem }: InstrumentAnalysisTabProps
           })}
         </div>
       </div>
+
+      {/* ── How often do candidates admit risk behaviours? ── */}
+      {criticalItems.length > 0 && (
+        <div className="card p-4 space-y-3">
+          <div>
+            <h4 className="text-xs font-semibold text-gray-900">Conductas de riesgo que admiten los candidatos</h4>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Qué porcentaje respondió "De acuerdo" o "Totalmente de acuerdo" a cada pregunta crítica. Sirve
+              para dimensionar el problema en la población de candidatos, no para calificar a nadie.
+            </p>
+          </div>
+          {PSYCHOMETRIC_RISK_SCALES.map((scale) => {
+            const items = criticalItems.filter((item) => item.scale === scale);
+            if (items.length === 0) return null;
+            return (
+              <div key={scale} className="space-y-1.5">
+                <p className="text-xs font-medium text-gray-700">{labelFor(scale)}</p>
+                {items.map((item) => {
+                  const pct = Math.round((item.endorsementRate ?? 0) * 100);
+                  return (
+                    <div key={item.id} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-gray-600 min-w-0">{item.text}</span>
+                      <span className="shrink-0 tabular-nums text-gray-900 font-medium">
+                        {pct}% <span className="text-gray-400 font-normal">de {item.n}</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Question 3: can I already compare candidates? ── */}
       <div className="card p-4 space-y-3">

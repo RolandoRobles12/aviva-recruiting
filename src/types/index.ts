@@ -278,10 +278,32 @@ export const PSYCHOMETRIC_VALIDITY_SCALES: PsychometricValidityScale[] = [
   'infrecuencia',
 ];
 
-export type PsychometricLikertScale = PsychometricTrait | PsychometricValidityScale;
+/**
+ * Escalas de riesgo: actitudes y conductas admitidas sobre violencia y consumo de
+ * sustancias. Más alto = más riesgo. Se reportan como alerta, nunca en el compuesto.
+ */
+export type PsychometricRiskScale = 'riesgo_violencia' | 'riesgo_adicciones';
+
+export const PSYCHOMETRIC_RISK_SCALES: PsychometricRiskScale[] = ['riesgo_violencia', 'riesgo_adicciones'];
+
+export function isRiskScale(scale: string): scale is PsychometricRiskScale {
+  return (PSYCHOMETRIC_RISK_SCALES as string[]).includes(scale);
+}
+
+export type PsychometricLikertScale =
+  | PsychometricTrait
+  | PsychometricRiskScale
+  | PsychometricValidityScale;
+
+/** Escalas que describen al candidato (no su estilo de respuesta). */
+export const PSYCHOMETRIC_CONTENT_SCALES: (PsychometricTrait | PsychometricRiskScale)[] = [
+  ...PSYCHOMETRIC_TRAITS,
+  ...PSYCHOMETRIC_RISK_SCALES,
+];
 
 export const PSYCHOMETRIC_LIKERT_SCALES: PsychometricLikertScale[] = [
   ...PSYCHOMETRIC_TRAITS,
+  ...PSYCHOMETRIC_RISK_SCALES,
   ...PSYCHOMETRIC_VALIDITY_SCALES,
 ];
 
@@ -298,8 +320,14 @@ export const PSYCHOMETRIC_TRAIT_LABELS: Record<PsychometricTrait, string> = {
   integridad: 'Integridad / Apego a normas',
 };
 
+export const PSYCHOMETRIC_RISK_LABELS: Record<PsychometricRiskScale, string> = {
+  riesgo_violencia: 'Riesgo de violencia / agresividad',
+  riesgo_adicciones: 'Riesgo de consumo de sustancias',
+};
+
 export const PSYCHOMETRIC_SCALE_LABELS: Record<PsychometricLikertScale | 'sjt', string> = {
   ...PSYCHOMETRIC_TRAIT_LABELS,
+  ...PSYCHOMETRIC_RISK_LABELS,
   sjt: 'Juicio situacional',
   deseabilidad_social: 'Deseabilidad social (validez)',
   infrecuencia: 'Infrecuencia (validez)',
@@ -314,6 +342,11 @@ export interface PsychometricLikertQuestion {
   trait?: PsychometricTrait;
   /** true if agreeing with the item means a LOW scale score (scored 6 - value) */
   reverseScored: boolean;
+  /**
+   * Solo escalas de riesgo: conducta concreta que, si el candidato la admite, se
+   * reporta por sí sola sin importar el puntaje, y que siempre se aplica.
+   */
+  critical?: boolean;
   enabled: boolean;
   order: number;
 }
@@ -368,6 +401,8 @@ export interface PsychometricPercentileCutoffs {
 export interface PsychometricQuestionCounts {
   /** ítems Likert a aplicar POR RASGO en cada sesión. 0 = usar todos los habilitados. */
   likertPerTrait: number;
+  /** ítems Likert a aplicar POR ESCALA DE RIESGO. 0 = usar todos los habilitados. */
+  likertPerRisk: number;
   /** escenarios SJT a aplicar por sesión. 0 = usar todos los habilitados. */
   sjt: number;
   deseabilidadSocial: number;
@@ -375,10 +410,19 @@ export interface PsychometricQuestionCounts {
   atencion: number;
 }
 
+/** Cortes absolutos de riesgo sobre el puntaje 0-100 (más alto = más riesgo). */
+export interface PsychometricRiskCutoffs {
+  /** score >= moderateMin → "moderado" */
+  moderateMin: number;
+  /** score >= highMin → "alto" */
+  highMin: number;
+}
+
 export interface PsychometricTestConfig {
   weights: PsychometricScaleWeights;
   bandCutoffs: PsychometricBandCutoffs;
   percentileCutoffs: PsychometricPercentileCutoffs;
+  riskCutoffs: PsychometricRiskCutoffs;
   timeLimitMinutes: number;
   questionCounts: PsychometricQuestionCounts;
   /** Una escala con menos ítems respondidos se reporta "sin datos", no como 0. */
@@ -403,6 +447,24 @@ export interface PsychometricScaleResult {
   zScore?: number;
   band: PsychometricBand;
   bandSource: PsychometricNormSource;
+}
+
+export type PsychometricRiskLevel = 'bajo' | 'moderado' | 'alto';
+
+export interface PsychometricRiskResult {
+  scale: PsychometricRiskScale;
+  hasData: boolean;
+  itemsApplied: number;
+  itemsAnswered: number;
+  rawAverage: number;
+  /** 0-100, más alto = más riesgo. */
+  normalizedScore: number;
+  /** Solo contexto frente a la muestra local; nunca define el nivel. */
+  percentile?: number;
+  level: PsychometricRiskLevel;
+  /** Ids de los reactivos críticos que el candidato admitió. */
+  criticalEndorsed: string[];
+  levelReason: 'puntaje' | 'reactivos_criticos' | 'puntaje_y_criticos' | 'sin_riesgo';
 }
 
 export type PsychometricValidityFlag =
@@ -442,9 +504,12 @@ export interface PsychometricValidity {
 }
 
 export interface PsychometricResult {
-  /** 1 = resultados previos a normas/integridad; 2 = esta forma. */
+  /** 1 = previos a normas/integridad; 2 = previos a escalas de riesgo; 3 = esta forma. */
   version: number;
   scales: Record<PsychometricScoredScale, PsychometricScaleResult>;
+  /** Ausente en resultados calificados antes de la versión 3. */
+  risks?: Record<PsychometricRiskScale, PsychometricRiskResult>;
+  overallRisk?: PsychometricRiskLevel | null;
   compositeScore: number; // 0-100
   compositePercentile?: number;
   compositeZScore?: number;
