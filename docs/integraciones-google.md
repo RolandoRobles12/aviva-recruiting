@@ -52,3 +52,23 @@ Los datos y sus títulos aceptados están en
   tener sesión iniciada.
 - Los cambios de configuración aplican al siguiente candidato (caché de hasta 1
   minuto).
+
+## Probar en local antes del deploy
+
+El frontend local llama por omisión a las funciones **de producción**, así que
+una función nueva que aún no se despliega falla (el navegador lo reporta como
+error de CORS). Para probarla con el emulador:
+
+1. `functions/.secret.local` con los secretos (ver `docs/secretos.md`).
+2. Credenciales de Google para que el emulador lea Firestore y Storage reales:
+   `gcloud auth application-default login`.
+3. En una terminal: `cd functions && npm run serve` (emulador de funciones en el
+   puerto 5001).
+4. En `.env.local` del frontend: `VITE_FUNCTIONS_EMULATOR=localhost:5001`, y
+   reinicia `npm run dev`.
+
+Solo las funciones *callable* (botones de Configuración y del panel del
+candidato) pasan por el emulador; Auth, Firestore y Storage siguen siendo los de
+producción, y lo que el emulador escriba en Drive y Sheets es real. Las
+funciones HTTP que usan `/api` (firma de oferta y contrato, prueba psicométrica)
+siguen yendo a producción.
